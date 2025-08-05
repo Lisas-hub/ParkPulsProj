@@ -584,4 +584,5 @@ def OTHER_STATS_park_coverage():
     return park_coverage
 park_coverage = OTHER_STATS_park_coverage()
 
+
 park_coverage.to_file("data/VARIABLES_NEW.gpkg", layer="park_coverage", driver="GPKG", mode="w")
