@@ -144,7 +144,6 @@ def NAMN_XXX_to_layer2(layer2):
     return layer2
 layer2 = NAMN_XXX_to_layer2(layer2)
 
-
 def stadsdelar_to_layer2(layer2):
     # == add stadsdelar ==
     stadsdelar = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Stadsdelar_Stadskartan.gpkg").to_crs(layer2.crs)
@@ -158,9 +157,6 @@ def stadsdelar_to_layer2(layer2):
     largest_overlap = intersection_stadsdelar.sort_values("overlap_area", ascending=False).drop_duplicates(
         "NAMN_combined")
 
-    # *** TEMP FILE - remove when finished ***
-    largest_overlap.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_stadsdelar_test1", driver="GPKG", mode="w")
-
     layer2 = layer2.merge(
         largest_overlap[["NAMN_combined", "NAMN"]],
         on="NAMN_combined",
@@ -171,6 +167,30 @@ def stadsdelar_to_layer2(layer2):
 
     return layer2
 layer2 = stadsdelar_to_layer2(layer2)
+
+def stadsdelsomraden_to_layer2(layer2):
+
+    # == add stadsdelsomraden ==
+    stadsdelsomraden = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Stadsdelsomraden_Stadskartan.gpkg").to_crs(layer2.crs)
+    # drop all columns except stadsdelsområden
+    columns_to_keep_stadsdelsomraden = ["geometry", "Omrade"]
+    stadsdelsomraden = stadsdelsomraden[columns_to_keep_stadsdelsomraden]
+
+    intersection_stadsdelsomraden = gpd.overlay(layer2, stadsdelsomraden, how='intersection')
+    intersection_stadsdelsomraden["overlap_area"] = intersection_stadsdelsomraden.geometry.area
+
+    largest_overlap = intersection_stadsdelsomraden.sort_values("overlap_area", ascending=False).drop_duplicates("NAMN_combined")
+
+    layer2 = layer2.merge(
+        largest_overlap[["NAMN_combined", "Omrade"]],
+        on="NAMN_combined",
+        how="left"
+    )
+
+    layer2 = layer2.rename(columns={"Omrade": "stadsdelsomraden"})
+
+    return layer2
+layer2 = stadsdelsomraden_to_layer2(layer2)
 
 # ============== THEMES ================
 
