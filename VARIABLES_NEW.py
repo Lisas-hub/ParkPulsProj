@@ -10,7 +10,6 @@ from shapely.geometry import Polygon, MultiPolygon
 # TO DO LIST
 # clean up columns like NAME_combined? shorten the list and fix special characters (like Ö in the middle of some names)
 # add more amenities
-# split into multiple output files? VARIABLES.gpkg exceeds githubs size limitation of 100.00 MB
 # LIGHTING - filter out underground lighting (tunnels)??
 # LIGHTING - calculate point density of street lights?
 # ACCESSIBILITY - fix input road layers so that fill in areas between roads that shouldn't be filled in are removed?
@@ -145,6 +144,33 @@ def NAMN_XXX_to_layer2(layer2):
     return layer2
 layer2 = NAMN_XXX_to_layer2(layer2)
 
+
+def stadsdelar_to_layer2(layer2):
+    # == add stadsdelar ==
+    stadsdelar = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Stadsdelar_Stadskartan.gpkg").to_crs(layer2.crs)
+    # drop all columns except NAMN (på stadsdelar)
+    columns_to_keep_stadsdelar = ["geometry", "NAMN"]
+    stadsdelar = stadsdelar[columns_to_keep_stadsdelar]
+
+    intersection_stadsdelar = gpd.overlay(layer2, stadsdelar, how='intersection')
+    intersection_stadsdelar["overlap_area"] = intersection_stadsdelar.geometry.area
+
+    largest_overlap = intersection_stadsdelar.sort_values("overlap_area", ascending=False).drop_duplicates(
+        "NAMN_combined")
+
+    # *** TEMP FILE - remove when finished ***
+    largest_overlap.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_stadsdelar_test1", driver="GPKG", mode="w")
+
+    layer2 = layer2.merge(
+        largest_overlap[["NAMN_combined", "NAMN"]],
+        on="NAMN_combined",
+        how="left"
+    )
+
+    layer2 = layer2.rename(columns={"NAMN": "stadsdelar"})
+
+    return layer2
+layer2 = stadsdelar_to_layer2(layer2)
 
 # ============== THEMES ================
 
@@ -467,7 +493,7 @@ def THEME_accessibility_to_layer2(layer2):
     dissolved['geometry'] = dissolved['geometry'].buffer(-0.1)
 
     # **** remove this step after checking ****
-    dissolved.to_file("data/VARIABLES_NEW.gpkg", layer="dissolve_step1", driver="GPKG",
+    dissolved.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_accessibility_dissolve_step1", driver="GPKG",
                       mode="w")  # *** Enstaka polygoner är borttagna i detta lager, behåll det så eller inte? ***
 
     # Save
@@ -492,7 +518,7 @@ def THEME_safety_to_layer2(layer2):
     street_lighting['geometry'] = street_lighting['geometry'].buffer(30)
 
     # *** temporary file - can be removed ***
-    street_lighting.to_file("data/VARIABLES_NEW.gpkg", layer="street_lighting_buffer", driver="GPKG", mode="w")
+    street_lighting.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_street_lighting_buffer", driver="GPKG", mode="w")
 
     # dissolve buffers to get accurate area calculations later
     dissolve_lights = street_lighting.dissolve()

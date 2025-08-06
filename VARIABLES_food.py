@@ -131,6 +131,38 @@ def NAMN_XXX_to_layer2(layer2):
     return layer2
 layer2 = NAMN_XXX_to_layer2(layer2)
 
+
+def stadsdelar_to_layer2(layer2):
+
+    # == add stadsdelar ==
+    stadsdelar = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Stadsdelar_Stadskartan.gpkg").to_crs(layer2.crs)
+    # drop all columns except NAMN (på stadsdelar)
+    columns_to_keep_stadsdelar = ["geometry", "NAMN"]
+    stadsdelar = stadsdelar[columns_to_keep_stadsdelar]
+
+    intersection_stadsdelar = gpd.overlay(layer2, stadsdelar, how='intersection')
+    intersection_stadsdelar["overlap_area"] = intersection_stadsdelar.geometry.area
+
+    largest_overlap = intersection_stadsdelar.sort_values("overlap_area", ascending=False).drop_duplicates("NAMN_combined")
+
+    # *** TEMP FILE - remove when finished ***
+    largest_overlap.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_stadsdelar_test1", driver="GPKG", mode="w")
+
+    layer2 = layer2.merge(
+        largest_overlap[["NAMN_combined", "NAMN"]],
+        on="NAMN_combined",
+        how="left"
+    )
+
+    layer2 = layer2.rename(columns={"NAMN": "stadsdelar"})
+
+    return layer2
+layer2 = stadsdelar_to_layer2(layer2)
+
+
+
+# === THEME ===
+
 def THEME_typology_to_layer2(layer2):
 
     # === bars / restaurants / etc ===
@@ -200,7 +232,6 @@ def THEME_typology_to_layer2(layer2):
     layer2['total_food_establishments'] = layer2.index.map(
         food_counts.set_index('index_right')['total_food_establishments']
     ).fillna(0).astype(int)
-    # *****************************
 
 
     layer2['variable_amenity_food'] = layer2.index.map(
@@ -208,7 +239,24 @@ def THEME_typology_to_layer2(layer2):
     ).fillna('None')
 
 
+
     return layer2
 layer2 = THEME_typology_to_layer2(layer2)
 
 layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_food", driver="GPKG", mode="w")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
