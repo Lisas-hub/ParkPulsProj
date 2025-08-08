@@ -577,7 +577,72 @@ def THEME_socioeconomic_to_layer2(layer2):
 
     # == socioeconomic ==
 
-    # start here
+    # deso_inkomster = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Inkomster\Tab11_DeSO_2023_region.shp").to_crs(layer2.crs)
+    deso_befolkning_age = gpd.read_file(
+        r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Befolkning\Tab1_DeSO_2023_region.shp").to_crs(
+        layer2.crs)
+    deso_befolkning_birthplace = gpd.read_file(
+        r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Befolkning\Tab4_DeSO_2023_region.shp").to_crs(
+        layer2.crs)
+    deso_befolkning_migration = gpd.read_file(
+        r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Befolkning\Tab5_DeSO_2023_region.shp").to_crs(
+        layer2.crs)
+
+    municipality = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Kommun_Stadskartan.gpkg").to_crs(layer2.crs)
+
+    # deso_inkomster = gpd.clip(deso_inkomster, municipality)
+    deso_befolkning_age = gpd.clip(deso_befolkning_age, municipality)
+    deso_befolkning_birthplace = gpd.clip(deso_befolkning_birthplace, municipality)
+    deso_befolkning_migration = gpd.clip(deso_befolkning_migration, municipality)
+
+    # check the features that look like lines in QGIS, ex DESO IDs that starts with 0126C
+    # deso_inkomster['area'] = deso_inkomster.geometry.area
+    # small_polygons = deso_inkomster[deso_inkomster["area"] < 400]  # the smallest real deso area = 231123 but there is one large sliver area = 333
+    # print(small_polygons)
+
+    # drop slivers
+    # deso_inkomster = deso_inkomster[deso_inkomster.area >= 400].reset_index(drop=True)
+    deso_befolkning_age = deso_befolkning_age[deso_befolkning_age.area >= 400].reset_index(drop=True)
+    deso_befolkning_birthplace = deso_befolkning_birthplace[deso_befolkning_birthplace.area >= 400].reset_index(
+        drop=True)
+    deso_befolkning_migration = deso_befolkning_migration[deso_befolkning_migration.area >= 400].reset_index(drop=True)
+
+    # roads from sthlm stad
+    roads = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="accessibility_roads")
+
+    # == resident population (kids) near parks ==
+
+    # summarize values in columns Alder_0_6 and Alder_7_15
+    # create a new column called DESO_antal_barn
+
+    # buffer the park polygons
+    layer2_buffered = layer2.copy()
+    layer2_buffered['geometry'] = layer2_buffered.geometry.buffer(500)
+    # *** TEMP FILE - can be removed ***
+    layer2_buffered.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_park_buffer500", driver="GPKG", mode="w")
+
+    # prep kids layer
+    deso_befolkning_kids = deso_befolkning_age.copy()
+    columns_to_keep = ["geometry", "DESO", "Alder_0_6", "Alder_7_15"]
+    deso_befolkning_kids = deso_befolkning_kids[columns_to_keep]
+
+    # join parks and kids layer (multiple polygons per "group", aka park, that will be aggregated in the next step)
+    parks_and_kidpopulation = gpd.sjoin(layer2_buffered, deso_befolkning_kids, how='left', predicate='intersects')
+    # *** TEMP FILE - can be removed ***
+    parks_and_kidpopulation.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_parks_and_kidpopulation_join",
+                                    driver="GPKG", mode="w")
+
+    # aggregate kid population counts per park
+    child_columns = ['Alder_0_6', 'Alder_7_15']
+    children_aggregated = parks_and_kidpopulation.groupby(['group'])[
+        child_columns].sum().reset_index()  # change from layer2buffered to layer2?
+    layer2 = layer2.merge(children_aggregated, on='group', how='right')
+    layer2 = layer2.rename(columns={"Alder_0_6": "AGG_Alder_0_6", "Alder_7_15": "AGG_Alder_7_15"})
+    # *** TEMP FILE - can be removed ***
+    #layer2.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_parks_and_kidpopulation_aggregated", driver="GPKG", mode="w")
+
+    # *** add a column in children_aggregated that lists all values in column DESO (IDs) that were included in the aggregation? ***
+
     return layer2
 layer2 = THEME_socioeconomic_to_layer2(layer2)
 

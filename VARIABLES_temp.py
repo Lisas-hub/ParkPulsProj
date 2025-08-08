@@ -184,66 +184,15 @@ def stadsdelsomraden_to_layer2(layer2):
     return layer2
 layer2 = stadsdelsomraden_to_layer2(layer2)
 
-# socioeconomic
-#def THEME_socioeconomic():
 
-# == socioeconomic ==
 
-deso_inkomster = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Inkomster\Tab11_DeSO_2023_region.shp").to_crs(layer2.crs)
-deso_befolkning_age = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Befolkning\Tab1_DeSO_2023_region.shp").to_crs(layer2.crs)
-deso_befolkning_birthplace = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Befolkning\Tab4_DeSO_2023_region.shp").to_crs(layer2.crs)
-deso_befolkning_migration = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Befolkning\Tab5_DeSO_2023_region.shp").to_crs(layer2.crs)
 
-municipality = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Kommun_Stadskartan.gpkg").to_crs(layer2.crs)
 
-deso_inkomster = gpd.clip(deso_inkomster, municipality)
-deso_befolkning_age = gpd.clip(deso_befolkning_age, municipality)
-deso_befolkning_birthplace = gpd.clip(deso_befolkning_birthplace, municipality)
-deso_befolkning_migration = gpd.clip(deso_befolkning_migration, municipality)
 
-# investigate the features that look like lines in QGIS, ex DESO IDs that starts with 0126C
-deso_inkomster['area'] = deso_inkomster.geometry.area
-small_polygons = deso_inkomster[deso_inkomster["area"] < 400]  # the smallest real deso area = 231123 but there is one large sliver area = 333
-#print(small_polygons)
-
-# drop slivers
-deso_inkomster = deso_inkomster[deso_inkomster.area >= 400].reset_index(drop=True)
-deso_befolkning_age = deso_befolkning_age[deso_befolkning_age.area >= 400].reset_index(drop=True)
-deso_befolkning_birthplace = deso_befolkning_birthplace[deso_befolkning_birthplace.area >= 400].reset_index(drop=True)
-deso_befolkning_migration = deso_befolkning_migration[deso_befolkning_migration.area >= 400].reset_index(drop=True)
-
-# roads from sthlm stad
-roads = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="accessibility_roads")
-
-# ******  FORTS HÄR *****
 # roads from OSM *** bättre än sthlm stads? i osm finns väl stigar och sånt ju?? vilket ju är toppen om man ska kolla på gångavstånd
-from shapely.geometry import box
-import osmnx as ox
 
-# Get the bounding box of your city or dataset
-bbox = deso_inkomster.total_bounds  # (minx, miny, maxx, maxy)
-
-# Create a polygon from bounding box
-municipality_box = box(*bbox)
-
-municipality_box = municipality_box.to_file("data/VARIABLES_NEW.gpkg", layer="walking_TEST1", driver="GPKG", mode="w")
-
-# Download walking network inside this area
-#G = ox.graph_from_polygon(municipality_box, network_type='walk')
-
-# Project the graph to match your CRS
-#G = ox.project_graph(G, to_crs=layer2.crs)
-
-#G = G.to_file("data/VARIABLES_NEW.gpkg", layer="walking_TEST2", driver="GPKG", mode="w")
-
-
-# Create centroid column
-deso_inkomster["centroid"] = deso_inkomster.geometry.centroid
-
-# Simplify parks to representative points (can use centroids or exterior points)
-layer2["park_point"] = layer2.geometry.representative_point()
 
 #return deso_inkomster
 #deso_inkomster = THEME_socioeconomic()
 
-deso_inkomster = deso_inkomster.to_file("data/VARIABLES_NEW.gpkg", layer="socio_economic_INKOMSTER", driver="GPKG", mode="w")
+#deso_inkomster = deso_inkomster.to_file("data/VARIABLES_NEW.gpkg", layer="socio_economic_INKOMSTER", driver="GPKG", mode="w")
