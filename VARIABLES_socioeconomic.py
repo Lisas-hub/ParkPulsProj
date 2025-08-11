@@ -181,143 +181,76 @@ layer2 = stadsdelsomraden_to_layer2(layer2)
 
 # === THEME ===
 
-def THEME_food_to_layer2(layer2):
+# socioeconomic
+def THEME_socioeconomic_to_layer2(layer2):
 
-    # === bars / restaurants / etc ===
-    cafe_pts = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_cafe_pts.gpkg").to_crs(
+    # == socioeconomic ==
+
+    # deso_inkomster = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Inkomster\Tab11_DeSO_2023_region.shp").to_crs(layer2.crs)
+    deso_befolkning_age = gpd.read_file(
+        r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Befolkning\Tab1_DeSO_2023_region.shp").to_crs(
         layer2.crs)
-    cafe_area = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_cafe.gpkg").to_crs(
+    deso_befolkning_birthplace = gpd.read_file(
+        r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Befolkning\Tab4_DeSO_2023_region.shp").to_crs(
         layer2.crs)
-    restaurant_pts = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_restaurant_pts.gpkg").to_crs(layer2.crs)
-    restaurant_area = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_restaurant.gpkg").to_crs(layer2.crs)
-    ice_cream_pts = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_ice_cream_pts.gpkg").to_crs(layer2.crs)
-    ice_cream_area = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_ice_cream.gpkg").to_crs(
+    deso_befolkning_migration = gpd.read_file(
+        r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Befolkning\Tab5_DeSO_2023_region.shp").to_crs(
         layer2.crs)
 
-    # convert areas to centroids
-    cafe_area['geometry'] = ice_cream_area.geometry.centroid
-    restaurant_area['geometry'] = ice_cream_area.geometry.centroid
-    ice_cream_area['geometry'] = ice_cream_area.geometry.centroid
+    municipality = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Kommun_Stadskartan.gpkg").to_crs(layer2.crs)
 
-    # Add food establishment labels
-    for gdf in [cafe_pts, cafe_area]: gdf['amenity_food'] = 'Cafe'
-    for gdf in [restaurant_pts, restaurant_area]: gdf['amenity_food'] = 'Restaurant'
-    for gdf in [ice_cream_pts, ice_cream_area]: gdf['amenity_food'] = 'Ice cream shop'
+    # deso_inkomster = gpd.clip(deso_inkomster, municipality)
+    deso_befolkning_age = gpd.clip(deso_befolkning_age, municipality)
+    deso_befolkning_birthplace = gpd.clip(deso_befolkning_birthplace, municipality)
+    deso_befolkning_migration = gpd.clip(deso_befolkning_migration, municipality)
 
-    # Combine all geometry versions into one GeoDataFrame
-    cafe_all = gpd.GeoDataFrame(pd.concat([cafe_pts, cafe_area], ignore_index=True), crs=layer2.crs)
-    restaurant_all = gpd.GeoDataFrame(pd.concat([restaurant_pts, restaurant_area], ignore_index=True), crs=layer2.crs)
-    ice_cream_all = gpd.GeoDataFrame(pd.concat([ice_cream_pts, ice_cream_area], ignore_index=True), crs=layer2.crs)
+    # check the features that look like lines in QGIS, ex DESO IDs that starts with 0126C
+    # deso_inkomster['area'] = deso_inkomster.geometry.area
+    # small_polygons = deso_inkomster[deso_inkomster["area"] < 400]  # the smallest real deso area = 231123 but there is one large sliver area = 333
+    # print(small_polygons)
 
-    # Combine all amenity_food into one GeoDataFrame
-    food_establishments = gpd.GeoDataFrame(
-        pd.concat([cafe_all, restaurant_all, ice_cream_all], ignore_index=True),
-        crs=layer2.crs
-    )
+    # drop slivers
+    # deso_inkomster = deso_inkomster[deso_inkomster.area >= 400].reset_index(drop=True)
+    deso_befolkning_age = deso_befolkning_age[deso_befolkning_age.area >= 400].reset_index(drop=True)
+    deso_befolkning_birthplace = deso_befolkning_birthplace[deso_befolkning_birthplace.area >= 400].reset_index(
+        drop=True)
+    deso_befolkning_migration = deso_befolkning_migration[deso_befolkning_migration.area >= 400].reset_index(drop=True)
 
-    # *** temporary file - remove when finished ***
-    food_establishments.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_food_establishments", driver="GPKG", mode="w")
+    # roads from sthlm stad
+    roads = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="accessibility_roads")
+
+    # == resident population (kids) near parks ==
+
+    # summarize values in columns Alder_0_6 and Alder_7_15
+    # create a new column called DESO_antal_barn
 
     # buffer the park polygons
     layer2_buffered = layer2.copy()
-    layer2_buffered['geometry'] = layer2_buffered.geometry.buffer(200)
-
+    layer2_buffered['geometry'] = layer2_buffered.geometry.buffer(500)
     # *** TEMP FILE - can be removed ***
-    layer2_buffered.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_food_buffer", driver="GPKG", mode="w")
+    layer2_buffered.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_park_buffer500", driver="GPKG", mode="w")
 
-    # join
-    joined_amenity_food = gpd.sjoin(
-        food_establishments[['geometry', 'amenity_food']],
-        layer2_buffered[['geometry']],
-        how='inner',
-        predicate='intersects'
-    )
+    # prep kids layer
+    deso_befolkning_kids = deso_befolkning_age.copy()
+    columns_to_keep = ["geometry", "DESO", "Alder_0_6", "Alder_7_15"]
+    deso_befolkning_kids = deso_befolkning_kids[columns_to_keep]
 
-    # group by polygon and list food establishment type
-    grouped_amenity_food = (
-        joined_amenity_food.groupby('index_right')['amenity_food']
-            .apply(lambda x: ", ".join(sorted(set(x.dropna()))))
-            .reset_index()
-    )
-
-    # == food establishment count ==
-
-    # Count the number of food establishments per park polygon
-    food_counts = (
-        joined_amenity_food.groupby('index_right')
-            .size()
-            .reset_index(name='total_food_establishments')
-    )
-
-    # Map the counts to layer2
-    layer2['total_food_establishments'] = layer2.index.map(
-        food_counts.set_index('index_right')['total_food_establishments']
-    ).fillna(0).astype(int)
-
-    layer2['variable_amenity_food'] = layer2.index.map(
-        grouped_amenity_food.set_index('index_right')['amenity_food']
-    ).fillna('None')
-
-    # == extracting all ice cream places within park buffer ==
-    layer2_buffer_dissolve = layer2_buffered.dissolve(as_index=False)
-
+    # join parks and kids layer (multiple polygons per "group", aka park, that will be aggregated in the next step)
+    parks_and_kidpopulation = gpd.sjoin(layer2_buffered, deso_befolkning_kids, how='left', predicate='intersects')
     # *** TEMP FILE - can be removed ***
-    ice_cream_all.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_ice_cream_all", driver="GPKG", mode="w")
+    parks_and_kidpopulation.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_parks_and_kidpopulation_join",
+                                    driver="GPKG", mode="w")
 
-    ice_cream_within_buffer_join = gpd.sjoin(
-        ice_cream_all[['geometry', 'amenity']],
-        layer2_buffer_dissolve,
-        how='inner',
-        predicate='within'
-    ) # this output results in 42 pts, 1 will be dropped later because here it is within the buffer layer but not within stadsdelsområden
+    # aggregate kid population counts per park
+    child_columns = ['Alder_0_6', 'Alder_7_15']
+    children_aggregated = parks_and_kidpopulation.groupby(['group'])[
+        child_columns].sum().reset_index()  # change from layer2buffered to layer2?
+    layer2 = layer2.merge(children_aggregated, on='group', how='right')
+    layer2 = layer2.rename(columns={"Alder_0_6": "AGG_Alder_0_6", "Alder_7_15": "AGG_Alder_7_15"})
+    # *** TEMP FILE - can be removed ***
+    #layer2.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_parks_and_kidpopulation_aggregated", driver="GPKG", mode="w")
 
-    FINAL_ice_cream_pts = ice_cream_within_buffer_join
-    FINAL_ice_cream_pts.to_file("data/VARIABLES_NEW.gpkg", layer="ice_cream_within_buffer", driver="GPKG", mode="w")
-
-    # == ice cream shops per stadsdelsområde ==
-    stadsdelsomraden = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Stadsdelsomraden_Stadskartan.gpkg").to_crs(layer2.crs)
-
-    # drop all columns except stadsdelsområden
-    columns_to_keep_stadsdelsomraden = ["geometry", "Omrade"]
-    stadsdelsomraden = stadsdelsomraden[columns_to_keep_stadsdelsomraden]
-
-    ice_cream_stadsdelsomrade_join = gpd.sjoin(
-        FINAL_ice_cream_pts[['geometry', 'amenity']],
-        stadsdelsomraden,
-        how='left',
-        predicate='intersects'
-    )
-
-    # count number of ice cream shops per stadsdelsområde
-    ice_cream_counts = (
-        ice_cream_stadsdelsomrade_join.groupby('index_right')
-            .size()
-    )
-    # add count column to stadsdelområden
-    stadsdelsomraden["total_ice_cream_shops"] = stadsdelsomraden.index.map(ice_cream_counts).fillna(0).astype(int)
-
-    stadsdelsomraden.to_file("data/VARIABLES_NEW.gpkg", layer="ice_cream_shops_per_stadsdelsomrade", driver="GPKG", mode="w")
+    # *** add a column in children_aggregated that lists all values in column DESO (IDs) that were included in the aggregation? ***
 
     return layer2
-layer2 = THEME_food_to_layer2(layer2)
-
-layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_food", driver="GPKG", mode="w")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+layer2 = THEME_socioeconomic_to_layer2(layer2)

@@ -181,143 +181,59 @@ layer2 = stadsdelsomraden_to_layer2(layer2)
 
 # === THEME ===
 
-def THEME_food_to_layer2(layer2):
+# AMENITIES
+def THEME_amenities_to_layer2(layer2):
 
-    # === bars / restaurants / etc ===
-    cafe_pts = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_cafe_pts.gpkg").to_crs(
+    toilets = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Toalett_Punkt.gpkg",
+                            layer="Toalett_Punkt").to_crs(layer2.crs)
+    benches_pts = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_bench_pts.gpkg").to_crs(
         layer2.crs)
-    cafe_area = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_cafe.gpkg").to_crs(
+    benches_line = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_bench_line.gpkg").to_crs(
         layer2.crs)
-    restaurant_pts = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_restaurant_pts.gpkg").to_crs(layer2.crs)
-    restaurant_area = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_restaurant.gpkg").to_crs(layer2.crs)
-    ice_cream_pts = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_ice_cream_pts.gpkg").to_crs(layer2.crs)
-    ice_cream_area = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_ice_cream.gpkg").to_crs(
+    benches_area = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_bench.gpkg").to_crs(
         layer2.crs)
+    bbq_pts = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_bbq_pts.gpkg").to_crs(
+        layer2.crs)
+    bbq_area = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_bbq.gpkg").to_crs(layer2.crs)
+    drinking_fountain = gpd.read_file(
+        r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Dricksvattenfont%C3%A4ner\Dricksvattenfontäner.shp").to_crs(
+        layer2.crs)  # not so many in stockholm at all, let alone in parks...
 
-    # convert areas to centroids
-    cafe_area['geometry'] = ice_cream_area.geometry.centroid
-    restaurant_area['geometry'] = ice_cream_area.geometry.centroid
-    ice_cream_area['geometry'] = ice_cream_area.geometry.centroid
-
-    # Add food establishment labels
-    for gdf in [cafe_pts, cafe_area]: gdf['amenity_food'] = 'Cafe'
-    for gdf in [restaurant_pts, restaurant_area]: gdf['amenity_food'] = 'Restaurant'
-    for gdf in [ice_cream_pts, ice_cream_area]: gdf['amenity_food'] = 'Ice cream shop'
+    # Add amenity labels
+    toilets['amenity'] = 'WC'
+    for gdf in [benches_pts, benches_line, benches_area]: gdf['amenity'] = 'bench'
+    for gdf in [bbq_pts, bbq_area]: gdf['amenity'] = 'BBQ area'
+    toilets['amenity'] = 'drinking fountain'
+    # *** ADD PICKNICK TABLES ETC ***
 
     # Combine all geometry versions into one GeoDataFrame
-    cafe_all = gpd.GeoDataFrame(pd.concat([cafe_pts, cafe_area], ignore_index=True), crs=layer2.crs)
-    restaurant_all = gpd.GeoDataFrame(pd.concat([restaurant_pts, restaurant_area], ignore_index=True), crs=layer2.crs)
-    ice_cream_all = gpd.GeoDataFrame(pd.concat([ice_cream_pts, ice_cream_area], ignore_index=True), crs=layer2.crs)
+    benches_all = gpd.GeoDataFrame(pd.concat([benches_pts, benches_line, benches_area], ignore_index=True),
+                                   crs=layer2.crs)
+    bbq_all = gpd.GeoDataFrame(pd.concat([bbq_pts, bbq_area], ignore_index=True), crs=layer2.crs)
 
-    # Combine all amenity_food into one GeoDataFrame
-    food_establishments = gpd.GeoDataFrame(
-        pd.concat([cafe_all, restaurant_all, ice_cream_all], ignore_index=True),
-        crs=layer2.crs
-    )
+    # Combine all amenities into one GeoDataFrame
+    amenities_all = gpd.GeoDataFrame(pd.concat([toilets, benches_all, bbq_all, drinking_fountain], ignore_index=True),
+                                     crs=layer2.crs)
 
-    # *** temporary file - remove when finished ***
-    food_establishments.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_food_establishments", driver="GPKG", mode="w")
-
-    # buffer the park polygons
-    layer2_buffered = layer2.copy()
-    layer2_buffered['geometry'] = layer2_buffered.geometry.buffer(200)
-
-    # *** TEMP FILE - can be removed ***
-    layer2_buffered.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_food_buffer", driver="GPKG", mode="w")
-
-    # join
-    joined_amenity_food = gpd.sjoin(
-        food_establishments[['geometry', 'amenity_food']],
-        layer2_buffered[['geometry']],
+    # Spatial join amenities with dissolved polygons
+    joined_amenities = gpd.sjoin(
+        amenities_all[['geometry', 'amenity']],
+        layer2[['geometry']],
         how='inner',
         predicate='intersects'
     )
 
-    # group by polygon and list food establishment type
-    grouped_amenity_food = (
-        joined_amenity_food.groupby('index_right')['amenity_food']
+    # Group by polygon and collect unique amenity names
+    grouped_amenities = (
+        joined_amenities.groupby('index_right')['amenity']
             .apply(lambda x: ", ".join(sorted(set(x.dropna()))))
             .reset_index()
     )
 
-    # == food establishment count ==
-
-    # Count the number of food establishments per park polygon
-    food_counts = (
-        joined_amenity_food.groupby('index_right')
-            .size()
-            .reset_index(name='total_food_establishments')
-    )
-
-    # Map the counts to layer2
-    layer2['total_food_establishments'] = layer2.index.map(
-        food_counts.set_index('index_right')['total_food_establishments']
-    ).fillna(0).astype(int)
-
-    layer2['variable_amenity_food'] = layer2.index.map(
-        grouped_amenity_food.set_index('index_right')['amenity_food']
-    ).fillna('None')
-
-    # == extracting all ice cream places within park buffer ==
-    layer2_buffer_dissolve = layer2_buffered.dissolve(as_index=False)
-
-    # *** TEMP FILE - can be removed ***
-    ice_cream_all.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_ice_cream_all", driver="GPKG", mode="w")
-
-    ice_cream_within_buffer_join = gpd.sjoin(
-        ice_cream_all[['geometry', 'amenity']],
-        layer2_buffer_dissolve,
-        how='inner',
-        predicate='within'
-    ) # this output results in 42 pts, 1 will be dropped later because here it is within the buffer layer but not within stadsdelsområden
-
-    FINAL_ice_cream_pts = ice_cream_within_buffer_join
-    FINAL_ice_cream_pts.to_file("data/VARIABLES_NEW.gpkg", layer="ice_cream_within_buffer", driver="GPKG", mode="w")
-
-    # == ice cream shops per stadsdelsområde ==
-    stadsdelsomraden = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Stadsdelsomraden_Stadskartan.gpkg").to_crs(layer2.crs)
-
-    # drop all columns except stadsdelsområden
-    columns_to_keep_stadsdelsomraden = ["geometry", "Omrade"]
-    stadsdelsomraden = stadsdelsomraden[columns_to_keep_stadsdelsomraden]
-
-    ice_cream_stadsdelsomrade_join = gpd.sjoin(
-        FINAL_ice_cream_pts[['geometry', 'amenity']],
-        stadsdelsomraden,
-        how='left',
-        predicate='intersects'
-    )
-
-    # count number of ice cream shops per stadsdelsområde
-    ice_cream_counts = (
-        ice_cream_stadsdelsomrade_join.groupby('index_right')
-            .size()
-    )
-    # add count column to stadsdelområden
-    stadsdelsomraden["total_ice_cream_shops"] = stadsdelsomraden.index.map(ice_cream_counts).fillna(0).astype(int)
-
-    stadsdelsomraden.to_file("data/VARIABLES_NEW.gpkg", layer="ice_cream_shops_per_stadsdelsomrade", driver="GPKG", mode="w")
+    # Map to layer2
+    layer2['amenities'] = layer2.index.map(grouped_amenities.set_index('index_right')['amenity']).fillna('None')
 
     return layer2
-layer2 = THEME_food_to_layer2(layer2)
+layer2 = THEME_amenities_to_layer2(layer2)
 
-layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_food", driver="GPKG", mode="w")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_amenities", driver="GPKG", mode="w")
