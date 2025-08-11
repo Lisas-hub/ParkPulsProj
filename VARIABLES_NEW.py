@@ -276,6 +276,9 @@ def THEME_accessibility_to_layer2(layer2):
     gdf_road2 = gpd.read_file(
         r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Stadskarta_Stockholm_SHP\Trafik_area.shp")
 
+    # roads from sthlm stad
+    roads = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="accessibility_roads")
+
     # reproject
     target_crs = "EPSG:3006"
     gdf_road1 = gdf_road1.to_crs(target_crs)
