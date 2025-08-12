@@ -186,7 +186,7 @@ def THEME_socioeconomic_to_layer2(layer2):
 
     # == socioeconomic ==
 
-    # deso_inkomster = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Inkomster\Tab11_DeSO_2023_region.shp").to_crs(layer2.crs)
+    deso_inkomster = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Inkomster\Tab11_DeSO_2023_region.shp").to_crs(layer2.crs)
     deso_befolkning_age = gpd.read_file(
         r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Befolkning\Tab1_DeSO_2023_region.shp").to_crs(
         layer2.crs)
@@ -199,11 +199,12 @@ def THEME_socioeconomic_to_layer2(layer2):
 
     municipality = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Kommun_Stadskartan.gpkg").to_crs(layer2.crs)
 
-    # deso_inkomster = gpd.clip(deso_inkomster, municipality)
+    deso_inkomster = gpd.clip(deso_inkomster, municipality)
     deso_befolkning_age = gpd.clip(deso_befolkning_age, municipality)
     deso_befolkning_birthplace = gpd.clip(deso_befolkning_birthplace, municipality)
     deso_befolkning_migration = gpd.clip(deso_befolkning_migration, municipality)
 
+    deso_inkomster.to_file("data/VARIABLES_NEW.gpkg", layer="DeSo_inkomster", driver="GPKG", mode="w")
     deso_befolkning_age.to_file("data/VARIABLES_NEW.gpkg", layer="DeSo_befolkning_age", driver="GPKG", mode="w")
     deso_befolkning_birthplace.to_file("data/VARIABLES_NEW.gpkg", layer="DeSo_befolkning_birthplace", driver="GPKG", mode="w")
     deso_befolkning_migration.to_file("data/VARIABLES_NEW.gpkg", layer="DeSo_befolkning_migration", driver="GPKG", mode="w")
@@ -214,15 +215,10 @@ def THEME_socioeconomic_to_layer2(layer2):
     # print(small_polygons)
 
     # drop slivers
-    # deso_inkomster = deso_inkomster[deso_inkomster.area >= 400].reset_index(drop=True)
+    deso_inkomster = deso_inkomster[deso_inkomster.area >= 400].reset_index(drop=True)
     deso_befolkning_age = deso_befolkning_age[deso_befolkning_age.area >= 400].reset_index(drop=True)
     deso_befolkning_birthplace = deso_befolkning_birthplace[deso_befolkning_birthplace.area >= 400].reset_index(drop=True)
     deso_befolkning_migration = deso_befolkning_migration[deso_befolkning_migration.area >= 400].reset_index(drop=True)
-
-    # == resident population (kids) near parks ==
-
-    # summarize values in columns Alder_0_6 and Alder_7_15
-    # create a new column called DESO_antal_barn
 
     # buffer the park polygons
     layer2_buffered = layer2.copy()
@@ -230,18 +226,18 @@ def THEME_socioeconomic_to_layer2(layer2):
     # *** TEMP FILE - can be removed ***
     layer2_buffered.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_park_buffer500", driver="GPKG", mode="w")
 
-    # prep kids layer
-    deso_befolkning = deso_befolkning_age.copy()
+    layer2['park_area'] = layer2.geometry.area
 
-    # join parks and kids layer (multiple polygons per "group", aka park, that will be aggregated in the next step)
-    parks_and_population = gpd.sjoin(layer2_buffered, deso_befolkning, how='left', predicate='intersects')
+    # == resident population near parks ==
+
+    # join parks and population layer (multiple polygons per "group", aka park, that will be aggregated in the next step)
+    parks_and_population = gpd.sjoin(layer2_buffered, deso_befolkning_age, how='left', predicate='intersects')
     # *** TEMP FILE - can be removed ***
-    parks_and_population.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_parks_and_population_join", driver="GPKG", mode="w")
+    #parks_and_population.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_parks_and_population_join", driver="GPKG", mode="w")
 
     # aggregate kid population counts per park
     population_columns = ['Alder_0_6', 'Alder_7_15', 'Alder_16_1', 'Alder_20_2', 'Alder_25_4', 'Alder_45_6', 'Alder_65', 'Totalt']
-    population_aggregated = parks_and_population.groupby(['group'])[
-        population_columns].sum().reset_index()  # change from layer2buffered to layer2?
+    population_aggregated = parks_and_population.groupby(['group'])[population_columns].sum().reset_index()
     layer2 = layer2.merge(population_aggregated, on='group', how='right')
     layer2 = layer2.rename(columns={"Alder_0_6": "AGG_Alder_0_6", "Alder_7_15": "AGG_Alder_7_15", "Alder_16_1": "AGG_Alder_16_1", "Alder_20_2": "AGG_Alder_20_2", "Alder_25_4": "AGG_Alder_25_4", "Alder_45_6": "AGG_Alder_45_6", "Alder_65": "AGG_Alder_65", "Totalt": "AGG_Totalt"})
     # *** TEMP FILE - can be removed ***
@@ -249,7 +245,19 @@ def THEME_socioeconomic_to_layer2(layer2):
 
     # *** add a column in population_aggregated that lists all values in column DESO (IDs) that were included in the aggregation? ***
 
-    layer2["Park_area"] = layer2.geometry.area
+    # == income of the population near parks ==
+
+    # join parks and income
+    parks_and_income = gpd.sjoin(layer2_buffered, deso_inkomster, how='left', predicate='intersects')
+
+    #aggregate
+    income_columns = ['Kvartil1', 'Kvartil2', 'Kvartil3', 'Kvartil4', 'Totalt', 'MedianInk']
+    income_aggregated = parks_and_income.groupby(['group'])[income_columns].sum().reset_index()
+    layer2 = layer2.merge(income_aggregated, on='group', how='right')
+    layer2 = layer2.rename(
+        columns={"Kvartil1": "AGG_Kvartil1", "Kvartil2": "AGG_Kvartil2", "Kvartil3": "AGG_Kvartil3",
+                 "Kvartil4": "AGG_Kvartil4", "Totalt": "AGG_Totalt_1",
+                 "MedianInk": "AGG_MedianInk"})
 
     return layer2
 layer2 = THEME_socioeconomic_to_layer2(layer2)
