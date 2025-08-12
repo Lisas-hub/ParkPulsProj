@@ -228,7 +228,7 @@ def THEME_socioeconomic_to_layer2(layer2):
 
     layer2['park_area'] = layer2.geometry.area
 
-    # == resident population near parks ==
+    # == aggregated resident population near parks ==
 
     # join parks and population layer (multiple polygons per "group", aka park, that will be aggregated in the next step)
     parks_and_population = gpd.sjoin(layer2_buffered, deso_befolkning_age, how='left', predicate='intersects')
@@ -245,7 +245,9 @@ def THEME_socioeconomic_to_layer2(layer2):
 
     # *** add a column in population_aggregated that lists all values in column DESO (IDs) that were included in the aggregation? ***
 
-    # == income of the population near parks ==
+
+    # *** section could be removed now that area-weighted income is calculated below ***
+    # == aggregated income of the population near parks ==
 
     # join parks and income
     parks_and_income = gpd.sjoin(layer2_buffered, deso_inkomster, how='left', predicate='intersects')
@@ -258,6 +260,50 @@ def THEME_socioeconomic_to_layer2(layer2):
         columns={"Kvartil1": "AGG_Kvartil1", "Kvartil2": "AGG_Kvartil2", "Kvartil3": "AGG_Kvartil3",
                  "Kvartil4": "AGG_Kvartil4", "Totalt": "AGG_Totalt_1",
                  "MedianInk": "AGG_MedianInk"})
+
+    # == weighted joins for income and population for more accuracy ==
+
+    # INCOME
+    # area of deso polygons
+    deso_inkomster['deso_area'] = deso_inkomster.geometry.area
+
+    # intersect buffered parks and income
+    parks_income_intersection = gpd.overlay(layer2_buffered, deso_inkomster, how='intersection')
+    # calculate intersection area
+    parks_income_intersection['intersect_area'] = parks_income_intersection.geometry.area
+    # calculate income weighted by intersect area (not normalized yet, many per park)
+    parks_income_intersection['income_weighted'] = (parks_income_intersection['MedianInk'] * parks_income_intersection['intersect_area'])
+
+    # group parks as usual (by column group)
+    income_weighted_agg = parks_income_intersection.groupby('group').agg({
+        'income_weighted': 'sum',
+        'intersect_area': 'sum'
+    }).reset_index()
+
+    # calculate final area-weighted median income ( now only one weighted income per park)
+    income_weighted_agg['area_weighted_income'] = income_weighted_agg['income_weighted'] / income_weighted_agg['intersect_area']
+
+    # add to layer2
+    layer2 = layer2.merge(income_weighted_agg[['group', 'area_weighted_income']], on='group', how='left')
+
+    # POPULATION
+    # area of deso polygons
+    deso_befolkning_age['deso_area'] = deso_befolkning_age.geometry.area
+
+    # intersect buffered parks and income
+    parks_pop_intersection = gpd.overlay(layer2_buffered, deso_befolkning_age, how='intersection')
+    # calculate intersection area
+    parks_pop_intersection['intersect_area'] = parks_pop_intersection.geometry.area
+    # calculate income weighted by intersect area (not normalized yet, many per park)
+    parks_pop_intersection['pop_weighted'] = (parks_pop_intersection['Totalt'] * (parks_pop_intersection['intersect_area']/ parks_pop_intersection['deso_area']))
+
+    # group parks as usual (by column group)
+    pop_weighted_agg = parks_pop_intersection.groupby('group').agg({
+        'pop_weighted': 'sum'
+    }).reset_index()
+
+    # add to layer2
+    layer2 = layer2.merge(pop_weighted_agg, on='group', how='left')
 
     return layer2
 layer2 = THEME_socioeconomic_to_layer2(layer2)
