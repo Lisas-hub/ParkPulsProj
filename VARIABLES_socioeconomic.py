@@ -179,6 +179,8 @@ def stadsdelsomraden_to_layer2(layer2):
     return layer2
 layer2 = stadsdelsomraden_to_layer2(layer2)
 
+#layer2.to_file(r"C:\Users\lisajos\QGIS_Projects\parker.gpkg",layer="parker", driver="GPKG", mode="w" )
+
 # === THEME ===
 
 # socioeconomic
@@ -271,7 +273,7 @@ def THEME_socioeconomic_to_layer2(layer2):
     parks_income_intersection = gpd.overlay(layer2_buffered, deso_inkomster, how='intersection')
     # calculate intersection area
     parks_income_intersection['intersect_area'] = parks_income_intersection.geometry.area
-    # calculate income weighted by intersect area (not normalized yet, many per park)
+    # calculate income weighted by intersect area
     parks_income_intersection['income_weighted'] = (parks_income_intersection['MedianInk'] * parks_income_intersection['intersect_area'])
 
     # group parks as usual (by column group)
@@ -280,7 +282,7 @@ def THEME_socioeconomic_to_layer2(layer2):
         'intersect_area': 'sum'
     }).reset_index()
 
-    # calculate final area-weighted median income ( now only one weighted income per park)
+    # calculate final area-weighted median income
     income_weighted_agg['area_weighted_income'] = income_weighted_agg['income_weighted'] / income_weighted_agg['intersect_area']
 
     # add to layer2
@@ -290,11 +292,11 @@ def THEME_socioeconomic_to_layer2(layer2):
     # area of deso polygons
     deso_befolkning_age['deso_area'] = deso_befolkning_age.geometry.area
 
-    # intersect buffered parks and income
+    # intersect buffered parks and pop
     parks_pop_intersection = gpd.overlay(layer2_buffered, deso_befolkning_age, how='intersection')
     # calculate intersection area
     parks_pop_intersection['intersect_area'] = parks_pop_intersection.geometry.area
-    # calculate income weighted by intersect area (not normalized yet, many per park)
+    # calculate pop weighted by intersect area
     parks_pop_intersection['pop_weighted'] = (parks_pop_intersection['Totalt'] * (parks_pop_intersection['intersect_area']/ parks_pop_intersection['deso_area']))
 
     # group parks as usual (by column group)
