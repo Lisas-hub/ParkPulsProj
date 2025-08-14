@@ -194,36 +194,19 @@ def noise_to_layer2(layer2):
 
     layer2['park_area'] = layer2.geometry.area
 
-    # *** TEMP FILE - can be removed ***
-    parks_noise.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_noise_test1", driver="GPKG", mode="w")
-
     # merge back park area
     parks_noise = parks_noise.merge(layer2, on='group')
 
-    # *** TEMP FILE - can be removed ***
-    parks_noise_COPY = parks_noise.copy()
-    parks_noise_COPY = parks_noise_COPY.drop(columns='geometry_y')
-    parks_noise_COPY.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_noise_test2", driver="GPKG", mode="w")
-
     # calculate propotion
-    parks_noise['prop_area'] = parks_noise['overlap_area'] / parks_noise['park_area']
-
-    # *** TEMP FILE - can be removed ***
-    parks_noise_COPY1 = parks_noise.copy()
-    parks_noise_COPY1 = parks_noise_COPY1.drop(columns='geometry_y')
-    parks_noise_COPY1.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_noise_test3", driver="GPKG", mode="w")
+    #parks_noise['prop_area'] = parks_noise['overlap_area'] / parks_noise['park_area']
 
     category_table = parks_noise.pivot_table(
         index='group',
         columns='LEQ_DBA',
-        values='prop_area',
+        values='overlap_area', # use either proportion or overlap here
         aggfunc='sum',
         fill_value=0
     ).reset_index()
-
-    # *** TEMP FILE - can be removed ***
-    layer2_check = layer2.merge(category_table, on='group')
-    layer2_check.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_noise_test4", driver="GPKG", mode="w")
 
     # Group by park and get min, max, range
     noise_stats = parks_noise.groupby('group').agg(
@@ -235,10 +218,7 @@ def noise_to_layer2(layer2):
 
     final = pd.merge(category_table, noise_stats, on='group')
 
-    parks_enriched = layer2.merge(final, on='group')
-
-    # *** TEMP FILE - can be removed ***
-    parks_enriched.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_noise_test5", driver="GPKG", mode="w")
+    layer2 = layer2.merge(final, on='group')
 
     return layer2
 layer2 = noise_to_layer2(layer2)
