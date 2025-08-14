@@ -277,7 +277,7 @@ def THEME_accessibility_to_layer2(layer2):
         r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Stadskarta_Stockholm_SHP\Trafik_area.shp")
 
     # roads from sthlm stad
-    roads = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="accessibility_roads")
+    roads = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_roads1")
 
     # reproject
     target_crs = "EPSG:3006"
@@ -325,12 +325,11 @@ def THEME_accessibility_to_layer2(layer2):
     dissolved['geometry'] = dissolved['geometry'].buffer(-0.1)
 
     # **** remove this step after checking ****
-    dissolved.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_accessibility_dissolve_step1", driver="GPKG",
+    dissolved.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_roads2", driver="GPKG",
                       mode="w")  # *** Enstaka polygoner är borttagna i detta lager, behåll det så eller inte? ***
 
     # Save
-    dissolved.to_file("data/VARIABLES_NEW.gpkg", layer="accessibility_roads", driver="GPKG",
-                      mode="w")  # mode="w" (write) replaces the layer in the GeoPackage cleanly, better to use than OVERWRITE='YES'
+    dissolved.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_roads3", driver="GPKG", mode="w")
 
     return layer2
 layer2 = THEME_accessibility_to_layer2(layer2)
@@ -350,7 +349,7 @@ def THEME_safety_to_layer2(layer2):
     street_lighting['geometry'] = street_lighting['geometry'].buffer(30)
 
     # *** temporary file - can be removed ***
-    street_lighting.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_street_lighting_buffer", driver="GPKG", mode="w")
+    street_lighting.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_street_lighting_buffer30", driver="GPKG", mode="w")
 
     # dissolve buffers to get accurate area calculations later
     dissolve_lights = street_lighting.dissolve()
@@ -372,11 +371,9 @@ def THEME_safety_to_layer2(layer2):
     layer2['intersect_area'] = layer2['intersect_area'].fillna(0)
 
     # Calculate lighting coverage %
-    layer2['lighting_coverage'] = (layer2['intersect_area'] / layer2[
-        'area']) # OBS! some polygons have lighting coverage 100,00000000000003 but that slight excess is some type of discrepance caused by python
+    layer2['lighting_coverage'] = (layer2['intersect_area'] / layer2['area']) # OBS! some polygons have lighting coverage 100,00000000000003 but that slight excess is some type of discrepance caused by python
 
-    layer2['lighting_coverage2'] = (layer2['intersect_area'] / layer2[
-        'area'])*100
+    layer2['lighting_coverage2'] = (layer2['intersect_area'] / layer2['area'])*100
 
     # Drop irrelevant columns
     layer2 = layer2.drop(columns=['area', 'intersect_area', 'temp_ID'])

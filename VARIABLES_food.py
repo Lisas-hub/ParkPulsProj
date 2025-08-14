@@ -226,7 +226,7 @@ def THEME_food_to_layer2(layer2):
     layer2_buffered['geometry'] = layer2_buffered.geometry.buffer(200)
 
     # *** TEMP FILE - can be removed ***
-    layer2_buffered.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_food_buffer", driver="GPKG", mode="w")
+    layer2_buffered.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_park_buffer200", driver="GPKG", mode="w")
 
     # join
     joined_amenity_food = gpd.sjoin(
@@ -275,7 +275,7 @@ def THEME_food_to_layer2(layer2):
     ) # this output results in 42 pts, 1 will be dropped later because here it is within the buffer layer but not within stadsdelsområden
 
     FINAL_ice_cream_pts = ice_cream_within_buffer_join
-    FINAL_ice_cream_pts.to_file("data/VARIABLES_NEW.gpkg", layer="ice_cream_within_buffer", driver="GPKG", mode="w")
+    FINAL_ice_cream_pts.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_ice_cream_within_buffer_pts", driver="GPKG", mode="w")
 
     # == ice cream shops per stadsdelsområde ==
     stadsdelsomraden = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Stadsdelsomraden_Stadskartan.gpkg").to_crs(layer2.crs)
@@ -299,7 +299,7 @@ def THEME_food_to_layer2(layer2):
     # add count column to stadsdelområden
     stadsdelsomraden["total_ice_cream_shops"] = stadsdelsomraden.index.map(ice_cream_counts).fillna(0).astype(int)
 
-    stadsdelsomraden.to_file("data/VARIABLES_NEW.gpkg", layer="ice_cream_shops_per_stadsdelsomrade", driver="GPKG", mode="w")
+    stadsdelsomraden.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_ice_cream_shops_per_stadsdelsomrade", driver="GPKG", mode="w")
 
     return layer2
 layer2 = THEME_food_to_layer2(layer2)

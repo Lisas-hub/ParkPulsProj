@@ -179,6 +179,7 @@ def stadsdelsomraden_to_layer2(layer2):
     return layer2
 layer2 = stadsdelsomraden_to_layer2(layer2)
 
+
 # === THEME ===
 
 # typology
@@ -257,7 +258,6 @@ def THEME_typology_to_layer2(layer2):
     layer2['typology'] = layer2.index.map(grouped_typology.set_index('index_right')['typology']).fillna('None')
 
     return layer2
-
 layer2 = THEME_typology_to_layer2(layer2)
 
 layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_typology", driver="GPKG", mode="w")

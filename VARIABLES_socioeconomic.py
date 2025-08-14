@@ -181,7 +181,13 @@ layer2 = stadsdelsomraden_to_layer2(layer2)
 
 #layer2.to_file(r"C:\Users\lisajos\QGIS_Projects\parker.gpkg",layer="parker", driver="GPKG", mode="w" )
 
+
 # === THEME ===
+
+# TO DO (optional)
+# add a column in population_aggregated that lists all values in column DESO (IDs) that were included in the aggregation?
+# remove sections for aggregated variables and only keep weighted variables?
+
 
 # socioeconomic
 def THEME_socioeconomic_to_layer2(layer2):
@@ -234,21 +240,13 @@ def THEME_socioeconomic_to_layer2(layer2):
 
     # join parks and population layer (multiple polygons per "group", aka park, that will be aggregated in the next step)
     parks_and_population = gpd.sjoin(layer2_buffered, deso_befolkning_age, how='left', predicate='intersects')
-    # *** TEMP FILE - can be removed ***
-    #parks_and_population.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_parks_and_population_join", driver="GPKG", mode="w")
 
     # aggregate kid population counts per park
     population_columns = ['Alder_0_6', 'Alder_7_15', 'Alder_16_1', 'Alder_20_2', 'Alder_25_4', 'Alder_45_6', 'Alder_65', 'Totalt']
     population_aggregated = parks_and_population.groupby(['group'])[population_columns].sum().reset_index()
     layer2 = layer2.merge(population_aggregated, on='group', how='right')
     layer2 = layer2.rename(columns={"Alder_0_6": "AGG_Alder_0_6", "Alder_7_15": "AGG_Alder_7_15", "Alder_16_1": "AGG_Alder_16_1", "Alder_20_2": "AGG_Alder_20_2", "Alder_25_4": "AGG_Alder_25_4", "Alder_45_6": "AGG_Alder_45_6", "Alder_65": "AGG_Alder_65", "Totalt": "AGG_Totalt"})
-    # *** TEMP FILE - can be removed ***
-    #layer2.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_parks_and_kidpopulation_aggregated", driver="GPKG", mode="w")
 
-    # *** add a column in population_aggregated that lists all values in column DESO (IDs) that were included in the aggregation? ***
-
-
-    # *** section could be removed now that area-weighted income is calculated below ***
     # == aggregated income of the population near parks ==
 
     # join parks and income
