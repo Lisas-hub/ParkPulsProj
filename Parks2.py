@@ -10,8 +10,6 @@ st.title("Welcome to the Park Puls map!")
 
 # TO DO
 # make polygon extent highlight somehow when you hover over it (without having to open a popup)
-# CHANGE INPUT FILE TO VARIABLES_for_streamlit.py
-
 
 
 # Load layers
@@ -19,7 +17,7 @@ st.title("Welcome to the Park Puls map!")
 def load_layer(path: str, layer_name: str) -> gpd.GeoDataFrame:
     gdf = gpd.read_file(path, layer=layer_name)
     return gdf.to_crs(epsg=4326)
-layer_variables = load_layer(path="data/VARIABLES_NEW.gpkg", layer="VARIABLES_for_streamlit")
+layer_variables = load_layer(path=r"C:\Users\lisajos\PycharmProjects\park_proj\data\VARIABLES_NEW.gpkg", layer_name="VARIABLES_for_streamlit")
 layer_variables = layer_variables.to_crs(epsg=4326) # apparently WGS84 is necessary for folium?? But it was fine without it before
 
 
@@ -45,6 +43,7 @@ column_aliases = {
 
 layer_options = list(themes.keys())
 selected_layer = st.selectbox("Select a theme to view in the dropdown list", layer_options)
+st.markdown("Click a park to view more information")
 
 # Filter to only the relevant columns + geometry
 selected_columns = themes[selected_layer] + ["geometry"]
@@ -175,7 +174,8 @@ if out and out.get("last_object_clicked"):
 
 # ==== DOWNLOAD BUTTON ====
 
-#st.download_button(label="Download Bus Stops", data=bus_stop_data, file_name=bus_stop_data, mime=None, key=None, help=None, on_click="rerun", args=None, kwargs=None, type="secondary", icon=":material/download:", disabled=False, use_container_width=False)
+import numpy as np
+import pandas as pd
 
 @st.cache_data
 def get_data():
@@ -192,7 +192,7 @@ df = get_data()
 csv = convert_for_download(df)
 
 st.download_button(
-    label="Download Bus Stops (GeoJSON)",
+    label="Example file (file type)",
     data=csv,
     file_name="data.csv",
     mime="text/csv",

@@ -185,14 +185,14 @@ layer2 = stadsdelsomraden_to_layer2(layer2)
 # TO DO
 # LIGHTING - filter out underground lighting (tunnels)??
 # LIGHTING - calculate point density of street lights?
+# SAFETY SURVEY - use buffered parks? to catch the area next to parks too?
 
 # lighting
 def THEME_lighting_to_layer2(layer2):
 
     # street lighting
 
-    street_lighting = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Belysningsmontage_Punkt.gpkg").to_crs(layer2.crs)
+    street_lighting = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Belysningsmontage_Punkt.gpkg").to_crs(layer2.crs)
     layer2["temp_ID"] = layer2.index  # create a column to be used in the merge later
 
     # buffer the lighting points
@@ -223,8 +223,6 @@ def THEME_lighting_to_layer2(layer2):
     # Calculate lighting coverage %
     layer2['lighting_coverage'] = (layer2['intersect_area'] / layer2['area']) # OBS! some polygons have lighting coverage 100,00000000000003 but that slight excess is some type of discrepance caused by python
 
-    layer2['lighting_coverage2'] = (layer2['intersect_area'] / layer2['area'])*100
-
     # Drop irrelevant columns
     layer2 = layer2.drop(columns=['area', 'intersect_area', 'temp_ID'])
 
@@ -234,7 +232,32 @@ layer2 = THEME_lighting_to_layer2(layer2)
 # safety
 def THEME_safety_to_layer2(layer2):
 
-    # start here
+    safety_survey = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Safety\Survey_CrimeFear_Basomr_2024_08-29\Survey_CrimeFear_Basomr_2024_08-29.shp").to_crs(layer2.crs)
+    # data description:
+    # Crimevictim = Share that has been previously victimized the past 12 years (any crime)
+    # Unsafe_NBHD = Share that feel unsafe/very unsafe in their neighborhood/residential area
+    # Unsafe_Residential = Share that feel unsafe in one or more places in their residential building
+
+    #parks_and_safety = gpd.sjoin(layer2, safety_survey, how='left', predicate='intersects')
+    # *** OBS! many to many join (multiple 'group' rows) - summarize per park ***
+    # use variable Unsafe_NBHD ?? intersect and area-weighted column ??
+
+    safety_survey['basomrade_area'] = safety_survey.geometry.area
+
+    # intersect parks and pop
+    parks_and_safety = gpd.overlay(layer2, safety_survey, how='intersection')
+    # calculate intersection area
+    parks_and_safety['intersect_area'] = parks_and_safety.geometry.area
+    # calculate safety weighted by intersect area
+    parks_and_safety['Unsafe_NBHD_weighted'] = (parks_and_safety['UnsafeNBHD'] * (
+                parks_and_safety['intersect_area'] / parks_and_safety['basomrade_area']))
+
+    # group parks as usual (by column group)
+    Unsafe_NBHD_weighted = parks_and_safety.groupby('group').agg({
+        'Unsafe_NBHD_weighted': 'sum'
+    }).reset_index()
+
+    layer2 = layer2.merge(Unsafe_NBHD_weighted, on='group', how='left')
 
     return layer2
 layer2 = THEME_safety_to_layer2(layer2)
