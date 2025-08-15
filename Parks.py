@@ -8,6 +8,7 @@ st.set_page_config(layout="wide")
 st.title("Parks in Stockholm")
 
 # TO-DO-LIST
+# CHANGE INPUT FILE TO VARIABLES_for_streamlit.py
 # add NAMN_combined to feedback section in the sidebar? maybe skip, some polygons have MANY names
 # add municipality boundary
 # add more variables

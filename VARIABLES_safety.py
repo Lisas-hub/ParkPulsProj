@@ -187,11 +187,9 @@ layer2 = stadsdelsomraden_to_layer2(layer2)
 # LIGHTING - calculate point density of street lights?
 
 # lighting
-def THEME_safety_to_layer2(layer2):
+def THEME_lighting_to_layer2(layer2):
 
-    # == safety ==
-
-    # ==== Street lighting ====
+    # street lighting
 
     street_lighting = gpd.read_file(
         r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Belysningsmontage_Punkt.gpkg").to_crs(layer2.crs)
@@ -231,7 +229,16 @@ def THEME_safety_to_layer2(layer2):
     layer2 = layer2.drop(columns=['area', 'intersect_area', 'temp_ID'])
 
     return layer2
+layer2 = THEME_lighting_to_layer2(layer2)
+
+# safety
+def THEME_safety_to_layer2(layer2):
+
+    # start here
+
+    return layer2
 layer2 = THEME_safety_to_layer2(layer2)
+
 
 layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_safety", driver="GPKG", mode="w")
 

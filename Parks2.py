@@ -10,6 +10,7 @@ st.title("Welcome to the Park Puls map!")
 
 # TO DO
 # make polygon extent highlight somehow when you hover over it (without having to open a popup)
+# CHANGE INPUT FILE TO VARIABLES_for_streamlit.py
 
 
 
@@ -18,11 +19,8 @@ st.title("Welcome to the Park Puls map!")
 def load_layer(path: str, layer_name: str) -> gpd.GeoDataFrame:
     gdf = gpd.read_file(path, layer=layer_name)
     return gdf.to_crs(epsg=4326)
-layer_variables = load_layer(path=r"C:\Users\lisajos\PycharmProjects\park_proj\data\VARIABLES_NEW.gpkg", layer_name="VARIABLES_NEW")
+layer_variables = load_layer(path="data/VARIABLES_NEW.gpkg", layer="VARIABLES_for_streamlit")
 layer_variables = layer_variables.to_crs(epsg=4326) # apparently WGS84 is necessary for folium?? But it was fine without it before
-
-# ********
-amenities = load_layer(path=r"C:\Users\lisajos\PycharmProjects\park_proj\data\VARIABLES_NEW.gpkg", layer_name="VARIABLES_amenities")
 
 
 #Load map
@@ -32,14 +30,15 @@ m = folium.Map(location=(59.33, 17.99), zoom_start=10.5, tiles=None)
 # ===== DROPDOWN LIST TO SELECT THEME =====
 
 themes = {
-    "Amenities": ["NAMN_top5", "TYP_combined", "amenities"],
+    "Amenities": ["NAMN_top5", "TYP_combined", "typology", "amenities"],
     "Environment": ["NAMN_top5", "BIOTOP_combined"],
-    "Accessibility": ["NAMN_top5"],
-    "Socioeconomic factors": ["NAMN_top5"]
+    "Accessibility": ["NAMN_top5"], # *** ADD COLUMNS (+ aliases below) ***
+    "Socioeconomic factors": ["NAMN_top5"] # *** ADD COLUMNS (+ aliases below) ***
 }
 column_aliases = {
     "NAMN_top5": "Name(s)",
-    "TYP_combined": "Typology",
+    "TYP_combined": "Typology1",
+    "typology": "Typology2",
     "BIOTOP_combined": "Biotope",
     "amenities": "Amenities",
 }
