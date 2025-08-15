@@ -3,9 +3,6 @@ import geopandas as gpd
 import pandas as pd
 from shapely.strtree import STRtree
 import networkx as nx
-from shapely.geometry import Polygon, MultiPolygon
-#import fiona
-
 
 # ===== LAYERS =======
 
@@ -22,8 +19,8 @@ def prepp_layer1():
     return layer1
 layer1 = prepp_layer1()
 
-
 def create_layer2():
+
     # ==== layer2: created by dissolving layer1 ====
 
     layer2 = layer1.copy()  # this step prevents edits to layer1 which will be important later in the script
@@ -135,6 +132,7 @@ def NAMN_XXX_to_layer2(layer2):
 layer2 = NAMN_XXX_to_layer2(layer2)
 
 def stadsdelar_to_layer2(layer2):
+
     # == add stadsdelar ==
     stadsdelar = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Stadsdelar_Stadskartan.gpkg").to_crs(layer2.crs)
     # drop all columns except NAMN (på stadsdelar)
@@ -144,8 +142,7 @@ def stadsdelar_to_layer2(layer2):
     intersection_stadsdelar = gpd.overlay(layer2, stadsdelar, how='intersection')
     intersection_stadsdelar["overlap_area"] = intersection_stadsdelar.geometry.area
 
-    largest_overlap = intersection_stadsdelar.sort_values("overlap_area", ascending=False).drop_duplicates(
-        "NAMN_combined")
+    largest_overlap = intersection_stadsdelar.sort_values("overlap_area", ascending=False).drop_duplicates("NAMN_combined")
 
     layer2 = layer2.merge(
         largest_overlap[["NAMN_combined", "NAMN"]],
@@ -182,18 +179,42 @@ def stadsdelsomraden_to_layer2(layer2):
     return layer2
 layer2 = stadsdelsomraden_to_layer2(layer2)
 
-# =============== THEMES ==================
+
+# === THEME ===
+
+# environment
+def THEME_environment_to_layer2(layer2):
+
+    # == environment ==
+
+    # BIOTOPES
+    layer_biotop = gpd.read_file(
+        r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Biotopkartan_2019\Biotopkartan_2019_Huvudklass.gpkg",
+        layer="Huvudklass").to_crs(
+        "EPSG:3006")  # some warning about gpkg version for this file + warning of timestamp column
+
+    joined_biotop = gpd.sjoin(
+        layer_biotop[['geometry', 'h_klass']],
+        layer2[['geometry']],
+        how='left',
+        predicate='intersects'
+    )
+
+    grouped_biotop = (
+        joined_biotop.groupby("index_right")["h_klass"]
+            .apply(lambda x: ", ".join(sorted(
+            set(x.dropna()))))  # set(x) removes duplicate names, sorted() gives consistent order, dropna() prevents "nan" strings in the result
+            .reset_index()
+    )
+
+    # Map to layer2
+    layer2["BIOTOP_combined"] = layer2.index.map(grouped_biotop.set_index("index_right")["h_klass"])
+
+    return layer2
+layer2 = THEME_environment_to_layer2(layer2)
+
+layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_environment", driver="GPKG", mode="w")
 
 
-
-
-
-
-# ===== SAVE =====
-
-# Check gpkg layers
-#fiona.listlayers("VARIABLES_NEW.gpkg")
-
-layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_NEW", driver="GPKG", mode="w") # byt namn till VARIABLES_all
 
 

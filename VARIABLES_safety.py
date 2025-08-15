@@ -3,9 +3,6 @@ import geopandas as gpd
 import pandas as pd
 from shapely.strtree import STRtree
 import networkx as nx
-from shapely.geometry import Polygon, MultiPolygon
-#import fiona
-
 
 # ===== LAYERS =======
 
@@ -22,8 +19,8 @@ def prepp_layer1():
     return layer1
 layer1 = prepp_layer1()
 
-
 def create_layer2():
+
     # ==== layer2: created by dissolving layer1 ====
 
     layer2 = layer1.copy()  # this step prevents edits to layer1 which will be important later in the script
@@ -135,6 +132,7 @@ def NAMN_XXX_to_layer2(layer2):
 layer2 = NAMN_XXX_to_layer2(layer2)
 
 def stadsdelar_to_layer2(layer2):
+
     # == add stadsdelar ==
     stadsdelar = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Stadsdelar_Stadskartan.gpkg").to_crs(layer2.crs)
     # drop all columns except NAMN (på stadsdelar)
@@ -144,8 +142,7 @@ def stadsdelar_to_layer2(layer2):
     intersection_stadsdelar = gpd.overlay(layer2, stadsdelar, how='intersection')
     intersection_stadsdelar["overlap_area"] = intersection_stadsdelar.geometry.area
 
-    largest_overlap = intersection_stadsdelar.sort_values("overlap_area", ascending=False).drop_duplicates(
-        "NAMN_combined")
+    largest_overlap = intersection_stadsdelar.sort_values("overlap_area", ascending=False).drop_duplicates("NAMN_combined")
 
     layer2 = layer2.merge(
         largest_overlap[["NAMN_combined", "NAMN"]],
@@ -182,18 +179,60 @@ def stadsdelsomraden_to_layer2(layer2):
     return layer2
 layer2 = stadsdelsomraden_to_layer2(layer2)
 
-# =============== THEMES ==================
 
+# === THEMES ===
 
+# TO DO
+# LIGHTING - filter out underground lighting (tunnels)??
+# LIGHTING - calculate point density of street lights?
 
+# lighting
+def THEME_safety_to_layer2(layer2):
 
+    # == safety ==
 
+    # ==== Street lighting ====
 
-# ===== SAVE =====
+    street_lighting = gpd.read_file(
+        r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Belysningsmontage_Punkt.gpkg").to_crs(layer2.crs)
+    layer2["temp_ID"] = layer2.index  # create a column to be used in the merge later
 
-# Check gpkg layers
-#fiona.listlayers("VARIABLES_NEW.gpkg")
+    # buffer the lighting points
+    street_lighting['geometry'] = street_lighting['geometry'].buffer(30)
 
-layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_NEW", driver="GPKG", mode="w") # byt namn till VARIABLES_all
+    # *** temporary file - can be removed ***
+    street_lighting.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_street_lighting_buffer30", driver="GPKG", mode="w")
+
+    # dissolve buffers to get accurate area calculations later
+    dissolve_lights = street_lighting.dissolve()
+
+    # calculate area
+    layer2['area'] = layer2.geometry.area
+
+    # intersect and calculate intersected area
+    intersection_lights = gpd.overlay(layer2, dissolve_lights, how='intersection')
+    intersection_lights['intersect_area'] = intersection_lights.geometry.area
+
+    # sum intersected area by polygon
+    intersect_sum = intersection_lights.groupby('temp_ID')['intersect_area'].sum().reset_index()
+
+    # merge back with original layer2
+    layer2 = layer2.merge(intersect_sum, on='temp_ID', how='left')
+
+    # fill NaNs (polygons with no intersection) with 0
+    layer2['intersect_area'] = layer2['intersect_area'].fillna(0)
+
+    # Calculate lighting coverage %
+    layer2['lighting_coverage'] = (layer2['intersect_area'] / layer2['area']) # OBS! some polygons have lighting coverage 100,00000000000003 but that slight excess is some type of discrepance caused by python
+
+    layer2['lighting_coverage2'] = (layer2['intersect_area'] / layer2['area'])*100
+
+    # Drop irrelevant columns
+    layer2 = layer2.drop(columns=['area', 'intersect_area', 'temp_ID'])
+
+    return layer2
+layer2 = THEME_safety_to_layer2(layer2)
+
+layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_safety", driver="GPKG", mode="w")
 
 

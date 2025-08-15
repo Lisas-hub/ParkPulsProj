@@ -179,8 +179,6 @@ def stadsdelsomraden_to_layer2(layer2):
     return layer2
 layer2 = stadsdelsomraden_to_layer2(layer2)
 
-#layer2.to_file(r"C:\Users\lisajos\QGIS_Projects\parker.gpkg",layer="parker", driver="GPKG", mode="w" )
-
 
 # === THEME ===
 

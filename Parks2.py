@@ -9,7 +9,6 @@ st.set_page_config(layout="wide")
 st.title("Welcome to the Park Puls map!")
 
 # TO DO
-# ***** Add data from VARIABLES_NEW instead!
 # make polygon extent highlight somehow when you hover over it (without having to open a popup)
 
 
@@ -21,6 +20,10 @@ def load_layer(path: str, layer_name: str) -> gpd.GeoDataFrame:
     return gdf.to_crs(epsg=4326)
 layer_variables = load_layer(path=r"C:\Users\lisajos\PycharmProjects\park_proj\data\VARIABLES_NEW.gpkg", layer_name="VARIABLES_NEW")
 layer_variables = layer_variables.to_crs(epsg=4326) # apparently WGS84 is necessary for folium?? But it was fine without it before
+
+# ********
+amenities = load_layer(path=r"C:\Users\lisajos\PycharmProjects\park_proj\data\VARIABLES_NEW.gpkg", layer_name="VARIABLES_amenities")
+
 
 #Load map
 m = folium.Map(location=(59.33, 17.99), zoom_start=10.5, tiles=None)
@@ -198,6 +201,6 @@ st.download_button(
 )
 
 
-# =====================
+
 
 

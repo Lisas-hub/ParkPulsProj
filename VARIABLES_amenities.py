@@ -181,6 +181,10 @@ layer2 = stadsdelsomraden_to_layer2(layer2)
 
 # === THEME ===
 
+# TO DO
+# toilets are not within any park so change format of this variable to within XX m
+# add more amenities
+
 # AMENITIES
 def THEME_amenities_to_layer2(layer2):
 

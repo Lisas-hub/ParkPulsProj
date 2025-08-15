@@ -184,15 +184,52 @@ def stadsdelsomraden_to_layer2(layer2):
     return layer2
 layer2 = stadsdelsomraden_to_layer2(layer2)
 
+#layer2.to_file(r"C:\Users\lisajos\QGIS_Projects\parker.gpkg",layer="parker", driver="GPKG", mode="w" )
+
+
+# TO DO
+# clean up columns like NAME_combined? shorten the list and fix special characters (like Ö in the middle of some names)
+
+# === THEMES ===
+
+# ==== OTHER STATS ====
+def OTHER_STATS_park_coverage():
+
+    # park coverage in Stockholm
+    municipality = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Kommun_Stadskartan.gpkg").to_crs(layer2.crs)
+
+    # union of parks and municipality
+    park_coverage = gpd.overlay(municipality, layer2, how='union') # OBS! mismatch between parks and municipality boundary, small pieces of some parks are outside of the boundary and got group_temp null
+
+    # remove polygons outside the municipality boundary
+    park_coverage = gpd.clip(park_coverage, municipality)
+
+    # drop all unnecessary columns by selecting only relevant columns
+    park_coverage = park_coverage[["geometry"]]
+
+    # calculate area
+    park_coverage ['area'] = park_coverage.geometry.area
+
+    park_coverage['group'] = 0  # default value
+    park_coverage.loc[park_coverage['area'] > 100000000, 'group'] = 1 # assign 1 to the largest polygon, aka the one that is not a polygon
+
+    # dissolve all polygons from layer2 into one single polygon
+    #park_coverage = park_coverage.dissolve(by="group", as_index=False) # *** fix so that all group = 0 are not lost in this step
+
+    return park_coverage
+park_coverage = OTHER_STATS_park_coverage()
+park_coverage.to_file("data/VARIABLES_NEW.gpkg", layer="park_coverage", driver="GPKG", mode="w")
+
+# ==== PARK MAINTENANCE ====
+def THEME_park_maintenance_to_layer2(layer2):
+
+    # start here
+
+    # papperskorgar = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Skrapkorg_Punkt.gpkg", layer="Skrapkorg_Punkt")
+
+    return layer2
+layer2 = THEME_park_maintenance_to_layer2(layer2)
 
 
 
 
-
-# roads from OSM *** bättre än sthlm stads? i osm finns väl stigar och sånt ju?? vilket ju är toppen om man ska kolla på gångavstånd
-
-
-#return deso_inkomster
-#deso_inkomster = THEME_socioeconomic()
-
-#deso_inkomster = deso_inkomster.to_file("data/VARIABLES_NEW.gpkg", layer="socio_economic_INKOMSTER", driver="GPKG", mode="w")
