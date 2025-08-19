@@ -182,8 +182,8 @@ layer2 = stadsdelsomraden_to_layer2(layer2)
 
 # === THEME ===
 
-# environment
-def THEME_environment_to_layer2(layer2):
+# biotop
+def THEME_biotop_to_layer2(layer2):
 
     # == environment ==
 
@@ -211,7 +211,140 @@ def THEME_environment_to_layer2(layer2):
     layer2["BIOTOP_combined"] = layer2.index.map(grouped_biotop.set_index("index_right")["h_klass"])
 
     return layer2
-layer2 = THEME_environment_to_layer2(layer2)
+layer2 = THEME_biotop_to_layer2(layer2)
+
+# temperature
+def THEME_temperature_to_layer2(layer2):
+
+    temperature_lines = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Temperaturkartering\Temperaturkurvor_uppmatt_stralningstemp.gpkg").to_crs(layer2.crs)
+    temperature_polygons = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Uppmatt_stralningstemp_prepped.gpkg").to_crs(layer2.crs)
+    # the original layer was a polyline layer and the extent did not fully align with the municipality boundary so the data had to be pepped outside of this script (some manual editing)
+
+    # ADD TEMP INFO BACK TO POLYGON LAYER FROM LINE LAYER
+    # determine temperature range for each polygon
+    def assign_temperature_band(temperature_polygons, temperature_lines):
+
+        intersecting_lines = temperature_lines[temperature_lines.intersects(temperature_polygons)]
+
+        temps = intersecting_lines["Max_temp"].unique()
+
+        if len(temps) == 0:
+            return None  # no intersection
+        elif len(temps) == 1:
+            return str(int(temps[0]))  # just one temperature value
+        else:
+            sorted_temps = sorted(temps)
+            return f"{int(sorted_temps[0])}-{int(sorted_temps[-1])}"  # range of temperature values
+
+    # apply function to each polygon
+    temperature_polygons["Temp_band"] = temperature_polygons["geometry"].apply(lambda geom: assign_temperature_band(geom, temperature_lines))
+
+    # *** TEMP FILE - can be removed ***
+    temperature_polygons['area'] = temperature_polygons.geometry.area
+    # check for appropriate sliver threshold
+    temperature_polygons.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_temperature1", driver="GPKG", mode="w")
+
+    # FIX SLIVERS
+    # set sliver threshold, filter and drop them
+    slivers_threshold = 0.01
+    #is_sliver = (temperature_polygons.area < slivers_threshold) & (temperature_polygons["Temp_band"].isna())
+    #temperature_polygons = temperature_polygons[~is_sliver].copy()
+    temperature_polygons = temperature_polygons[temperature_polygons.area >= slivers_threshold].copy()
+
+    # *** TEMP FILE - can be removed ***
+    temperature_polygons.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_temperature2", driver="GPKG", mode="w")
+
+    # add upper and lower max temp columns
+    def get_temperature_range(geometry, temperature_lines):
+        intersecting_lines = temperature_lines[temperature_lines.intersects(geometry)]
+        temps = intersecting_lines["Max_temp"].unique()
+
+        if len(temps) == 0:
+            return (None, None)
+        else:
+            lower_max_temp = int(min(temps))
+            upper_max_temp = int(max(temps))
+            return (lower_max_temp, upper_max_temp)
+
+    # Apply and expand the result into two new columns
+    temperature_polygons[["Temp_max_lower", "Temp_max_upper"]] = temperature_polygons["geometry"].apply(
+        lambda geom: pd.Series(get_temperature_range(geom, temperature_lines))
+    )
+
+    # fix polygons resulting from extend line during prepp that lacks attribute information aout temperature
+    from shapely.geometry import LineString
+
+    # separate polygons that need to be fixed (Temp_band = Null) from those that don't
+    null_polys = temperature_polygons[temperature_polygons["Temp_band"].isna()].copy()
+    non_null_polys = temperature_polygons[temperature_polygons["Temp_band"].notna()].copy()
+
+    # build spatial index
+    sindex = non_null_polys.sindex
+
+    def find_best_neighbor(null_geom):
+        possible_matches_index = list(sindex.intersection(null_geom.bounds))
+        candidates = non_null_polys.iloc[possible_matches_index]
+
+        max_shared_length = 0
+        best_neighbor_idx = None
+
+        for idx, row in candidates.iterrows():
+            shared = null_geom.boundary.intersection(row.geometry.boundary)
+            if isinstance(shared, LineString):
+                shared_length = shared.length
+            elif shared.geom_type.startswith('Multi'):
+                shared_length = sum(g.length for g in shared.geoms if isinstance(g, LineString))
+            else:
+                shared_length = 0
+
+            if shared_length > max_shared_length:
+                max_shared_length = shared_length
+                best_neighbor_idx = idx
+
+        return best_neighbor_idx
+
+    # Assign upper and lower from best neighbor
+    for idx, null_row in null_polys.iterrows():
+        best_idx = find_best_neighbor(null_row.geometry)
+        if best_idx is not None:
+            best_neighbor = non_null_polys.loc[best_idx]
+            temperature_polygons.at[idx, "Temp_max_lower"] = best_neighbor["Temp_max_lower"]
+            temperature_polygons.at[idx, "Temp_max_upper"] = best_neighbor["Temp_max_upper"]
+        else:
+            print(f"⚠️ No neighbor found for polygon {idx}")
+    # there was a warning for polygon 325 but it has the correct Temp_band in the output anyways so ignor the warning. Polygon 280 however has Temp_band null, but this can be ignored since this does npt overlap with a park
+
+    # *** TEMP FILE - can be removed ***
+    temperature_polygons.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_temperature3", driver="GPKG", mode="w")
+
+
+    # WEIGHTED OVERLAP - LAYER2 AND TEMP
+    parks_temp_intersection = gpd.overlay(layer2, temperature_polygons, how='intersection')
+    parks_temp_intersection['overlap_area'] = parks_temp_intersection.geometry.area
+
+    layer2['park_area'] = layer2.geometry.area
+
+    # multiply temp values by overlap area
+    parks_temp_intersection['weighted_lower_max_temp'] = parks_temp_intersection['Temp_max_lower'] * parks_temp_intersection['overlap_area']
+    parks_temp_intersection['weighted_upper_max_temp'] = parks_temp_intersection['Temp_max_upper'] * parks_temp_intersection['overlap_area']
+
+
+    weighted_temps = parks_temp_intersection.groupby('group').agg({
+        'weighted_lower_max_temp': 'sum',
+        'weighted_upper_max_temp': 'sum',
+        'overlap_area': 'sum'
+    }).reset_index()
+
+    # calculate weighted average
+    weighted_temps['avg_lower_max_temp'] = weighted_temps['weighted_lower_max_temp'] / weighted_temps['overlap_area']
+    weighted_temps['avg_upper_max_temp'] = weighted_temps['weighted_upper_max_temp'] / weighted_temps['overlap_area']
+
+    # merge back to layer2
+    layer2 = layer2.merge(weighted_temps[['group', 'avg_lower_max_temp', 'avg_upper_max_temp']], on='group', how='left')
+
+    return layer2
+
+layer2 = THEME_temperature_to_layer2(layer2)
 
 layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_environment", driver="GPKG", mode="w")
 
