@@ -182,38 +182,80 @@ layer2 = stadsdelsomraden_to_layer2(layer2)
 
 # === THEME ===
 
-# biotop
 def THEME_biotop_to_layer2(layer2):
 
-    # == environment ==
+    # HUVUDKLASS
+    layer_biotop_huvudklass = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Biotopkartan_2019\Biotopkartan_2019_Huvudklass.gpkg", layer="Huvudklass").to_crs(layer2.crs)  # some warning about gpkg version for this file + warning of timestamp column
+    layer_biotop_huvudklass = layer_biotop_huvudklass.drop(columns=['timestamp'], errors='ignore')
 
-    # BIOTOPES
-    layer_biotop = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Biotopkartan_2019\Biotopkartan_2019_Huvudklass.gpkg",
-        layer="Huvudklass").to_crs(
-        "EPSG:3006")  # some warning about gpkg version for this file + warning of timestamp column
-
-    joined_biotop = gpd.sjoin(
-        layer_biotop[['geometry', 'h_klass']],
+    joined_biotop1 = gpd.sjoin(
+        layer_biotop_huvudklass[['geometry', 'h_klass']],
         layer2[['geometry']],
         how='left',
         predicate='intersects'
     )
 
-    grouped_biotop = (
-        joined_biotop.groupby("index_right")["h_klass"]
+    grouped_biotop1 = (
+        joined_biotop1.groupby("index_right")["h_klass"]
             .apply(lambda x: ", ".join(sorted(
             set(x.dropna()))))  # set(x) removes duplicate names, sorted() gives consistent order, dropna() prevents "nan" strings in the result
             .reset_index()
     )
 
-    # Map to layer2
-    layer2["BIOTOP_combined"] = layer2.index.map(grouped_biotop.set_index("index_right")["h_klass"])
+    layer2["BIOTOP_hklass_combined"] = layer2.index.map(grouped_biotop1.set_index("index_right")["h_klass"])
+
+    # ADD AREA of each huvudklass category per park
+
+    intersected1 = gpd.overlay(layer_biotop_huvudklass[['geometry', 'huvudklass']], layer2[['geometry']], how='intersection')
+
+    # add index from layer2 for mapping back
+    intersected1 = gpd.sjoin(intersected1, layer2[['geometry']], how='left', predicate='within')
+    #intersected1 = intersected1.drop(columns='geometry_right')
+
+    # calculate area of each intersected piece
+    intersected1['intersected_area1'] = intersected1.geometry.area
+
+    # Group by index_right (from layer2) and huvudklass to sum areas
+    area_summary = (
+        intersected1.groupby(['index_right', 'huvudklass'])['intersected_area1']
+            .sum()
+            .reset_index()
+    )
+
+    # pivot table to make each huvudklass a column
+    area_pivot = area_summary.pivot(index='index_right', columns='huvudklass', values='intersected_area1').fillna(0)
+
+    # add columns to layer2
+    layer2 = layer2.join(area_pivot, how='left')
+    # fill NaNs with 0 if no overlap
+    layer2 = layer2.fillna(0)
+
+
+
+    # KLASS
+    layer_biotop_klass = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Biotopkartan_2019\Biotopkartan_2019_Klass.gpkg", layer="Klass").to_crs(layer2.crs)
+    layer_biotop_klass = layer_biotop_klass.drop(columns=['timestamp'], errors='ignore')
+
+    joined_biotop2 = gpd.sjoin(
+        layer_biotop_klass[['geometry', 'klass']],
+        layer2[['geometry']],
+        how='left',
+        predicate='intersects'
+    )
+
+    grouped_biotop2 = (
+        joined_biotop2.groupby("index_right")["klass"]
+            .apply(lambda x: ", ".join(sorted(
+            set(x.dropna()))))
+            .reset_index()
+    )
+
+    layer2["BIOTOP_klass_combined"] = layer2.index.map(grouped_biotop2.set_index("index_right")["klass"])
+
 
     return layer2
 layer2 = THEME_biotop_to_layer2(layer2)
 
-# temperature
 def THEME_temperature_to_layer2(layer2):
 
     temperature_lines = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Temperaturkartering\Temperaturkurvor_uppmatt_stralningstemp.gpkg").to_crs(layer2.crs)
