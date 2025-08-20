@@ -204,31 +204,43 @@ def THEME_biotop_to_layer2(layer2):
 
     layer2["BIOTOP_hklass_combined"] = layer2.index.map(grouped_biotop1.set_index("index_right")["h_klass"])
 
-    # ADD AREA of each huvudklass category per park
+    # ADD AREA of each huvudklass category per park ********* fixa värden, nått knas med index? välj ett annat namn än ovan? ******
 
-    intersected1 = gpd.overlay(layer_biotop_huvudklass[['geometry', 'huvudklass']], layer2[['geometry']], how='intersection')
+    intersected1 = gpd.overlay(layer_biotop_huvudklass[['geometry', 'h_klass']], layer2[['geometry', 'group']], how='intersection')
+
+    # *** TEMP FILE - can be removed ***
+    intersected1.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_biotop1", driver="GPKG", mode="w")
 
     # add index from layer2 for mapping back
-    intersected1 = gpd.sjoin(intersected1, layer2[['geometry']], how='left', predicate='within')
+    #intersected1 = gpd.sjoin(intersected1, layer2[['geometry']], how='left', predicate='within')
     #intersected1 = intersected1.drop(columns='geometry_right')
 
     # calculate area of each intersected piece
     intersected1['intersected_area1'] = intersected1.geometry.area
 
+    # *** TEMP FILE - can be removed ***
+    intersected1.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_biotop2", driver="GPKG", mode="w")
+
     # Group by index_right (from layer2) and huvudklass to sum areas
     area_summary = (
-        intersected1.groupby(['index_right', 'huvudklass'])['intersected_area1']
+        intersected1.groupby(['group', 'h_klass'])['intersected_area1']
             .sum()
             .reset_index()
     )
 
     # pivot table to make each huvudklass a column
-    area_pivot = area_summary.pivot(index='index_right', columns='huvudklass', values='intersected_area1').fillna(0)
+    area_pivot = area_summary.pivot(index='group', columns='h_klass', values='intersected_area1').fillna(0)
 
     # add columns to layer2
-    layer2 = layer2.join(area_pivot, how='left')
+    #layer2 = layer2.join(area_pivot, how='left')
+
+    layer2 = layer2.merge(area_pivot, how='left', left_on='group', right_index=True)
+
     # fill NaNs with 0 if no overlap
     layer2 = layer2.fillna(0)
+
+
+
 
 
 
