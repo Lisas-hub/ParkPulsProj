@@ -259,9 +259,11 @@ def THEME_safety_to_layer2(layer2):
 
     layer2 = layer2.merge(Unsafe_NBHD_weighted, on='group', how='left')
 
+
+
     return layer2
 
-# safety + landcover
+
 
 layer2 = THEME_safety_to_layer2(layer2)
 
