@@ -3,6 +3,7 @@ import geopandas as gpd
 import pandas as pd
 from shapely.strtree import STRtree
 import networkx as nx
+import numpy as np
 
 # ===== LAYERS =======
 
@@ -232,15 +233,16 @@ layer2 = THEME_lighting_to_layer2(layer2)
 # safety
 def THEME_safety_to_layer2(layer2):
 
+    # calcuate total area of each stadsdelsområde
+    stadsdelsomrade = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Stadsdelsomraden_Stadskartan.gpkg")
+    stadsdelsomrade['area'] = stadsdelsomrade.geometry.area
+    stadsdelsomrade.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_stadsdelsomrade_area", driver="GPKG", mode="w")
+
     safety_survey = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Safety\Survey_CrimeFear_Basomr_2024_08-29\Survey_CrimeFear_Basomr_2024_08-29.shp").to_crs(layer2.crs)
     # data description:
     # Crimevictim = Share that has been previously victimized the past 12 years (any crime)
     # Unsafe_NBHD = Share that feel unsafe/very unsafe in their neighborhood/residential area
     # Unsafe_Residential = Share that feel unsafe in one or more places in their residential building
-
-    #parks_and_safety = gpd.sjoin(layer2, safety_survey, how='left', predicate='intersects')
-    # *** OBS! many to many join (multiple 'group' rows) - summarize per park ***
-    # use variable Unsafe_NBHD ?? intersect and area-weighted column ??
 
     safety_survey['basomrade_area'] = safety_survey.geometry.area
 
@@ -248,22 +250,48 @@ def THEME_safety_to_layer2(layer2):
     parks_and_safety = gpd.overlay(layer2, safety_survey, how='intersection')
     # calculate intersection area
     parks_and_safety['intersect_area'] = parks_and_safety.geometry.area
+
     # calculate safety weighted by intersect area
-    parks_and_safety['Unsafe_NBHD_weighted'] = (parks_and_safety['UnsafeNBHD'] * (
-                parks_and_safety['intersect_area'] / parks_and_safety['basomrade_area']))
+    parks_and_safety['weight'] = parks_and_safety['intersect_area'] / parks_and_safety['basomrade_area']
+    parks_and_safety['Unsafe_NBHD_weighted'] = parks_and_safety['UnsafeNBHD'] * parks_and_safety['weight']
+    parks_and_safety['Crime_victim_weighted'] = parks_and_safety['CrimVictim'] * parks_and_safety['weight']
+
+    group_counts = parks_and_safety.groupby('group').size().reset_index(name='count')
 
     # group parks as usual (by column group)
-    Unsafe_NBHD_weighted = parks_and_safety.groupby('group').agg({
-        'Unsafe_NBHD_weighted': 'sum'
+    safety_weighted = parks_and_safety.groupby('group').agg({
+        'Unsafe_NBHD_weighted': 'sum',
+        'Crime_victim_weighted': 'sum'
     }).reset_index()
 
-    layer2 = layer2.merge(Unsafe_NBHD_weighted, on='group', how='left')
+    # merge group_counts to see which ones had only one intersect
+    safety_weighted = safety_weighted.merge(group_counts, on='group', how='left')
 
+    # for those that intersected only one safety_survey polygon, use raw values
+    single_intersections = parks_and_safety.groupby('group').filter(lambda x: len(x) == 1)
+    single_direct = single_intersections[['group', 'UnsafeNBHD', 'CrimVictim']].drop_duplicates()
+    single_direct = single_direct.rename(columns={
+        'UnsafeNBHD': 'Unsafe_NBHD_weighted',
+        'CrimVictim': 'Crime_victim_weighted'
+    })
 
+    # replace weighted values with direct values for single overlaps
+    safety_weighted_final = safety_weighted[~safety_weighted['group'].isin(single_direct['group'])]
+    safety_combined = pd.concat([
+        safety_weighted_final[['group', 'Unsafe_NBHD_weighted', 'Crime_victim_weighted']],
+        single_direct
+    ], ignore_index=True)
+
+    # merge new variables to layer2
+    layer2 = layer2.merge(safety_combined, on='group', how='left')
+
+    # specify what to put for those with no overlap at all (no data)
+    layer2['Unsafe_NBHD_weighted'] = layer2['Unsafe_NBHD_weighted'].fillna(np.nan) # use fillna('no data') or fillna(np.nan) for null instead
+    layer2['Crime_victim_weighted'] = layer2['Crime_victim_weighted'].fillna(np.nan)
+
+    layer2['Unsafe_NBHD_log'] = np.log(layer2['Unsafe_NBHD_weighted'])
 
     return layer2
-
-
 
 layer2 = THEME_safety_to_layer2(layer2)
 
