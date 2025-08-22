@@ -215,7 +215,7 @@ def THEME_biotop_to_layer2(layer2):
                 return "Urban grönstruktur, öppen yta"
             else:
                 return "okänd"  # There should not be any of these
-s
+
         else:
             return "okänd"
 
