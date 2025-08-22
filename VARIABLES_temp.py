@@ -231,5 +231,3 @@ def THEME_park_maintenance_to_layer2(layer2):
 layer2 = THEME_park_maintenance_to_layer2(layer2)
 
 
-
-

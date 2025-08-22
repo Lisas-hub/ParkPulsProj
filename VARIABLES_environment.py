@@ -184,85 +184,101 @@ layer2 = stadsdelsomraden_to_layer2(layer2)
 
 def THEME_biotop_to_layer2(layer2):
 
-    # HUVUDKLASS
-    layer_biotop_huvudklass = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Biotopkartan_2019\Biotopkartan_2019_Huvudklass.gpkg", layer="Huvudklass").to_crs(layer2.crs)  # some warning about gpkg version for this file + warning of timestamp column
-    layer_biotop_huvudklass = layer_biotop_huvudklass.drop(columns=['timestamp'], errors='ignore')
+    layer_biotop_klass = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Biotopkartan_2019\Biotopkartan_2019_Klass.gpkg", layer="Klass").to_crs(layer2.crs)
 
-    joined_biotop1 = gpd.sjoin(
-        layer_biotop_huvudklass[['geometry', 'h_klass']],
-        layer2[['geometry']],
-        how='left',
-        predicate='intersects'
-    )
+    # make a column of custom categories
+    def classify_row(row):
+        general = row['h_klass']
+        detailed = row['klass']
 
-    grouped_biotop1 = (
-        joined_biotop1.groupby("index_right")["h_klass"]
-            .apply(lambda x: ", ".join(sorted(
-            set(x.dropna()))))  # set(x) removes duplicate names, sorted() gives consistent order, dropna() prevents "nan" strings in the result
-            .reset_index()
-    )
+        if general in ["Buskmark", "Skogsmark/trädklädd mark"]:
+            return "Skog-/buskmark"
 
-    layer2["BIOTOP_hklass_combined"] = layer2.index.map(grouped_biotop1.set_index("index_right")["h_klass"])
+        elif general in ["Vatten", "Öppen mark", "Odlingsmark"]:
+            return "Öppen yta" # Odling here is mostly  crop fields which is why they are put as open but it does also include a few fruit/berry plots
 
-    # ADD AREA of each huvudklass category per park ********* fixa värden, nått knas med index? välj ett annat namn än ovan? ******
+        elif general == "Urban gråstruktur":
+            if detailed == "Urban gråstruktur, byggnader":
+                return "Urban gråstruktur, byggnader"
+            elif detailed == "Grå infrastruktur":
+                return "Urban gråstruktur, infrastruktur"
+            else:
+                return "okänd"  # There should not be any of these
 
-    intersected1 = gpd.overlay(layer_biotop_huvudklass[['geometry', 'h_klass']], layer2[['geometry', 'group']], how='intersection')
+        elif general == "Urban grönstruktur":
+            if detailed in ["Urban grönstruktur av grå karaktär", "Urban grönstruktur, gröna tak"]:
+                return "Urban grönstruktur, övrigt"
+            elif detailed in ["Urban grönstruktur av lummig karaktär", "Urban grönstruktur av naturtomtskaraktär",
+                              "Urban grönstruktur av trädkaraktär", "Odlingslott eller fruktträdgård"]:
+                return "Urban grönstruktur, vegetation" # Odlingslotter is not set to open since they tend to be closed of and with a lot of vegetation
+            elif detailed in ["Urban grönstruktur av öppen karaktär"]:
+                return "Urban grönstruktur, öppen yta"
+            else:
+                return "okänd"  # There should not be any of these
+
+        else:
+            return "okänd"
+
+    layer_biotop_klass["BIOTOP_custom"] = layer_biotop_klass.apply(classify_row, axis=1)
 
     # *** TEMP FILE - can be removed ***
-    intersected1.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_biotop1", driver="GPKG", mode="w")
+    layer_biotop_klass.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_biotop1", driver="GPKG", mode="w")
 
-    # add index from layer2 for mapping back
-    #intersected1 = gpd.sjoin(intersected1, layer2[['geometry']], how='left', predicate='within')
-    #intersected1 = intersected1.drop(columns='geometry_right')
+    # intersect with layer2
+    intersected = gpd.overlay(
+        layer_biotop_klass[["geometry", "h_klass", "klass", "BIOTOP_custom"]],
+        layer2[["geometry", "group"]],
+        how="intersection"
+    )
 
-    # calculate area of each intersected piece
-    intersected1['intersected_area1'] = intersected1.geometry.area
+    intersected["intersected_area"] = intersected.geometry.area
 
-    # *** TEMP FILE - can be removed ***
-    intersected1.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_biotop2", driver="GPKG", mode="w")
+    # combine unique categories per polygon in layer2
+    def combine_unique(series):
+        return ", ".join(sorted(set(series.dropna())))
 
-    # Group by index_right (from layer2) and huvudklass to sum areas
-    area_summary = (
-        intersected1.groupby(['group', 'h_klass'])['intersected_area1']
+    combined_grouped = (
+        intersected.groupby("group").agg({
+            "h_klass": combine_unique,
+            "klass": combine_unique,
+            "BIOTOP_custom": combine_unique
+        })
+    )
+
+    # merge with layer2
+    layer2 = layer2.merge(
+        combined_grouped.rename(columns={
+            "h_klass": "BIOTOP_hklass_combined",
+            "klass": "BIOTOP_klass_combined",
+            "BIOTOP_custom": "BIOTOP_custom_combined"
+        }),
+        on="group",
+        how="left"
+    )
+
+    # calculate area per h_klass
+    h_klass_area_summary = (
+        intersected.groupby(["group", "h_klass"])["intersected_area"]
             .sum()
-            .reset_index()
+            .unstack(fill_value=0)
     )
 
-    # pivot table to make each huvudklass a column
-    area_pivot = area_summary.pivot(index='group', columns='h_klass', values='intersected_area1').fillna(0)
+    custom_area_summary = (
+        intersected.groupby(["group", "BIOTOP_custom"])["intersected_area"]
+            .sum()
+            .unstack(fill_value=0)
+    )
 
-    # add columns to layer2
-    #layer2 = layer2.join(area_pivot, how='left')
+    # merge area columns into layer2
+    layer2 = layer2.merge(h_klass_area_summary, on="group", how="left")
+    layer2 = layer2.merge(custom_area_summary, on="group", how="left")
 
-    layer2 = layer2.merge(area_pivot, how='left', left_on='group', right_index=True)
-
-    # fill NaNs with 0 if no overlap
+    # Optional: fill NaNs after merge (e.g., no intersecting categories)
     layer2 = layer2.fillna(0)
 
 
 
 
-
-
-    # KLASS
-    layer_biotop_klass = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Biotopkartan_2019\Biotopkartan_2019_Klass.gpkg", layer="Klass").to_crs(layer2.crs)
-    layer_biotop_klass = layer_biotop_klass.drop(columns=['timestamp'], errors='ignore')
-
-    joined_biotop2 = gpd.sjoin(
-        layer_biotop_klass[['geometry', 'klass']],
-        layer2[['geometry']],
-        how='left',
-        predicate='intersects'
-    )
-
-    grouped_biotop2 = (
-        joined_biotop2.groupby("index_right")["klass"]
-            .apply(lambda x: ", ".join(sorted(
-            set(x.dropna()))))
-            .reset_index()
-    )
-
-    layer2["BIOTOP_klass_combined"] = layer2.index.map(grouped_biotop2.set_index("index_right")["klass"])
 
 
     return layer2
