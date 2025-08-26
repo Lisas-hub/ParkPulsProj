@@ -2,7 +2,7 @@
 import geopandas as gpd
 
 
-#accessibility = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_accessibility", driver="GPKG", mode="w")
+accessibility = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_accessibility", driver="GPKG", mode="w")
 amenities = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_amenities", driver="GPKG", mode="w")
 environment = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_environment", driver="GPKG", mode="w")
 food = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_food", driver="GPKG", mode="w")
@@ -11,7 +11,7 @@ safety = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_safety", driv
 socioeconomic = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_socioeconomic", driver="GPKG", mode="w")
 typology = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_typology", driver="GPKG", mode="w")
 
-layers = [amenities, environment, food, noise_pollution, safety, socioeconomic, typology] # *** add accessibility ***
+layers = [accessibility, amenities, environment, food, noise_pollution, safety, socioeconomic, typology]
 
 # set up with geometry from the first layer
 base = layers[0].copy()
