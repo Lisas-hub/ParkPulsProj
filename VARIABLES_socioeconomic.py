@@ -179,6 +179,8 @@ def stadsdelsomraden_to_layer2(layer2):
     return layer2
 layer2 = stadsdelsomraden_to_layer2(layer2)
 
+layer2['park_area'] = layer2.geometry.area
+
 
 # === THEME ===
 
@@ -192,116 +194,119 @@ def THEME_socioeconomic_to_layer2(layer2):
 
     # == socioeconomic ==
 
+    deso_befolkning_age = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Befolkning\Tab1_DeSO_2023_region.shp").to_crs(layer2.crs)
+    deso_befolkning_birthplace = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Befolkning\Tab4_DeSO_2023_region.shp").to_crs(layer2.crs)
+    deso_befolkning_migration = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Befolkning\Tab5_DeSO_2023_region.shp").to_crs(layer2.crs)
     deso_inkomster = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Inkomster\Tab11_DeSO_2023_region.shp").to_crs(layer2.crs)
-    deso_befolkning_age = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Befolkning\Tab1_DeSO_2023_region.shp").to_crs(
-        layer2.crs)
-    deso_befolkning_birthplace = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Befolkning\Tab4_DeSO_2023_region.shp").to_crs(
-        layer2.crs)
-    deso_befolkning_migration = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Befolkning\Tab5_DeSO_2023_region.shp").to_crs(
-        layer2.crs)
 
     municipality = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Kommun_Stadskartan.gpkg").to_crs(layer2.crs)
 
-    deso_inkomster = gpd.clip(deso_inkomster, municipality)
     deso_befolkning_age = gpd.clip(deso_befolkning_age, municipality)
     deso_befolkning_birthplace = gpd.clip(deso_befolkning_birthplace, municipality)
     deso_befolkning_migration = gpd.clip(deso_befolkning_migration, municipality)
+    deso_inkomster = gpd.clip(deso_inkomster, municipality)
 
-    deso_inkomster.to_file("data/VARIABLES_NEW.gpkg", layer="DeSo_inkomster", driver="GPKG", mode="w")
     deso_befolkning_age.to_file("data/VARIABLES_NEW.gpkg", layer="DeSo_befolkning_age", driver="GPKG", mode="w")
     deso_befolkning_birthplace.to_file("data/VARIABLES_NEW.gpkg", layer="DeSo_befolkning_birthplace", driver="GPKG", mode="w")
     deso_befolkning_migration.to_file("data/VARIABLES_NEW.gpkg", layer="DeSo_befolkning_migration", driver="GPKG", mode="w")
+    deso_inkomster.to_file("data/VARIABLES_NEW.gpkg", layer="DeSo_inkomster", driver="GPKG", mode="w")
+
+    deso_all = deso_befolkning_age.merge(deso_befolkning_birthplace.drop(columns='geometry'), on='DESO') \
+             .merge(deso_befolkning_migration.drop(columns='geometry'), on='DESO') \
+             .merge(deso_inkomster.drop(columns='geometry'), on='DESO')
 
     # check the features that look like lines in QGIS, ex DESO IDs that starts with 0126C
-    # deso_inkomster['area'] = deso_inkomster.geometry.area
-    # small_polygons = deso_inkomster[deso_inkomster["area"] < 400]  # the smallest real deso area = 231123 but there is one large sliver area = 333
+    # deso_all['area'] = deso_all.geometry.area
+    # small_polygons = deso_all[deso_all["area"] < 400]  # the smallest real deso area = 231123 but there is one large sliver area = 333
     # print(small_polygons)
-
     # drop slivers
-    deso_inkomster = deso_inkomster[deso_inkomster.area >= 400].reset_index(drop=True)
-    deso_befolkning_age = deso_befolkning_age[deso_befolkning_age.area >= 400].reset_index(drop=True)
-    deso_befolkning_birthplace = deso_befolkning_birthplace[deso_befolkning_birthplace.area >= 400].reset_index(drop=True)
-    deso_befolkning_migration = deso_befolkning_migration[deso_befolkning_migration.area >= 400].reset_index(drop=True)
+    deso_all = deso_all[deso_all.area >= 400].reset_index(drop=True)
+    # *** TEMP FILE - can be removed ***
+    deso_all.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_deso_all", driver="GPKG", mode="w")
 
-    # buffer the park polygons
+    # prepp layer 2
     layer2_buffered = layer2.copy()
     layer2_buffered['geometry'] = layer2_buffered.geometry.buffer(500)
     # *** TEMP FILE - can be removed ***
     layer2_buffered.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_park_buffer500", driver="GPKG", mode="w")
 
-    layer2['park_area'] = layer2.geometry.area
+    # == aggregated columns ==
+    parks_and_deso = gpd.sjoin(layer2_buffered, deso_all, how='left', predicate='intersects')
 
-    # == aggregated resident population near parks ==
+    agg_columns = ['Alder_0_6', # from deso_befolning_age
+                   'Alder_7_15',
+                   'Alder_16_1',
+                   'Alder_20_2',
+                   'Alder_25_4',
+                   'Alder_45_6',
+                   'Alder_65',
+                   'Totalt_x',
+                   'Sverige', # from deso_befolkning_birthplace
+                   'Norden_uto',
+                   'EU_utom_No',
+                   'Ovriga_var',
+                   'Totalt_y',
+                   'Inom', # from deso_befolkning_migration
+                   'Till',
+                   'Fran',
+                   'Inv',
+                   'Utv',
+                   'Fodda',
+                   'Doda',
+                   'Tot_Bef']
 
-    # join parks and population layer (multiple polygons per "group", aka park, that will be aggregated in the next step)
-    parks_and_population = gpd.sjoin(layer2_buffered, deso_befolkning_age, how='left', predicate='intersects')
-
-    # aggregate kid population counts per park
-    population_columns = ['Alder_0_6', 'Alder_7_15', 'Alder_16_1', 'Alder_20_2', 'Alder_25_4', 'Alder_45_6', 'Alder_65', 'Totalt']
-    population_aggregated = parks_and_population.groupby(['group'])[population_columns].sum().reset_index()
-    layer2 = layer2.merge(population_aggregated, on='group', how='right')
-    layer2 = layer2.rename(columns={"Alder_0_6": "AGG_Alder_0_6", "Alder_7_15": "AGG_Alder_7_15", "Alder_16_1": "AGG_Alder_16_1", "Alder_20_2": "AGG_Alder_20_2", "Alder_25_4": "AGG_Alder_25_4", "Alder_45_6": "AGG_Alder_45_6", "Alder_65": "AGG_Alder_65", "Totalt": "AGG_Totalt"})
-
-    # == aggregated income of the population near parks ==
-
-    # join parks and income
-    parks_and_income = gpd.sjoin(layer2_buffered, deso_inkomster, how='left', predicate='intersects')
-
-    #aggregate
-    income_columns = ['Kvartil1', 'Kvartil2', 'Kvartil3', 'Kvartil4', 'Totalt', 'MedianInk']
-    income_aggregated = parks_and_income.groupby(['group'])[income_columns].sum().reset_index()
-    layer2 = layer2.merge(income_aggregated, on='group', how='right')
+    deso_aggregated = parks_and_deso.groupby(['group'])[agg_columns].sum().reset_index()
+    layer2 = layer2.merge(deso_aggregated, on='group', how='right')
     layer2 = layer2.rename(
-        columns={"Kvartil1": "AGG_Kvartil1", "Kvartil2": "AGG_Kvartil2", "Kvartil3": "AGG_Kvartil3",
-                 "Kvartil4": "AGG_Kvartil4", "Totalt": "AGG_Totalt_1",
-                 "MedianInk": "AGG_MedianInk"})
+        columns={"Alder_0_6": "AGG_Alder_0_6",
+                 "Alder_7_15": "AGG_Alder_7_15",
+                 "Alder_16_1": "AGG_Alder_16_1",
+                 "Alder_20_2": "AGG_Alder_20_2",
+                 "Alder_25_4": "AGG_Alder_25_4",
+                 "Alder_45_6": "AGG_Alder_45_6",
+                 "Alder_65": "AGG_Alder_65",
+                 "Totalt_x": "AGG_Alder_Totalt",
+                 'Sverige': "AGG_Sverige",
+                 'Norden_uto': "AGG_Norden_uto",
+                 'EU_utom_No': "AGG_EU_utom_No",
+                 'Ovriga_var': "AGG_Ovriga_var",
+                 'Totalt_y': "AGG_birthp_Totalt",
+                 'Till': "AGG_Till",
+                 'Fran': "AGG_Fran",
+                 'Inv': "AGG_Inv",
+                 'Utv': "AGG_Utv",
+                 'Fodda': "AGG_Fodda",
+                 'Doda': "AGG_Doda",
+                 'Tot_Bef': "AGG_migr_Tot_Bef"
+                 })
 
-    # == weighted joins for income and population for more accuracy ==
+    # == weighted columns ==
+    deso_all['deso_area'] = deso_all.geometry.area
 
-    # INCOME
-    # area of deso polygons
-    deso_inkomster['deso_area'] = deso_inkomster.geometry.area
-
-    # intersect buffered parks and income
-    parks_income_intersection = gpd.overlay(layer2_buffered, deso_inkomster, how='intersection')
-    # calculate intersection area
-    parks_income_intersection['intersect_area'] = parks_income_intersection.geometry.area
-    # calculate income weighted by intersect area
-    parks_income_intersection['income_weighted'] = (parks_income_intersection['MedianInk'] * parks_income_intersection['intersect_area'])
-
+    parks_deso_intersection = gpd.overlay(layer2_buffered, deso_all, how='intersection')
+    parks_deso_intersection['intersect_area'] = parks_deso_intersection.geometry.area
+    parks_deso_intersection['MedianInk_weighted'] = (
+            parks_deso_intersection['MedianInk'] *
+            (parks_deso_intersection['intersect_area'] / parks_deso_intersection['deso_area'])
+    )
+    parks_deso_intersection['TotPop_weighted'] = (
+            parks_deso_intersection['Totalt_x'] *
+            (parks_deso_intersection['intersect_area'] / parks_deso_intersection['deso_area'])
+    )
     # group parks as usual (by column group)
-    income_weighted_agg = parks_income_intersection.groupby('group').agg({
-        'income_weighted': 'sum',
-        'intersect_area': 'sum'
+    deso_weighted = parks_deso_intersection.groupby('group').agg({
+        'intersect_area': 'sum',
+        'TotPop_weighted': 'sum',
+        'MedianInk_weighted': 'sum'
     }).reset_index()
 
-    # calculate final area-weighted median income
-    income_weighted_agg['area_weighted_income'] = income_weighted_agg['income_weighted'] / income_weighted_agg['intersect_area']
+    # final MedianInk_weighted
+    deso_weighted['MedianInk_weighted_avg'] = (
+            deso_weighted['MedianInk_weighted'] / deso_weighted['intersect_area']
+    )
 
     # add to layer2
-    layer2 = layer2.merge(income_weighted_agg[['group', 'area_weighted_income']], on='group', how='left')
-
-    # POPULATION
-    # area of deso polygons
-    deso_befolkning_age['deso_area'] = deso_befolkning_age.geometry.area
-
-    # intersect buffered parks and pop
-    parks_pop_intersection = gpd.overlay(layer2_buffered, deso_befolkning_age, how='intersection')
-    # calculate intersection area
-    parks_pop_intersection['intersect_area'] = parks_pop_intersection.geometry.area
-    # calculate pop weighted by intersect area
-    parks_pop_intersection['pop_weighted'] = (parks_pop_intersection['Totalt'] * (parks_pop_intersection['intersect_area']/ parks_pop_intersection['deso_area']))
-
-    # group parks as usual (by column group)
-    pop_weighted_agg = parks_pop_intersection.groupby('group').agg({
-        'pop_weighted': 'sum'
-    }).reset_index()
-
-    # add to layer2
-    layer2 = layer2.merge(pop_weighted_agg, on='group', how='left')
+    layer2 = layer2.merge(deso_weighted, on='group', how='left')
 
     return layer2
 layer2 = THEME_socioeconomic_to_layer2(layer2)
