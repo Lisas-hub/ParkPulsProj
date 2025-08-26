@@ -232,20 +232,15 @@ def THEME_accessibility_to_layer2(layer2):
 
     # walking distance by road
     gdf_road1 = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Stadskarta_Stockholm_SHP\Vaegutbredning_area.shp")
+        r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Stadskarta_Stockholm_SHP\Vaegutbredning_area.shp").to_crs(layer2.crs)
     gdf_road2 = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Stadskarta_Stockholm_SHP\Trafik_area.shp")
+        r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Stadskarta_Stockholm_SHP\Trafik_area.shp").to_crs(layer2.crs)
 
     # roads from sthlm stad
     #roads = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_roads1")
 
-    # reproject
-    target_crs = "EPSG:3006"
-    gdf_road1 = gdf_road1.to_crs(target_crs)
-    gdf_road2 = gdf_road2.to_crs(target_crs)
-
     # merge
-    merged = gpd.GeoDataFrame(pd.concat([gdf_road1, gdf_road2], ignore_index=True), crs=target_crs)
+    merged = gpd.GeoDataFrame(pd.concat([gdf_road1, gdf_road2], ignore_index=True), crs=layer2.crs)
 
     # fix geometry
     merged['geometry'] = merged['geometry'].buffer(0)

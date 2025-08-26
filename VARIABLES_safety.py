@@ -238,12 +238,25 @@ def THEME_safety_to_layer2(layer2):
     stadsdelsomrade['area'] = stadsdelsomrade.geometry.area
     stadsdelsomrade.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_stadsdelsomrade_area", driver="GPKG", mode="w")
 
+    # safety - survey data
     safety_survey = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Safety\Survey_CrimeFear_Basomr_2024_08-29\Survey_CrimeFear_Basomr_2024_08-29.shp").to_crs(layer2.crs)
     # data description:
     # Crimevictim = Share that has been previously victimized the past 12 years (any crime)
     # Unsafe_NBHD = Share that feel unsafe/very unsafe in their neighborhood/residential area
     # Unsafe_Residential = Share that feel unsafe in one or more places in their residential building
 
+    # safety - committed crimes (*** dela inte detta dataset! ***)
+    crimes = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Safety\Basemap_CrimeSocEcon\Basemap_Lisa.shp").to_crs(layer2.crs)
+    # data description:
+    # (outdoor) crime data from 2019-2020, socioeconomic data from 2021
+    # Total_stre: Total Street crime (all crime columns summarized except Res_crime which is Residential crime)
+
+    safety_all = gpd.sjoin(safety_survey, crimes, how='left', predicate='intersects')
+    safety_all.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_safety_all", driver="GPKG", mode="w")
+    # *** dålig idé att slå ihop? båda har basområde men polygonerna verkar ändå inte vara exakt likadana (bildas slivers?) ***
+
+
+    ####################
     safety_survey['basomrade_area'] = safety_survey.geometry.area
 
     # intersect parks and pop
@@ -290,6 +303,10 @@ def THEME_safety_to_layer2(layer2):
     layer2['Crime_victim_weighted'] = layer2['Crime_victim_weighted'].fillna(np.nan)
 
     layer2['Unsafe_NBHD_log'] = np.log(layer2['Unsafe_NBHD_weighted'])
+
+
+
+
 
     return layer2
 

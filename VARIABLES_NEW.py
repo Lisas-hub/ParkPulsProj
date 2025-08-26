@@ -33,6 +33,7 @@ base.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_all", driver="GPKG", mo
 
 # ***** select only columns to show in streamlit ********
 #layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_for_streamlit", driver="GPKG", mode="w")
+base.to_file("data/VARIABLES_for_streamlit.gpkg", layer="VARIABLES_for_streamlit", driver="GPKG", mode="w")
 
 
 
