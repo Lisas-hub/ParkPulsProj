@@ -195,7 +195,7 @@ layer2 = stadsdelsomraden_to_layer2(layer2)
 # ==== OTHER STATS ====
 def OTHER_STATS_park_coverage():
 
-    # park coverage in Stockholm
+    # == park coverage in Stockholm ==
     municipality = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Kommun_Stadskartan.gpkg").to_crs(layer2.crs)
 
     # union of parks and municipality
@@ -215,6 +215,9 @@ def OTHER_STATS_park_coverage():
 
     # dissolve all polygons from layer2 into one single polygon
     #park_coverage = park_coverage.dissolve(by="group", as_index=False) # *** fix so that all group = 0 are not lost in this step
+
+
+
 
     return park_coverage
 park_coverage = OTHER_STATS_park_coverage()

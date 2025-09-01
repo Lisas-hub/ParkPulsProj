@@ -231,60 +231,33 @@ def THEME_accessibility_to_layer2(layer2):
     ).fillna('None')
 
     # walking distance by road
-    gdf_road1 = gpd.read_file(
+    road1 = gpd.read_file(
         r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Stadskarta_Stockholm_SHP\Vaegutbredning_area.shp").to_crs(layer2.crs)
-    gdf_road2 = gpd.read_file(
+    road2 = gpd.read_file(
         r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Stadskarta_Stockholm_SHP\Trafik_area.shp").to_crs(layer2.crs)
 
+    merged = road1.overlay(road2, how="union") # see dropped beometries by adding `keep_geom_type=True`, but dropped geometries have attribute info but don't show up when using zoom to location,
+
+    merged["area"] = merged.geometry.area
+    merged = merged[merged.area >=1] # drop slivers
+
     # roads from sthlm stad
-    #roads = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_roads1")
+    merged.to_file("data/VARIABLES_NEW.gpkg", layer="roads_from_sthlm_stad", driver="GPKG", mode="w")
 
-    # merge
-    merged = gpd.GeoDataFrame(pd.concat([gdf_road1, gdf_road2], ignore_index=True), crs=layer2.crs)
+    # fix geometries
+    #merged['geometry'] = merged['geometry'].buffer(0)
+    #merged['geometry'] = merged['geometry'].buffer(0.1)
 
-    # fix geometry
-    merged['geometry'] = merged['geometry'].buffer(0)
+    dissolved = merged.dissolve(by=None, as_index=False)
 
-    # remove tiny slivers between polygons that should be touching
-    merged['geometry'] = merged['geometry'].buffer(0.1)
+    # Reduce buffer to go back to original size again (after fix earlier)
+    #dissolved['geometry'] = dissolved['geometry'].buffer(-0.1)
 
-    # dissolve (group intersecting polygons first, then dissolve)
-    from shapely.strtree import STRtree
-    import networkx as nx
-
-    geoms = list(merged.geometry)
-    tree = STRtree(geoms)
-
-    edges = []
-    for i, geom in enumerate(geoms):
-        for j in tree.query(geom):
-            if i < j and geom.intersects(geoms[j]):
-                edges.append((i, j))
-
-    G = nx.Graph()
-    G.add_edges_from(edges)
-    components = list(nx.connected_components(G))
-
-    # Assign group ID to each connected set
-    group_map = {}
-    for group_id, component in enumerate(components, 1):
-        for idx in component:
-            group_map[idx] = group_id
-
-    merged["group"] = merged.index.map(group_map)
-
-    # Dissolve geometries by group
-    dissolved = merged.dissolve(by="group", as_index=False)
-
-    # Reduce buffer to go back to original size again (after fix slivers earlier)
-    dissolved['geometry'] = dissolved['geometry'].buffer(-0.1)
-
-    # **** remove this step after checking ****
-    dissolved.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_roads2", driver="GPKG",
-                      mode="w")  # *** Enstaka polygoner är borttagna i detta lager, behåll det så eller inte? ***
+    # *** TEMP FILE - can be removed ***
+    dissolved.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_roads2", driver="GPKG", mode="w")
 
     # Save
-    dissolved.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_roads3", driver="GPKG", mode="w")
+    #dissolved.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_roads3", driver="GPKG", mode="w")
 
     return layer2
 layer2 = THEME_accessibility_to_layer2(layer2)

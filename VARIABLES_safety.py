@@ -238,25 +238,13 @@ def THEME_safety_to_layer2(layer2):
     stadsdelsomrade['area'] = stadsdelsomrade.geometry.area
     stadsdelsomrade.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_stadsdelsomrade_area", driver="GPKG", mode="w")
 
-    # safety - survey data
+    # === safety survey data ===
     safety_survey = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Safety\Survey_CrimeFear_Basomr_2024_08-29\Survey_CrimeFear_Basomr_2024_08-29.shp").to_crs(layer2.crs)
     # data description:
     # Crimevictim = Share that has been previously victimized the past 12 years (any crime)
     # Unsafe_NBHD = Share that feel unsafe/very unsafe in their neighborhood/residential area
     # Unsafe_Residential = Share that feel unsafe in one or more places in their residential building
 
-    # safety - committed crimes (*** dela inte detta dataset! ***)
-    crimes = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Safety\Basemap_CrimeSocEcon\Basemap_Lisa.shp").to_crs(layer2.crs)
-    # data description:
-    # (outdoor) crime data from 2019-2020, socioeconomic data from 2021
-    # Total_stre: Total Street crime (all crime columns summarized except Res_crime which is Residential crime)
-
-    safety_all = gpd.sjoin(safety_survey, crimes, how='left', predicate='intersects')
-    safety_all.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_safety_all", driver="GPKG", mode="w")
-    # *** dålig idé att slå ihop? båda har basområde men polygonerna verkar ändå inte vara exakt likadana (bildas slivers?) ***
-
-
-    ####################
     safety_survey['basomrade_area'] = safety_survey.geometry.area
 
     # intersect parks and pop
@@ -304,9 +292,45 @@ def THEME_safety_to_layer2(layer2):
 
     layer2['Unsafe_NBHD_log'] = np.log(layer2['Unsafe_NBHD_weighted'])
 
+    # === safety - committed crimes === ******** OBS! kontrollera värden ********
+    crimes = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Safety\Basemap_CrimeSocEcon\Basemap_Lisa.shp").to_crs(layer2.crs)
+    # data description:
+    # (outdoor) crime data from 2019-2020, socioeconomic data from 2021
+    # Total_stre: Total Street crime (all crime columns summarized except Res_crime which is Residential crime)
 
+    crimes['crimes_area']=crimes.geometry.area
+    parks_and_crimes = gpd.overlay(layer2, crimes, how='intersection')
+    parks_and_crimes['intersect_area1'] = parks_and_crimes.geometry.area
 
+    parks_and_crimes['weight1'] = parks_and_crimes['intersect_area1'] / parks_and_crimes['crimes_area']
+    parks_and_crimes['Total_stre_weighted'] = parks_and_crimes['Total_stre'] * parks_and_crimes['weight1']
 
+    crimes_weighted = parks_and_crimes.groupby('group').agg({
+        'Total_stre_weighted': 'sum'
+    }).reset_index()
+
+    crimes_weighted = crimes_weighted.merge(group_counts, on='group', how='left')
+
+    # for those that intersected only one crimes polygon, use raw values
+    single_intersections1 = parks_and_crimes.groupby('group').filter(lambda x: len(x) == 1)
+    single_direct1 = single_intersections1[['group', 'Total_stre_weighted']].drop_duplicates()
+    single_direct1 = single_direct1.rename(columns={
+        'Total_stre': 'Total_stre_weighted'
+    })
+
+    # replace weighted values with direct values for single overlaps
+    crimes_weighted_final = crimes_weighted[~crimes_weighted['group'].isin(single_direct1['group'])]
+    crimes_combined = pd.concat([
+        crimes_weighted_final[['group', 'Total_stre_weighted']],
+        single_direct1
+    ], ignore_index=True)
+
+    # merge new variables to layer2
+    layer2 = layer2.merge(crimes_combined, on='group', how='left')
+
+    # specify what to put for those with no overlap at all (no data)
+    layer2['Total_stre_weighted'] = layer2['Total_stre_weighted'].fillna(np.nan) # use fillna('no data') or fillna(np.nan) for null instead
+    # ******** OBS! kontrollera värden för ^Total_stre_weighted^ ********
 
     return layer2
 

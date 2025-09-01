@@ -185,7 +185,7 @@ layer2 = stadsdelsomraden_to_layer2(layer2)
 # typology
 def THEME_typology_to_layer2(layer2):
 
-    # TYPOLOGY (from sociotop category TYP and OSM)
+    # TYPOLOGY (from sociotop category TYP)
     joined_typ = gpd.sjoin(
         layer1[['geometry', 'TYP']],
         layer2[['geometry']],
@@ -256,6 +256,31 @@ def THEME_typology_to_layer2(layer2):
     )
 
     layer2['typology'] = layer2.index.map(grouped_typology.set_index('index_right')['typology']).fillna('None')
+
+    # == total playgrounds including outside of parks ==
+    stadsdelsomraden = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Stadsdelsomraden_Stadskartan.gpkg").to_crs(layer2.crs)
+    # drop all columns except stadsdelsområden
+    columns_to_keep_stadsdelsomraden = ["geometry", "Omrade"]
+    stadsdelsomraden = stadsdelsomraden[columns_to_keep_stadsdelsomraden]
+
+    playgrounds_per_stadsdelsomrade = gpd.sjoin(
+        play_ground_all[['geometry']],
+        stadsdelsomraden[['geometry', 'Omrade']],
+        how='inner',
+        predicate='intersects'
+    )
+
+    playground_counts = (
+        playgrounds_per_stadsdelsomrade
+            .groupby('Omrade')
+            .size()
+            .reset_index(name='playground_count')
+    )
+
+    stadsdelsomraden = stadsdelsomraden.merge(playground_counts, on='Omrade', how='left')
+    stadsdelsomraden['playground_count'] = stadsdelsomraden['playground_count'].fillna(0).astype(int)
+
+    stadsdelsomraden.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_typology_per_stadsdelsomrade", driver="GPKG", mode="w")
 
     return layer2
 layer2 = THEME_typology_to_layer2(layer2)
