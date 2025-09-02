@@ -191,8 +191,6 @@ layer2 = stadsdelsomraden_to_layer2(layer2)
 # lighting
 def THEME_lighting_to_layer2(layer2):
 
-    # street lighting
-
     street_lighting = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Belysningsmontage_Punkt.gpkg").to_crs(layer2.crs)
     layer2["temp_ID"] = layer2.index  # create a column to be used in the merge later
 
@@ -233,11 +231,11 @@ layer2 = THEME_lighting_to_layer2(layer2)
 # safety
 def THEME_safety_to_layer2(layer2):
 
-    # calcuate total area of each stadsdelsområde
     stadsdelsomrade = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Stadsdelsomraden_Stadskartan.gpkg")
     stadsdelsomrade['area'] = stadsdelsomrade.geometry.area
     stadsdelsomrade.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_stadsdelsomrade_area", driver="GPKG", mode="w")
 
+    # ==========================
     # === safety survey data ===
     safety_survey = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Safety\Survey_CrimeFear_Basomr_2024_08-29\Survey_CrimeFear_Basomr_2024_08-29.shp").to_crs(layer2.crs)
     # data description:
@@ -245,97 +243,61 @@ def THEME_safety_to_layer2(layer2):
     # Unsafe_NBHD = Share that feel unsafe/very unsafe in their neighborhood/residential area
     # Unsafe_Residential = Share that feel unsafe in one or more places in their residential building
 
-    safety_survey['basomrade_area'] = safety_survey.geometry.area
-
-    # intersect parks and pop
     parks_and_safety = gpd.overlay(layer2, safety_survey, how='intersection')
-    # calculate intersection area
     parks_and_safety['intersect_area'] = parks_and_safety.geometry.area
 
-    # calculate safety weighted by intersect area
-    parks_and_safety['weight'] = parks_and_safety['intersect_area'] / parks_and_safety['basomrade_area']
-    parks_and_safety['Unsafe_NBHD_weighted'] = parks_and_safety['UnsafeNBHD'] * parks_and_safety['weight']
-    parks_and_safety['Crime_victim_weighted'] = parks_and_safety['CrimVictim'] * parks_and_safety['weight']
+    parks_and_safety['Unsafe_NBHD_weighted_density'] = parks_and_safety['UnsafeNBHD'] * parks_and_safety['intersect_area']
+    parks_and_safety['Crime_victim_weighted_density'] = parks_and_safety['CrimVictim'] * parks_and_safety['intersect_area']
 
-    group_counts = parks_and_safety.groupby('group').size().reset_index(name='count')
-
-    # group parks as usual (by column group)
     safety_weighted = parks_and_safety.groupby('group').agg({
-        'Unsafe_NBHD_weighted': 'sum',
-        'Crime_victim_weighted': 'sum'
+        'Unsafe_NBHD_weighted_density': 'sum',
+        'Crime_victim_weighted_density': 'sum',
+        'intersect_area': 'sum'
     }).reset_index()
 
-    # merge group_counts to see which ones had only one intersect
-    safety_weighted = safety_weighted.merge(group_counts, on='group', how='left')
+    safety_weighted['avg_Unsafe_NBHD_density'] = safety_weighted['Unsafe_NBHD_weighted_density'] / safety_weighted['intersect_area']
+    safety_weighted['avg_Crime_victim_density'] = safety_weighted['Crime_victim_weighted_density'] / safety_weighted['intersect_area']
 
-    # for those that intersected only one safety_survey polygon, use raw values
-    single_intersections = parks_and_safety.groupby('group').filter(lambda x: len(x) == 1)
-    single_direct = single_intersections[['group', 'UnsafeNBHD', 'CrimVictim']].drop_duplicates()
-    single_direct = single_direct.rename(columns={
-        'UnsafeNBHD': 'Unsafe_NBHD_weighted',
-        'CrimVictim': 'Crime_victim_weighted'
-    })
+    layer2 = layer2.merge(safety_weighted[['group', 'avg_Unsafe_NBHD_density', 'avg_Crime_victim_density']], on='group', how='left')
 
-    # replace weighted values with direct values for single overlaps
-    safety_weighted_final = safety_weighted[~safety_weighted['group'].isin(single_direct['group'])]
-    safety_combined = pd.concat([
-        safety_weighted_final[['group', 'Unsafe_NBHD_weighted', 'Crime_victim_weighted']],
-        single_direct
-    ], ignore_index=True)
+    layer2['avg_Unsafe_NBHD_density'] = layer2['avg_Unsafe_NBHD_density'].fillna(np.nan) # use fillna('no data') or fillna(np.nan) for null
+    layer2['avg_Crime_victim_density'] = layer2['avg_Crime_victim_density'].fillna(np.nan)
 
-    # merge new variables to layer2
-    layer2 = layer2.merge(safety_combined, on='group', how='left')
+    layer2['avg_Unsafe_NBHD_density_LOG'] = np.log(layer2['avg_Unsafe_NBHD_density'])
+    layer2['avg_Unsafe_NBHD_density_LOG'] = np.log(layer2['avg_Unsafe_NBHD_density'].replace(0, np.nan)) # to avoid -inf in some rows
+    layer2['avg_Crime_victim_density_LOG'] = np.log(layer2['avg_Crime_victim_density'])
+    layer2['avg_Crime_victim_density_LOG'] = np.log(layer2['avg_Crime_victim_density'].replace(0, np.nan))
 
-    # specify what to put for those with no overlap at all (no data)
-    layer2['Unsafe_NBHD_weighted'] = layer2['Unsafe_NBHD_weighted'].fillna(np.nan) # use fillna('no data') or fillna(np.nan) for null instead
-    layer2['Crime_victim_weighted'] = layer2['Crime_victim_weighted'].fillna(np.nan)
-
-    layer2['Unsafe_NBHD_log'] = np.log(layer2['Unsafe_NBHD_weighted'])
-
-    # === safety - committed crimes === ******** OBS! kontrollera värden ********
+    # =================================
+    # === safety - committed crimes ===
     crimes = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Safety\Basemap_CrimeSocEcon\Basemap_Lisa.shp").to_crs(layer2.crs)
     # data description:
     # (outdoor) crime data from 2019-2020, socioeconomic data from 2021
     # Total_stre: Total Street crime (all crime columns summarized except Res_crime which is Residential crime)
 
-    crimes['crimes_area']=crimes.geometry.area
+    crimes['basomrade_area'] = crimes.geometry.area
+    crimes['crime_density'] = crimes['Total_stre'] / crimes['basomrade_area']
+
     parks_and_crimes = gpd.overlay(layer2, crimes, how='intersection')
     parks_and_crimes['intersect_area1'] = parks_and_crimes.geometry.area
 
-    parks_and_crimes['weight1'] = parks_and_crimes['intersect_area1'] / parks_and_crimes['crimes_area']
-    parks_and_crimes['Total_stre_weighted'] = parks_and_crimes['Total_stre'] * parks_and_crimes['weight1']
+    parks_and_crimes['weighted_crime_density'] = parks_and_crimes['crime_density'] * parks_and_crimes['intersect_area1']
 
     crimes_weighted = parks_and_crimes.groupby('group').agg({
-        'Total_stre_weighted': 'sum'
+        'weighted_crime_density': 'sum',
+        'intersect_area1': 'sum'
     }).reset_index()
 
-    crimes_weighted = crimes_weighted.merge(group_counts, on='group', how='left')
+    crimes_weighted['avg_crime_density'] = crimes_weighted['weighted_crime_density'] / crimes_weighted['intersect_area1']
 
-    # for those that intersected only one crimes polygon, use raw values
-    single_intersections1 = parks_and_crimes.groupby('group').filter(lambda x: len(x) == 1)
-    single_direct1 = single_intersections1[['group', 'Total_stre_weighted']].drop_duplicates()
-    single_direct1 = single_direct1.rename(columns={
-        'Total_stre': 'Total_stre_weighted'
-    })
+    layer2 = layer2.merge(crimes_weighted[['group', 'avg_crime_density']], on='group', how='left')
 
-    # replace weighted values with direct values for single overlaps
-    crimes_weighted_final = crimes_weighted[~crimes_weighted['group'].isin(single_direct1['group'])]
-    crimes_combined = pd.concat([
-        crimes_weighted_final[['group', 'Total_stre_weighted']],
-        single_direct1
-    ], ignore_index=True)
+    layer2['avg_crime_density'] = layer2['avg_crime_density'].fillna(np.nan)
 
-    # merge new variables to layer2
-    layer2 = layer2.merge(crimes_combined, on='group', how='left')
-
-    # specify what to put for those with no overlap at all (no data)
-    layer2['Total_stre_weighted'] = layer2['Total_stre_weighted'].fillna(np.nan) # use fillna('no data') or fillna(np.nan) for null instead
-    # ******** OBS! kontrollera värden för ^Total_stre_weighted^ ********
+    layer2['crime_per_hectare'] = layer2['avg_crime_density'] * 10000
 
     return layer2
-
 layer2 = THEME_safety_to_layer2(layer2)
-
 
 layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_safety", driver="GPKG", mode="w")
 
