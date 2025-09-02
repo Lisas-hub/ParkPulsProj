@@ -246,6 +246,8 @@ def THEME_safety_to_layer2(layer2):
     parks_and_safety = gpd.overlay(layer2, safety_survey, how='intersection')
     parks_and_safety['intersect_area'] = parks_and_safety.geometry.area
 
+    parks_and_safety = parks_and_safety.dropna(subset=['CrimVictim', 'UnsafeNBHD']) # dropping nulls because otherwise these become 0 in the weighing section
+
     parks_and_safety['Unsafe_NBHD_weighted_density'] = parks_and_safety['UnsafeNBHD'] * parks_and_safety['intersect_area']
     parks_and_safety['Crime_victim_weighted_density'] = parks_and_safety['CrimVictim'] * parks_and_safety['intersect_area']
 
@@ -259,9 +261,6 @@ def THEME_safety_to_layer2(layer2):
     safety_weighted['avg_Crime_victim_density'] = safety_weighted['Crime_victim_weighted_density'] / safety_weighted['intersect_area']
 
     layer2 = layer2.merge(safety_weighted[['group', 'avg_Unsafe_NBHD_density', 'avg_Crime_victim_density']], on='group', how='left')
-
-    layer2['avg_Unsafe_NBHD_density'] = layer2['avg_Unsafe_NBHD_density'].fillna(np.nan) # use fillna('no data') or fillna(np.nan) for null
-    layer2['avg_Crime_victim_density'] = layer2['avg_Crime_victim_density'].fillna(np.nan)
 
     layer2['avg_Unsafe_NBHD_density_LOG'] = np.log(layer2['avg_Unsafe_NBHD_density'])
     layer2['avg_Unsafe_NBHD_density_LOG'] = np.log(layer2['avg_Unsafe_NBHD_density'].replace(0, np.nan)) # to avoid -inf in some rows
@@ -291,8 +290,6 @@ def THEME_safety_to_layer2(layer2):
     crimes_weighted['avg_crime_density'] = crimes_weighted['weighted_crime_density'] / crimes_weighted['intersect_area1']
 
     layer2 = layer2.merge(crimes_weighted[['group', 'avg_crime_density']], on='group', how='left')
-
-    layer2['avg_crime_density'] = layer2['avg_crime_density'].fillna(np.nan)
 
     layer2['crime_per_hectare'] = layer2['avg_crime_density'] * 10000
 
