@@ -54,7 +54,6 @@ def THEME_typology_to_layer2(layer2):
     garden = layer1[layer1['TYPE_2'].str.strip().str.lower() == 'odling'].copy()
     religious = layer1[layer1['TYPE_2'].str.strip().str.lower() == 'kyrk-relaterat'].copy()
 
-    # Add typology labels
     park['typology'] = 'Park'
     dog_park['typology'] = 'Dog park'
     outdoor_gym['typology'] = 'Outdoor gym'
@@ -65,16 +64,13 @@ def THEME_typology_to_layer2(layer2):
     garden['typology'] = 'Garden'
     religious['typology'] = 'Religious'
 
-    # Combine all geometry versions into one GeoDataFrame
     play_ground_all = gpd.GeoDataFrame(pd.concat([OSM_play_ground, OSM_play_ground_pts, play_ground], ignore_index=True),
                                        crs=layer2.crs)
 
-    # Combine all typologies into one GeoDataFrame
     typology_all = gpd.GeoDataFrame(
         pd.concat([park, dog_park, outdoor_gym, play_ground_all, school_yard, sports_field, skate_park, garden, religious],
                   ignore_index=True), crs=layer2.crs)
 
-    # Spatial join with dissolved polygons
     joined_typology = gpd.sjoin(
         typology_all[['geometry', 'typology']],
         layer2[['geometry']],
@@ -82,7 +78,6 @@ def THEME_typology_to_layer2(layer2):
         predicate='intersects'
     )
 
-    # Group by polygon and collect unique names
     grouped_typology = (
         joined_typology.groupby('index_right')['typology']
             .apply(lambda x: ", ".join(sorted(set(x.dropna()))))
@@ -116,6 +111,35 @@ def THEME_typology_to_layer2(layer2):
 
     stadsdelsomraden.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_typology_per_stadsdelsomrade", driver="GPKG", mode="w")
 
+    # == density of typologies per park ==
+    typologies = {
+        "park": park,
+        "dog_park": dog_park,
+        "outdoor_gym": outdoor_gym,
+        "play_ground": play_ground_all,
+        "school_yard": school_yard,
+        "sports_field": sports_field,
+        "skate_park": skate_park,
+        "garden": garden,
+        "religious": religious,
+    }
+
+    for key in typologies:
+        typologies[key] = typologies[key].to_crs(layer2.crs)
+
+    # count
+    for name, typology_all in typologies.items():
+        joined = gpd.sjoin(typology_all, layer2, how="inner", predicate="intersects")
+        counts = joined.groupby("group").size().rename(f"{name}_count")
+        layer2 = layer2.join(counts, on="group")
+    layer2.fillna({f"{name}_count": 0 for name in typologies}, inplace=True)
+
+    # count per hectare
+    for name in typologies:
+        count_col = f"{name}_count"
+        density_col = f"{name}_per_ha"
+        layer2[density_col] = layer2[count_col] / (layer2["park_area"] / 10000)
+        layer2[density_col] = layer2[density_col].fillna(0)
     return layer2
 layer2 = THEME_typology_to_layer2(layer2)
 
