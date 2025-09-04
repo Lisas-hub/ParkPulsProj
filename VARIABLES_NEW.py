@@ -2,14 +2,14 @@
 import geopandas as gpd
 
 
-accessibility = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_accessibility", driver="GPKG", mode="w")
-amenities = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_amenities", driver="GPKG", mode="w")
-environment = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_environment", driver="GPKG", mode="w")
-food = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_food", driver="GPKG", mode="w")
-noise_pollution = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_noise_pollution", driver="GPKG", mode="w")
-safety = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_safety", driver="GPKG", mode="w")
-socioeconomic = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_socioeconomic", driver="GPKG", mode="w")
-typology = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_typology", driver="GPKG", mode="w")
+accessibility = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_accessibility")
+amenities = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_amenities")
+environment = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_environment")
+food = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_food")
+noise_pollution = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_noise_pollution")
+safety = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_safety")
+socioeconomic = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_socioeconomic")
+typology = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_typology")
 
 layers = [accessibility, amenities, environment, food, noise_pollution, safety, socioeconomic, typology]
 
