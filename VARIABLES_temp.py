@@ -39,7 +39,6 @@ def THEME_park_maintenance_to_layer2(layer2):
 
     # start here
 
-    # papperskorgar = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Skrapkorg_Punkt.gpkg", layer="Skrapkorg_Punkt")
 
     return layer2
 layer2 = THEME_park_maintenance_to_layer2(layer2)

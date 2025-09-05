@@ -184,8 +184,95 @@ def THEME_temperature_to_layer2(layer2):
                           how="left")
 
     return layer2
-
 layer2 = THEME_temperature_to_layer2(layer2)
+
+def THEME_protected_areas_to_layer2(layer2):
+
+    # protected areas
+    nature_reserve = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Naturvardsverket\Skyddade_omraden_naturvardsregistret\Naturreservat\PS.protectedSites.NR.gml").to_crs(layer2.crs)
+    culture_reserve = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Naturvardsverket\Skyddade_omraden_naturvardsregistret\Kulturreservat\PS.protectedSites.KR.gml").to_crs(layer2.crs)
+    natural_monument = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Naturvardsverket\Skyddade_omraden_naturvardsregistret\Naturminnen\PS.protectedSites.NM.gml").to_crs(layer2.crs)
+    water_reserve = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Naturvardsverket\Omraden_med_sarskilda_restriktioner\Vattenskyddsomraden\am_drinkingWaterProtectionArea.gml").to_crs(layer2.crs)
+    entry_forbidden = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Naturvardsverket\Omraden_med_sarskilda_restriktioner\Foreskriftsomraden\am_regulatoryAreas.gml").to_crs(layer2.crs)
+
+    municipality = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Kommun_Stadskartan.gpkg").to_crs(layer2.crs)
+
+    nature_reserve = gpd.clip(nature_reserve, municipality)
+    culture_reserve = gpd.clip(culture_reserve, municipality)
+    natural_monument = gpd.clip(natural_monument, municipality)
+    water_reserve = gpd.clip(water_reserve, municipality)
+    entry_forbidden = gpd.clip(entry_forbidden, municipality)
+
+    nature_reserve["Protected_Type"] = "Naturreservat"
+    culture_reserve["Protected_Type"] = "Kulturreservat"
+    natural_monument["Protected_Type"] = "Naturminne"
+    water_reserve["Protected_Type"] = "Vattenskyddsområde"
+    entry_forbidden["Protected_Type"] = "Tillträdesförbud under särskilda perioder"
+
+    nature_reserve.to_file("data/VARIABLES_NEW.gpkg", layer="nature_reserve_STHLM", driver="GPKG", mode="w")
+    culture_reserve.to_file("data/VARIABLES_NEW.gpkg", layer="culture_reserve_STHLM", driver="GPKG", mode="w")
+    natural_monument.to_file("data/VARIABLES_NEW.gpkg", layer="natural_monument_STHLM", driver="GPKG", mode="w")
+    water_reserve.to_file("data/VARIABLES_NEW.gpkg", layer="water_reserve_STHLM", driver="GPKG", mode="w")
+    entry_forbidden.to_file("data/VARIABLES_NEW.gpkg", layer="entry_forbidden_STHLM", driver="GPKG", mode="w")
+
+    protected_areas_all = gpd.GeoDataFrame(
+        pd.concat([
+            nature_reserve[["geometry", "Protected_Type"]],
+            culture_reserve[["geometry", "Protected_Type"]],
+            natural_monument[["geometry", "Protected_Type"]],
+            water_reserve[["geometry", "Protected_Type"]],
+            entry_forbidden[["geometry", "Protected_Type"]]
+        ], ignore_index=True),
+        crs=layer2.crs
+    )
+
+    joined_protected = gpd.sjoin(
+        protected_areas_all,
+        layer2[['geometry']],
+        how='inner',
+        predicate='intersects'
+    )
+
+    grouped_protected = (
+        joined_protected.groupby("index_right")["Protected_Type"]
+            .apply(lambda x: ", ".join(sorted(set(x))))
+            .reset_index()
+    )
+
+    layer2["Protected_areas_combined"] = layer2.index.map(grouped_protected.set_index("index_right")["Protected_Type"])
+    layer2["Protected_areas_combined"] = layer2["Protected_areas_combined"].fillna("Inga")
+
+
+
+    # ***** forts här ********
+    # point layer for monuments
+    natural_monument_points = natural_monument[natural_monument.geometry.type == "Point"].copy()
+    natural_monument_polygons = natural_monument[
+        natural_monument.geometry.type.isin(["Polygon", "MultiPolygon"])
+    ].copy()
+
+    # Convert polygons to points (for visualization)
+    natural_monument_polygons["geometry"] = natural_monument_polygons.geometry.representative_point()
+    import pandas as pd
+
+    # Ensure same columns (optional)
+    common_cols = list(set(natural_monument_points.columns) & set(natural_monument_polygons.columns))
+    natural_monument_points = natural_monument_points[common_cols]
+    natural_monument_polygons = natural_monument_polygons[common_cols]
+
+    # Combine
+    natural_monument_combined_points = gpd.GeoDataFrame(
+        pd.concat([natural_monument_points, natural_monument_polygons], ignore_index=True),
+        crs=natural_monument_points.crs
+    )
+    natural_monument_combined_points.to_file(
+        "data/natural_monument_points_combined.gpkg",
+        layer="natural_monument_points",
+        driver="GPKG"
+    )
+
+    return layer2
+layer2 = THEME_protected_areas_to_layer2(layer2)
 
 layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_environment", driver="GPKG", mode="w")
 
