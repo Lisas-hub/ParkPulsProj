@@ -242,37 +242,148 @@ def THEME_protected_areas_to_layer2(layer2):
     layer2["Protected_areas_combined"] = layer2.index.map(grouped_protected.set_index("index_right")["Protected_Type"])
     layer2["Protected_areas_combined"] = layer2["Protected_areas_combined"].fillna("Inga")
 
-
-
-    # ***** forts här ********
     # point layer for monuments
     natural_monument_points = natural_monument[natural_monument.geometry.type == "Point"].copy()
     natural_monument_polygons = natural_monument[
         natural_monument.geometry.type.isin(["Polygon", "MultiPolygon"])
     ].copy()
 
-    # Convert polygons to points (for visualization)
     natural_monument_polygons["geometry"] = natural_monument_polygons.geometry.representative_point()
-    import pandas as pd
 
-    # Ensure same columns (optional)
     common_cols = list(set(natural_monument_points.columns) & set(natural_monument_polygons.columns))
     natural_monument_points = natural_monument_points[common_cols]
     natural_monument_polygons = natural_monument_polygons[common_cols]
 
-    # Combine
     natural_monument_combined_points = gpd.GeoDataFrame(
         pd.concat([natural_monument_points, natural_monument_polygons], ignore_index=True),
         crs=natural_monument_points.crs
     )
-    natural_monument_combined_points.to_file(
-        "data/natural_monument_points_combined.gpkg",
-        layer="natural_monument_points",
-        driver="GPKG"
-    )
+
+    natural_monument_combined_points.to_file("data/VARIABLES_NEW.gpkg", layer="natural_monuments_pts", driver="GPKG")
 
     return layer2
 layer2 = THEME_protected_areas_to_layer2(layer2)
+
+def noise_to_layer2(layer2):
+
+    noise = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Bullerkartan_2022_Vag_Tag_och_Flyg.gpkg").to_crs(layer2.crs)
+
+    noise['area'] = noise.geometry.area
+
+    parks_noise = gpd.overlay(layer2, noise, how='intersection')
+    parks_noise['overlap_area'] = parks_noise.geometry.area
+
+    parks_noise = parks_noise.merge(layer2, on='group')
+
+    category_table = parks_noise.pivot_table(
+        index='group',
+        columns='LEQ_DBA',
+        values='overlap_area',
+        aggfunc='sum',
+        fill_value=0
+    ).reset_index()
+
+    noise_stats = parks_noise.groupby('group').agg(
+        min_noise=('ISOV1', 'min'),
+        max_noise=('ISOV2', 'max')
+    ).reset_index()
+
+    noise_stats['range_dba'] = noise_stats['max_noise'] - noise_stats['min_noise']
+
+    final = pd.merge(category_table, noise_stats, on='group')
+
+    layer2 = layer2.merge(final, on='group')
+
+    return layer2
+layer2 = noise_to_layer2(layer2)
+
+def noiseXbiotop_to_layer2(layer2):
+
+    noise_cols = [
+        '<40', '40-45', '45-50', '50-55',
+        '55-60', '60-65', '65-70', '70-75', '>75'
+    ]
+
+    landcover_cols = [
+        'Skog-/buskmark',
+        'Urban gråstruktur, byggnader',
+        'Urban gråstruktur, infrastruktur',
+        'Urban grönstruktur, vegetation',
+        'Urban grönstruktur, öppen yta',
+        'Urban grönstruktur, övrigt',
+        'Öppen yta'
+    ]
+
+    # Initialize an empty list to collect records
+    records = []
+
+    for idx, row in layer2.iterrows():
+        park_area = row['park_area']
+
+        for noise_bin in noise_cols:
+            noise_area = row[noise_bin]
+
+            for lc in landcover_cols:
+                lc_area = row[lc]
+                proportion = lc_area / park_area if park_area > 0 else 0
+                estimated_lc_area_in_bin = proportion * noise_area
+
+                records.append({
+                    'Noise_Bin': noise_bin.replace('noise_', ''),
+                    'Land_Cover': lc,
+                    'Estimated_Area': estimated_lc_area_in_bin
+                })
+
+    # Create a new dataframe
+    df_long = pd.DataFrame(records)
+
+    noise_group_map = {
+        '<40': 'Low',
+        '40-45': 'Low',
+        '45-50': 'Medium',
+        '50-55': 'Medium',
+        '55-60': 'Medium',
+        '60-65': 'High',
+        '65-70': 'High',
+        '70-75': 'High',
+        '>75': 'High'
+    }
+    # Apply grouping
+    df_long['Noise_Group'] = df_long['Noise_Bin'].map(noise_group_map)
+
+    # Group by Noise_Group and Land_Cover
+    df_grouped = df_long.groupby(['Noise_Group', 'Land_Cover'])['Estimated_Area'].sum().reset_index()
+
+    total_per_group = df_grouped.groupby('Noise_Group')['Estimated_Area'].sum().reset_index()
+    total_per_group.rename(columns={'Estimated_Area': 'Total_Area'}, inplace=True)
+
+    df_grouped = df_grouped.merge(total_per_group, on='Noise_Group')
+    df_grouped['Proportion'] = df_grouped['Estimated_Area'] / df_grouped['Total_Area']
+
+    #df_grouped.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_noiseXbiotop1", driver="GPKG", mode="w")
+    df_grouped.to_csv(r"C:\Users\lisajos\PycharmProjects\landcover_by_noise_group.csv", index=False)
+
+    # Pivot to get land cover types as columns
+    df_pivot = df_grouped.pivot(index='Noise_Group', columns='Land_Cover', values='Proportion')
+    df_pivot = df_pivot.fillna(0)
+
+    # Ensure correct order of noise bins (optional)
+    noise_group_order = ['Low', 'Medium', 'High']
+    df_pivot = df_pivot.reindex(noise_group_order)
+
+    import matplotlib.pyplot as plt
+
+    # Plot
+    df_pivot.plot(kind='bar', stacked=True, figsize=(12, 6), colormap='tab20')
+    plt.ylabel('Proportion of Land Cover')
+    plt.xlabel('Noise Level (dBA)')
+    plt.title('Proportion of Land Cover per Noise Level')
+    plt.legend(title='Land Cover Type', bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+    plt.show()
+
+    return layer2
+layer2 = noiseXbiotop_to_layer2(layer2)
 
 layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_environment", driver="GPKG", mode="w")
 
