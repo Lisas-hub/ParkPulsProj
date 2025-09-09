@@ -180,5 +180,28 @@ def park_area_to_layer2(layer2):
     return layer2
 layer2 = park_area_to_layer2(layer2)
 
+def mouseover_to_layer2(layer2):
+
+    joined_mouseover = gpd.sjoin(
+        layer1[['geometry', 'MOUSEOVER_']],
+        layer2[['geometry']],
+        how='left',
+        predicate='intersects'
+    )
+
+    grouped_mouseover = (
+        joined_mouseover.groupby("index_right")["MOUSEOVER_"]
+            .apply(lambda x: ", ".join(sorted(
+            set(x.dropna()))))
+            .reset_index()
+    )
+
+    layer2["MOUSEOVER_combined"] = layer2.index.map(grouped_mouseover.set_index("index_right")["MOUSEOVER_"])
+
+    return layer2
+layer2 = mouseover_to_layer2(layer2)
+
+
+
 layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base", driver="GPKG", mode="w")
 
