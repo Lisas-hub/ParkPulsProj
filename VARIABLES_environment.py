@@ -209,6 +209,10 @@ def THEME_protected_areas_to_layer2(layer2):
     water_reserve["Protected_Type"] = "Vattenskyddsområde"
     entry_forbidden["Protected_Type"] = "Tillträdesförbud under särskilda perioder"
 
+    # checking polygons, only 11/18 are actual reserves, the rest are slivers
+    nature_reserve["area"] = nature_reserve.geometry.area
+    print(nature_reserve.head(20))
+
     nature_reserve.to_file("data/VARIABLES_NEW.gpkg", layer="nature_reserve_STHLM", driver="GPKG", mode="w")
     culture_reserve.to_file("data/VARIABLES_NEW.gpkg", layer="culture_reserve_STHLM", driver="GPKG", mode="w")
     natural_monument.to_file("data/VARIABLES_NEW.gpkg", layer="natural_monument_STHLM", driver="GPKG", mode="w")
