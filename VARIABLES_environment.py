@@ -342,15 +342,15 @@ def noiseXbiotop_to_layer2(layer2):
     df_long = pd.DataFrame(records)
 
     noise_group_map = {
-        '<40': 'Low',
-        '40-45': 'Low',
-        '45-50': 'Medium',
-        '50-55': 'Medium',
-        '55-60': 'Medium',
-        '60-65': 'High',
-        '65-70': 'High',
-        '70-75': 'High',
-        '>75': 'High'
+        '<40': 'Låg (<40 dBA)',
+        '40-45': 'Låg (<40 dBA)',
+        '45-50': 'Medel (45-60 dBA)',
+        '50-55': 'Medel (45-60 dBA)',
+        '55-60': 'Medel (45-60 dBA)',
+        '60-65': 'Hög (>60 dBA)',
+        '65-70': 'Hög (>60 dBA)',
+        '70-75': 'Hög (>60 dBA)',
+        '>75': 'Hög (>60 dBA)'
     }
     # Apply grouping
     df_long['Noise_Group'] = df_long['Noise_Bin'].map(noise_group_map)
@@ -362,7 +362,7 @@ def noiseXbiotop_to_layer2(layer2):
     total_per_group.rename(columns={'Estimated_Area': 'Total_Area'}, inplace=True)
 
     df_grouped = df_grouped.merge(total_per_group, on='Noise_Group')
-    df_grouped['Proportion'] = df_grouped['Estimated_Area'] / df_grouped['Total_Area']
+    df_grouped['Proportion'] = (df_grouped['Estimated_Area'] / df_grouped['Total_Area']) * 100
 
     #df_grouped.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_noiseXbiotop1", driver="GPKG", mode="w")
     df_grouped.to_csv(r"C:\Users\lisajos\PycharmProjects\landcover_by_noise_group.csv", index=False)
@@ -372,17 +372,42 @@ def noiseXbiotop_to_layer2(layer2):
     df_pivot = df_pivot.fillna(0)
 
     # Ensure correct order of noise bins (optional)
-    noise_group_order = ['Low', 'Medium', 'High']
+    noise_group_order = ['Låg (<40 dBA)', 'Medel (45-60 dBA)', 'Hög (>60 dBA)']
     df_pivot = df_pivot.reindex(noise_group_order)
 
     import matplotlib.pyplot as plt
 
     # Plot
-    df_pivot.plot(kind='bar', stacked=True, figsize=(12, 6), colormap='tab20')
-    plt.ylabel('Proportion of Land Cover')
-    plt.xlabel('Noise Level (dBA)')
-    plt.title('Proportion of Land Cover per Noise Level')
-    plt.legend(title='Land Cover Type', bbox_to_anchor=(1.05, 1), loc='upper left')
+    custom_colors = {
+        'Skog-/buskmark': '#086120', # green
+        'Urban gråstruktur, byggnader': '#450202', # dark red
+        'Urban gråstruktur, infrastruktur': '#a6a6a6', # grey
+        'Urban grönstruktur, vegetation': '#8ccc81', # light green
+        'Urban grönstruktur, öppen yta': '#d3eda8', # pale warm green
+        'Urban grönstruktur, övrigt': '#2accd1', # turqoise because the category should be aggregated with something else
+        'Öppen yta': '#f2eed0', # pale yellow
+    }
+
+    df_pivot.plot(
+        kind='bar',
+        stacked=True,
+        figsize=(12, 8),
+        color=[custom_colors[col] for col in df_pivot.columns],
+        width=0.8 # at 1, bars tough eachothers sides
+    )
+    plt.ylabel('Andel markanvändning i parker (%)', fontsize=16)
+    plt.xlabel('Bullernivå', fontsize=16)
+    plt.title('Andel markanvändning per bullernivå', fontsize=16)
+    plt.yticks(fontsize=14)
+    plt.xticks(rotation=0, ha='center', fontsize=14) # rotation=45 for diagonal, if diagonal, use ha='right'
+    plt.legend(
+        title=False,
+        bbox_to_anchor=(1.05, 1),
+        loc='upper left',
+        frameon=False,
+        fontsize=16,
+        title_fontsize=18
+    )
     plt.tight_layout()
     plt.show()
 
