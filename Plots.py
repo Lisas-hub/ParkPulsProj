@@ -89,4 +89,50 @@ for group_name in ["sport_play", "calm_nature", "social", "other"]:
     plt.tight_layout()
     plt.show()
 
+
+# ======================================================
+# === temperature x LULC ===
+
+bins = [25, 29, 31, 32, 34, 37]
+labels = ['25-29', '29-31', '31-32', '32-34', '34-37']
+variables_all['temp_bin'] = pd.cut(variables_all['avg_weighted_mean_temp'], bins=bins, labels=labels, include_lowest=True)
+
+landcover_cols = [
+    'Skog-/buskmark',
+    'Urban gråstruktur, byggnader',
+    'Urban gråstruktur, infrastruktur',
+    'Urban grönstruktur, vegetation',
+    'Urban grönstruktur, öppen yta',
+    'Urban grönstruktur, övrigt',
+    'Öppen yta'
+]
+
+grouped = variables_all.groupby('temp_bin')[landcover_cols + ['park_area']].sum()
+
+for col in landcover_cols:
+    grouped[col] = (grouped[col] / grouped['park_area']) * 100
+
+# drop park_area, not needed in the plot
+proportions = grouped.drop(columns=['park_area'])
+
+# plot
+custom_colors = {
+    'Skog-/buskmark': '#086120',  # green
+    'Urban gråstruktur, byggnader': '#450202',  # dark red
+    'Urban gråstruktur, infrastruktur': '#a6a6a6',  # grey
+    'Urban grönstruktur, vegetation': '#8ccc81',  # light green
+    'Urban grönstruktur, öppen yta': '#d3eda8',  # pale warm green
+    'Urban grönstruktur, övrigt': '#2accd1',  # turqoise because the category should be aggregated with something else
+    'Öppen yta': '#f2eed0',  # pale yellow
+}
+proportions.plot(kind='bar', stacked=True, figsize=(10,6), color=[custom_colors[col] for col in proportions.columns], width= 0.7)
+plt.title('Markanvändning i parker för olika maxtemperaturer', fontsize= 16)
+plt.ylabel('Andel parkarea (%)', fontsize= 16)
+plt.xlabel('Maxtemperatur (°C)', fontsize= 16)
+plt.yticks(fontsize= 14)
+plt.xticks(rotation=0, ha='center', fontsize=14)
+plt.legend(title=False, bbox_to_anchor=(1.05, 1), loc='upper left', frameon= False, fontsize= 16, title_fontsize= 18)
+plt.tight_layout()
+plt.show()
+
 # =====================

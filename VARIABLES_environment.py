@@ -342,8 +342,8 @@ def noiseXbiotop_to_layer2(layer2):
     df_long = pd.DataFrame(records)
 
     noise_group_map = {
-        '<40': 'Låg (<40 dBA)',
-        '40-45': 'Låg (<40 dBA)',
+        '<40': 'Låg (<45 dBA)',
+        '40-45': 'Låg (<45 dBA)',
         '45-50': 'Medel (45-60 dBA)',
         '50-55': 'Medel (45-60 dBA)',
         '55-60': 'Medel (45-60 dBA)',
@@ -372,7 +372,7 @@ def noiseXbiotop_to_layer2(layer2):
     df_pivot = df_pivot.fillna(0)
 
     # Ensure correct order of noise bins (optional)
-    noise_group_order = ['Låg (<40 dBA)', 'Medel (45-60 dBA)', 'Hög (>60 dBA)']
+    noise_group_order = ['Låg (<45 dBA)', 'Medel (45-60 dBA)', 'Hög (>60 dBA)']
     df_pivot = df_pivot.reindex(noise_group_order)
 
     import matplotlib.pyplot as plt
@@ -393,9 +393,9 @@ def noiseXbiotop_to_layer2(layer2):
         stacked=True,
         figsize=(12, 8),
         color=[custom_colors[col] for col in df_pivot.columns],
-        width=0.8 # at 1, bars tough eachothers sides
+        width=0.7 # at 1, bars tough eachothers sides
     )
-    plt.ylabel('Andel markanvändning i parker (%)', fontsize=16)
+    plt.ylabel('Andel parkarea (%)', fontsize=16)
     plt.xlabel('Bullernivå', fontsize=16)
     plt.title('Andel markanvändning per bullernivå', fontsize=16)
     plt.yticks(fontsize=14)
