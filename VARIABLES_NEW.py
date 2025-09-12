@@ -6,7 +6,7 @@ accessibility = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_access
 amenities = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_amenities")
 environment = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_environment")
 food = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_food")
-#noise_pollution = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_noise_pollution")
+#noise_pollution = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_noise_pollution") - added to environment instead
 safety = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_safety")
 socioeconomic = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_socioeconomic")
 typology = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_typology")

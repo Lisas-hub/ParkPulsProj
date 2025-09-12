@@ -38,7 +38,8 @@ def THEME_amenities_to_layer2(layer2):
 
     bench_all = gpd.GeoDataFrame(pd.concat([bench_pts, bench_line, bench_area], ignore_index=True),crs=layer2.crs)
     bbq_all = gpd.GeoDataFrame(pd.concat([bbq_pts, bbq_area], ignore_index=True), crs=layer2.crs)
-    amenities_all = gpd.GeoDataFrame(pd.concat([toilet, bench_all, bbq_all, drinking_fountain, waste_paper_bin, picnic_table], ignore_index=True), crs=layer2.crs)
+    amenities_all = gpd.GeoDataFrame(pd.concat([bench_all, bbq_all, drinking_fountain, waste_paper_bin, picnic_table], ignore_index=True), crs=layer2.crs)
+    # toilet not in ^ameneties_all^, using layer2_buffered for toilets below
 
     joined_amenities = gpd.sjoin(
         amenities_all[['geometry', 'amenity']],
@@ -47,8 +48,22 @@ def THEME_amenities_to_layer2(layer2):
         predicate='intersects'
     )
 
+    # === buffered WC ===
+    layer2_buffered = layer2.copy()
+    layer2_buffered['geometry'] = layer2_buffered.geometry.buffer(50)
+    joined_buffered_WC = gpd.sjoin(
+        toilet[['geometry', 'amenity']],
+        layer2_buffered[['geometry']],
+        how='inner',
+        predicate='intersects'
+    )
+    # ===================
+
+    # combine toilets with other amenities
+    combined_amenities = pd.concat([joined_amenities, joined_buffered_WC], ignore_index=True)
+
     grouped_amenities = (
-        joined_amenities.groupby('index_right')['amenity']
+        combined_amenities.groupby('index_right')['amenity']
             .apply(lambda x: ", ".join(sorted(set(x.dropna()))))
             .reset_index()
     )
