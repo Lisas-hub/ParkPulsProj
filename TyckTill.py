@@ -153,9 +153,14 @@ summary = tycktill_pts_in_parks.groupby('group').agg(
     unique_comments=('Fritext', 'nunique'),
 ).reset_index()
 
-summary['pts_per_hectare'] = summary['num_points'] / (parks.set_index('group').loc[summary['group'], 'park_area'] / 10000)
-
+summary['park_area'] = summary['group'].map(parks.set_index('group')['park_area'])
+summary['tycktill_pts_per_hectare'] = summary['num_points'] / (summary['park_area'] / 10000)
 parks = parks.merge(summary, on='group', how='left')
+
+tycktill_pts_in_parks['Kategori'] = tycktill_pts_in_parks['Kategori'].fillna('Okänd')
+kategori_counts = tycktill_pts_in_parks.groupby(['group', 'Kategori']).size().unstack(fill_value=0).reset_index()
+parks = parks.merge(kategori_counts, on='group', how='left')
+
 parks.to_file("data/tycktill.gpkg", layer="tycktill_stats_per_park", driver="GPKG", mode="w")
 
 
