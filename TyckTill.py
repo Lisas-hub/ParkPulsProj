@@ -165,10 +165,5 @@ parks.to_file("data/tycktill.gpkg", layer="tycktill_stats_per_park", driver="GPK
 
 
 
-# ===========================
-# === PREPP FOR SENTIMENT ===
-
-# add a column for cleaned up Fritext (formatting the same for all cells)
-
 
 
