@@ -58,11 +58,11 @@ for sentence in doc.sentences:
     for word in sentence.words:
         print(f"{word.text}\t{word.lemma}\t{word.upos}")
 
-# use the whole Fritext column
+# === use the whole Fritext column ===
 tycktill_df = pd.read_excel(r'C:\Users\lisajos\QGIS_Projects\TyckTill\NEW\Rådata\Raw_TyckTill_2023-01-01_2024-12-31.xlsx')
 
 # word frequency
-all_words = []
+all_words = [] # super slow process
 for row in tycktill_df["Fritext"]:
     doc = nlp(row)
     for sentence in doc.sentences:
