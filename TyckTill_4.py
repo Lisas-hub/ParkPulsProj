@@ -79,32 +79,41 @@ tycktill_df.to_excel("data/cleaned_dataset.xlsx")
 # load stopwords
 stop_words = set(stopwords.words("swedish"))
 
+# ======================
+# create geometry column
+
+tycktill_df["geometry"] = tycktill_df.apply(lambda row: Point(row["Koordinater_x"], row["Koordinater_Y"]), axis=1)
+tycktill_df_geo = gpd.GeoDataFrame(tycktill_df, geometry="geometry", crs="EPSG:4326").to_crs("EPSG:3006")
+
+# =================================================
+# prepp for filtering inside or outside parks later
+print("Prepping for filtering...")
+parks = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
+
+#tycktill_df_geo["in_park"] = tycktill_df_geo.geometry.within(parks.geometry.union_all()) *super slow so use sjoin instead
+subset_within_parks = gpd.sjoin(tycktill_df_geo, parks, how="inner", predicate="within")
+tycktill_df_geo["in_park"] = tycktill_df_geo.index.isin(subset_within_parks.index)
+
 # ============================================
 # subset by parks and a limited number of rows
 
 # subset tycktill dataset to begin with before committing to processing all 300000+ rows
-#tycktill_df_subset = tycktill_df.head(50).copy() # uses 50 first rows (only from 2023)
-#tycktill_df_subset = tycktill_df.sample(n=500).copy() # uses 50 random rows
+#subset_tycktill_df = tycktill_df.head(50).copy() # uses 50 first rows (only from 2023)   * remove? old
+#subset_tycktill_df = subset_within_parks.sample(n=50).copy() # uses 500 random rows      * remove? old
+#subset_tycktill_df = tycktill_df.sample(n=50).copy()                                     * remove? old
 
-# extract only the points in parks
-parks = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
+sample_in = tycktill_df_geo[tycktill_df_geo["in_park"]].sample(n=50, random_state=1) # in_park = true
+sample_out = tycktill_df_geo[~tycktill_df_geo["in_park"]].sample(n=50, random_state=1) # in_park = false
 
-tycktill_df["geometry"] = tycktill_df.apply(lambda row: Point(row["Koordinater_x"], row["Koordinater_Y"]), axis=1)
-geo_tycktill_df = gpd.GeoDataFrame(tycktill_df, geometry="geometry", crs="EPSG:4326")
-geo_tycktill_df = geo_tycktill_df.to_crs("EPSG:3006")
-
-subset_within_parks = gpd.sjoin(geo_tycktill_df, parks, how="inner", predicate="within")
-
-#  n=X rows
-tycktill_df_subset = subset_within_parks.sample(n=5000).copy() # uses 500 random rows
+subset_tycktill_df = pd.concat([sample_in, sample_out]).copy() # get an equal number from within and outside parks
 
 # ============
 # NLP pipeline
 nlp = stanza.Pipeline("sv", processors="tokenize,pos,lemma")
 
 lemmatized_rows = []
-for i, row in tycktill_df_subset.iterrows():
-    print(f"Processing row {i + 1} of {len(tycktill_df_subset)}", flush=True)
+for i, row in subset_tycktill_df.iterrows():
+    print(f"Processing row {i + 1} of {len(subset_tycktill_df)}", flush=True)
 
     text = row["clean_Fritext"]
 
@@ -116,40 +125,57 @@ for i, row in tycktill_df_subset.iterrows():
 
     lemmatized_rows.append(lemmas)
 
-tycktill_df_subset["lemmas"] = lemmatized_rows
+subset_tycktill_df["lemmas"] = lemmatized_rows
 
-print(tycktill_df_subset.head(5))
+# ============================================
+# separate between inside and outside of parks
+
+lemmas_in = [lemma for row in subset_tycktill_df[subset_tycktill_df["in_park"]]["lemmas"] for lemma in row]
+lemmas_out = [lemma for row in subset_tycktill_df[~subset_tycktill_df["in_park"]]["lemmas"] for lemma in row]
 
 # ======================
 # === WORD FREQUENCY ===
 
-all_lemmas = [lemma for lemmas_list in tycktill_df_subset["lemmas"] for lemma in lemmas_list]
+lemmas_all = [lemma for lemmas_list in subset_tycktill_df["lemmas"] for lemma in lemmas_list]
+lemmas_in = [lemma for lemmas_list in subset_tycktill_df[subset_tycktill_df["in_park"]]["lemmas"] for lemma in lemmas_list]
+lemmas_out = [lemma for lemmas_list in subset_tycktill_df[~subset_tycktill_df["in_park"]]["lemmas"] for lemma in lemmas_list]
 
 # ================
 # total word count
 # (every occurence regardless of row, so if multiple per row they are all counted)
-word_frequencies = Counter(all_lemmas)
-most_common_words = word_frequencies.most_common(10)
-for word, frequency in most_common_words:
-    print(f"{word}: {frequency}") # ger detta en output? Tror nått är fel
+word_freq_all = Counter(lemmas_all)
+word_freq_in = Counter(lemmas_in)
+word_freq_out = Counter(lemmas_out)
+
+print("\n--- Top Words All ---")
+for word, freq in word_freq_all.most_common(10):
+    print(f"{word}: {freq}")
+
+print("\n--- Top Words Inside Parks ---")
+for word, freq in word_freq_in.most_common(10):
+    print(f"{word}: {freq}")
+
+print("\n--- Top Words Outside Parks ---")
+for word, freq in word_freq_out.most_common(10):
+    print(f"{word}: {freq}")
 
 # =======================
 # word count per Kategori
-category_word_frequencies = {} # create a dictionary for storage
+category_word_freq_all = {} # create a dictionary for storage
 
-for category, group in tycktill_df_subset.groupby("Kategori"):                       # group by
-    all_lemmas = [lemma for lemmas_list in group["lemmas"] for lemma in lemmas_list] # combine lemmas per Kategori
-    word_frequencies = Counter(all_lemmas)
-    category_word_frequencies[category] = word_frequencies                           # store in dictionary
+for category, group in subset_tycktill_df.groupby("Kategori"):
+    lemmas_all = [lemma for lemmas_list in group["lemmas"] for lemma in lemmas_list]
+    word_freq_all = Counter(lemmas_all)
+    category_word_freq_all[category] = word_freq_all
 
-for category, frequencies in category_word_frequencies.items():
+for category, frequencies in category_word_freq_all.items():
     print(f"\nCategory: {category}")
     for word, count in frequencies.most_common(5):
         print(f"{word}: {count}")
 
 # word frequency plots
 # bar chart
-for category, frequencies in category_word_frequencies.items():
+for category, frequencies in category_word_freq_all.items():
     common = frequencies.most_common(10)
     words, counts = zip(*common)
 
@@ -160,11 +186,11 @@ for category, frequencies in category_word_frequencies.items():
     plt.tight_layout()
 
     safe_category = category.replace(" ", "_").replace("/", "_")
-    plt.savefig(f"data/subset5000_random_inParks/barchart_{safe_category}.png", dpi=300, bbox_inches="tight")
+    #plt.savefig(f"data/subset5000_random_inParks/barchart_{safe_category}.png", dpi=300, bbox_inches="tight")
     plt.show()
 
 # word cloud
-for category, frequencies in category_word_frequencies.items():
+for category, frequencies in category_word_freq_all.items():
     wordcloud = WordCloud(width=800, height=400).generate_from_frequencies(frequencies)
 
     plt.figure(figsize=(10, 5))
@@ -174,21 +200,57 @@ for category, frequencies in category_word_frequencies.items():
     plt.tight_layout()
 
     safe_category = category.replace(" ", "_").replace("/", "_")
-    plt.savefig(f"data/subset5000_random_inParks/wordcloud_{safe_category}.png", dpi=300, bbox_inches="tight")
+    #plt.savefig(f"data/subset5000_random_inParks/wordcloud_{safe_category}.png", dpi=300, bbox_inches="tight")
+    plt.show()
+
+# inside parks vs outside (2023 vs 2024)
+grouped = subset_tycktill_df.groupby(["year", "in_park"])
+word_freqs = {}
+for (year, in_park), group in grouped:
+    all_lemmas = [lemma for lemmas in group["lemmas"] for lemma in lemmas]
+    freq = Counter(all_lemmas)
+    label = ("In Park" if in_park else "Outside Park")
+    word_freqs[(year, label)] = freq
+
+years = [2023, 2024]
+
+for year in years:
+    in_freq = word_freqs.get((year, "In Park"), Counter())
+    out_freq = word_freqs.get((year, "Outside Park"), Counter())
+
+    combined = in_freq + out_freq
+    top_words = [word for word, _ in combined.most_common(10)]
+
+    freq_data = {
+        "In Park": [in_freq.get(word, 0) for word in top_words],
+        "Outside Park": [out_freq.get(word, 0) for word in top_words],
+    }
+
+    freq_df = pd.DataFrame(freq_data, index=top_words)
+
+    freq_df.plot(kind="bar", figsize=(12, 6))
+    plt.title(f"Top 10 Words in {year}: In Park vs Outside Park")
+    plt.xlabel("Word")
+    plt.ylabel("Frequency")
+    plt.xticks(rotation=45)
+    plt.legend(title="Location")
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    #plt.savefig()
     plt.show()
 
 # =======================
 # word count by date/time
 
-monthly_counts = tycktill_df_subset.groupby("month").size()
+monthly_counts = subset_tycktill_df.groupby("month").size()
 print(monthly_counts)
 
-weekday_counts = tycktill_df_subset["weekday"].value_counts()
+weekday_counts = subset_tycktill_df["weekday"].value_counts()
 print(weekday_counts)
 
 # date/time plots
 # entries per month for 2023 and 2024
-monthly_counts = tycktill_df_subset.groupby(["year", "month"]).size().reset_index(name="count")
+monthly_counts = subset_tycktill_df.groupby(["year", "month"]).size().reset_index(name="count")
 
 plt.figure(figsize=(10, 5))
 for year in monthly_counts["year"].unique():
@@ -205,16 +267,16 @@ plt.ylabel("Count")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.savefig("data/subset5000_random_inParks/entries_per_month_plot.png", dpi=300, bbox_inches="tight")
+#plt.savefig("data/subset5000_random_inParks/entries_per_month_plot.png", dpi=300, bbox_inches="tight")
 plt.show()
 
 # entries per weekday for 2023 and 2024
 weekday_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 weekday_to_num = {day: i for i, day in enumerate(weekday_order)}
 
-tycktill_df_subset["weekday_num"] = tycktill_df_subset["weekday"].map(weekday_to_num)
+subset_tycktill_df["weekday_num"] = subset_tycktill_df["weekday"].map(weekday_to_num)
 
-weekday_counts = tycktill_df_subset.groupby(["year", "weekday"]).size().reset_index(name="count")
+weekday_counts = subset_tycktill_df.groupby(["year", "weekday"]).size().reset_index(name="count")
 
 weekday_counts["weekday_num"] = weekday_counts["weekday"].map(weekday_to_num)
 
@@ -234,7 +296,12 @@ plt.ylabel("Count")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.savefig("data/subset5000_random_inParks/entries_per_weekday_plot.png", dpi=300, bbox_inches="tight")
+#plt.savefig("data/")
 plt.show()
+
+
+# ========
+# testa jämnför i och utanför parker?
+
 
 # =======================
