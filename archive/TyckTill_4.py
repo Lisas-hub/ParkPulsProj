@@ -4,7 +4,7 @@ import nltk # has some swedish, use for stopwords and maybe more
 import spacy # has swedish but maybe better suited for other types of projects than scentific ones?
 import stanza # good for Swedish? uses Talbanken?
 
-# other packages
+# additional/other packages
 import pandas as pd
 import numpy as np
 from collections import Counter
@@ -13,6 +13,7 @@ from shapely.geometry import Point
 import folium
 import matplotlib.pyplot as plt
 from wordcloud import WordCloud
+import os
 
 from nltk.corpus import stopwords
 
@@ -22,7 +23,8 @@ from nltk.corpus import stopwords
 #stanza.download('sv')
 
 
-tycktill_df = pd.read_excel(r'C:\Users\lisajos\QGIS_Projects\TyckTill\NEW\TyckTill_2023-01-01_2024-12-31.xlsx')
+#tycktill_df = pd.read_excel(r'C:\Users\lisajos\QGIS_Projects\TyckTill\NEW\TyckTill_2023-01-01_2024-12-31.xlsx')
+tycktill_df = pd.read_excel(r'C:\Users\lisajos\QGIS_Projects\TyckTill\NEW\TyckTill_2023-06-01_2025-06-30.xlsx')
 
 # ============================================
 # === PRE PROCESSING OF ADDITIONAL COLUMNS ===
@@ -38,12 +40,28 @@ tycktill_df = pd.read_excel(r'C:\Users\lisajos\QGIS_Projects\TyckTill\NEW\TyckTi
 # convert to appropriate datetime format
 tycktill_df["Inkommet datum"] = pd.to_datetime(tycktill_df["Inkommet datum"], errors="coerce")
 
+# drop rows from 1-30 june 2025 (to get just 2 years: 1 june 2023 to 31 may 2025)
+start_date = '2023-06-01'
+end_date = '2025-06-01' # if i set 2025-05-31 i only get up until 2025-05-30 23:43:07.590000
+mask = (tycktill_df['Inkommet datum'] > start_date) & (tycktill_df['Inkommet datum'] <= end_date)
+
+tycktill_df = tycktill_df.loc[mask]
+
+print(tycktill_df['Inkommet datum'].min(), tycktill_df['Inkommet datum'].max())
+
 # extract date (or time) only
 tycktill_df["year"] = tycktill_df["Inkommet datum"].dt.year
 tycktill_df["month"] = tycktill_df["Inkommet datum"].dt.month
 tycktill_df["day"] = tycktill_df["Inkommet datum"].dt.day
 tycktill_df["weekday"] = tycktill_df["Inkommet datum"].dt.day_name()
 tycktill_df["hour"] = tycktill_df["Inkommet datum"].dt.hour
+
+# group into period 1 and 2
+tycktill_df["custom_year"] = tycktill_df["Inkommet datum"].apply(
+    lambda x: x.year if x.month >= 6 else x.year - 1
+) # 6 refers to the month of june and 1 year from that
+
+tycktill_df["year_label"] = "June " + tycktill_df["custom_year"].astype(str) + "–May " + (tycktill_df["custom_year"] + 1).astype(str)
 
 # ===========
 # coordinates
@@ -88,7 +106,7 @@ tycktill_df_geo = gpd.GeoDataFrame(tycktill_df, geometry="geometry", crs="EPSG:4
 # =================================================
 # prepp for filtering inside or outside parks later
 print("Prepping for filtering...")
-parks = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
+parks = gpd.read_file("../data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
 
 #tycktill_df_geo["in_park"] = tycktill_df_geo.geometry.within(parks.geometry.union_all()) *super slow so use sjoin instead
 subset_within_parks = gpd.sjoin(tycktill_df_geo, parks, how="inner", predicate="within")
@@ -102,10 +120,17 @@ tycktill_df_geo["in_park"] = tycktill_df_geo.index.isin(subset_within_parks.inde
 #subset_tycktill_df = subset_within_parks.sample(n=50).copy() # uses 500 random rows      * remove? old
 #subset_tycktill_df = tycktill_df.sample(n=50).copy()                                     * remove? old
 
-sample_in = tycktill_df_geo[tycktill_df_geo["in_park"]].sample(n=50, random_state=1) # in_park = true
-sample_out = tycktill_df_geo[~tycktill_df_geo["in_park"]].sample(n=50, random_state=1) # in_park = false
+n_points = 50
+
+sample_in = tycktill_df_geo[tycktill_df_geo["in_park"]].sample(n=n_points, random_state=1) # in_park = true
+sample_out = tycktill_df_geo[~tycktill_df_geo["in_park"]].sample(n=n_points, random_state=1) # in_park = false
 
 subset_tycktill_df = pd.concat([sample_in, sample_out]).copy() # get an equal number from within and outside parks
+
+# set up for saving figures based on number of points in the subset
+output_folder = f"tyck_till_plots/sample_{n_points * 2}_points"
+os.makedirs(output_folder, exist_ok=True)
+
 
 # ============
 # NLP pipeline
@@ -186,8 +211,8 @@ for category, frequencies in category_word_freq_all.items():
     plt.tight_layout()
 
     safe_category = category.replace(" ", "_").replace("/", "_")
-    #plt.savefig(f"data/subset5000_random_inParks/barchart_{safe_category}.png", dpi=300, bbox_inches="tight")
-    plt.show()
+    plt.savefig(f"{output_folder}/barchart_{safe_category}.png", dpi=300, bbox_inches="tight")
+    #plt.show()
 
 # word cloud
 for category, frequencies in category_word_freq_all.items():
@@ -200,43 +225,45 @@ for category, frequencies in category_word_freq_all.items():
     plt.tight_layout()
 
     safe_category = category.replace(" ", "_").replace("/", "_")
-    #plt.savefig(f"data/subset5000_random_inParks/wordcloud_{safe_category}.png", dpi=300, bbox_inches="tight")
-    plt.show()
+    plt.savefig(f"{output_folder}/wordcloud_{safe_category}.png", dpi=300, bbox_inches="tight")
+    #plt.show()
 
-# inside parks vs outside (2023 vs 2024)
-grouped = subset_tycktill_df.groupby(["year", "in_park"])
+# inside parks vs outside (1 june 2023 - 30 may 2024   vs   1 june 2024 - 30 may 2025)
+grouped = subset_tycktill_df.groupby(["year_label", "in_park"])
 word_freqs = {}
-for (year, in_park), group in grouped:
+for (year_label, in_park), group in grouped:
     all_lemmas = [lemma for lemmas in group["lemmas"] for lemma in lemmas]
     freq = Counter(all_lemmas)
     label = ("In Park" if in_park else "Outside Park")
-    word_freqs[(year, label)] = freq
+    word_freqs[(year_label, label)] = freq
 
-years = [2023, 2024]
+year_labels = ["June 2023–May 2024", "June 2024–May 2025"]
 
-for year in years:
-    in_freq = word_freqs.get((year, "In Park"), Counter())
-    out_freq = word_freqs.get((year, "Outside Park"), Counter())
+for year_label in year_labels:
+    in_freq = word_freqs.get((year_label, "In Park"), Counter())
+    out_freq = word_freqs.get((year_label, "Outside Park"), Counter())
 
     combined = in_freq + out_freq
     top_words = [word for word, _ in combined.most_common(10)]
 
-    freq_data = {
-        "In Park": [in_freq.get(word, 0) for word in top_words],
-        "Outside Park": [out_freq.get(word, 0) for word in top_words],
+    total_in = sum(in_freq.values())
+    total_out = sum(out_freq.values())
+    normalized_freq_data = {
+        "In Park": [in_freq.get(word, 0) / total_in * 100 for word in top_words],
+        "Outside Park": [out_freq.get(word, 0) / total_out * 100 for word in top_words],
     }
 
-    freq_df = pd.DataFrame(freq_data, index=top_words)
+    freq_df = pd.DataFrame(normalized_freq_data, index=top_words)
 
     freq_df.plot(kind="bar", figsize=(12, 6))
-    plt.title(f"Top 10 Words in {year}: In Park vs Outside Park")
+    plt.title(f"Top 10 Words in {year_label}: In Park vs Outside Park")
     plt.xlabel("Word")
     plt.ylabel("Frequency")
     plt.xticks(rotation=45)
     plt.legend(title="Location")
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
-    #plt.savefig()
+    plt.savefig(f"{output_folder}/word_freq_{year_label}.png", dpi=300, bbox_inches="tight")
     plt.show()
 
 # =======================
@@ -250,41 +277,50 @@ print(weekday_counts)
 
 # date/time plots
 # entries per month for 2023 and 2024
-monthly_counts = subset_tycktill_df.groupby(["year", "month"]).size().reset_index(name="count")
+month_order_nums = [6, 7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5]
+month_labels = ["Jun", "Jul", "Aug", "Sep", "Oct", "Nov",
+               "Dec", "Jan", "Feb", "Mar", "Apr", "May"]
+month_to_custom_order = {month: i for i, month in enumerate(month_order_nums)}
+
+monthly_counts = subset_tycktill_df.groupby(["year_label", "month"]).size().reset_index(name="count")
+monthly_counts["month_order"] = monthly_counts["month"].map(month_to_custom_order)
+
+monthly_counts = monthly_counts.sort_values(["year_label", "month_order"])
 
 plt.figure(figsize=(10, 5))
-for year in monthly_counts["year"].unique():
-    year_data = monthly_counts[monthly_counts["year"] == year]                      # get only that year's data
-    plt.plot(year_data["month"], year_data["count"], label=str(year), marker='o')   # use month numbers to keep order correct
+for year in monthly_counts["year_label"].unique():
+    year_data = monthly_counts[monthly_counts["year_label"] == year]     # get only that year's data
+    year_data = year_data.sort_values("month_order")
 
-plt.xticks(ticks=range(1, 13), labels=[
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-])
+    plt.plot(
+        year_data["month_order"],
+        year_data["count"],
+        label=str(year),
+        marker='o'
+    )
+
+plt.xticks(ticks=range(12), labels=month_labels)
 plt.title("Entries per Month (by Year)")
 plt.xlabel("Month")
 plt.ylabel("Count")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-#plt.savefig("data/subset5000_random_inParks/entries_per_month_plot.png", dpi=300, bbox_inches="tight")
+plt.savefig(f"{output_folder}/entries_per_month_plot.png", dpi=300, bbox_inches="tight")
 plt.show()
 
 # entries per weekday for 2023 and 2024
 weekday_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 weekday_to_num = {day: i for i, day in enumerate(weekday_order)}
 
-subset_tycktill_df["weekday_num"] = subset_tycktill_df["weekday"].map(weekday_to_num)
-
-weekday_counts = subset_tycktill_df.groupby(["year", "weekday"]).size().reset_index(name="count")
-
+subset_tycktill_df["weekday_num"] = subset_tycktill_df["weekday"].map(weekday_to_num)                   # map weekday names to numbers
+weekday_counts = subset_tycktill_df.groupby(["year_label", "weekday"]).size().reset_index(name="count") # group weekday counts to year
 weekday_counts["weekday_num"] = weekday_counts["weekday"].map(weekday_to_num)
-
-weekday_counts = weekday_counts.sort_values(["year", "weekday_num"])
+weekday_counts = weekday_counts.sort_values(["year_label", "weekday_num"])
 
 plt.figure(figsize=(10, 5))
-for year in weekday_counts["year"].unique():
-    year_data = weekday_counts[weekday_counts["year"] == year]
+for year in weekday_counts["year_label"].unique():
+    year_data = weekday_counts[weekday_counts["year_label"] == year]
     year_data = year_data.sort_values("weekday_num")
     plt.plot(year_data["weekday"], year_data["count"], label=str(year), marker='o')
 
@@ -296,12 +332,12 @@ plt.ylabel("Count")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-#plt.savefig("data/")
+plt.savefig(f"{output_folder}/entries_per_weekday_plot.png", dpi=300, bbox_inches="tight")
 plt.show()
 
 
 # ========
-# testa jämnför i och utanför parker?
+
 
 
 # =======================

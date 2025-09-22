@@ -101,7 +101,7 @@ for t in kategorier:
 # ===========================
 # ===== join with parks =====
 
-parks = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
+parks = gpd.read_file("../data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
 
 tycktill_pts = gpd.GeoDataFrame(
     tycktill_df, geometry=gpd.points_from_xy(
