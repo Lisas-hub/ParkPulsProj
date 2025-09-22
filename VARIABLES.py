@@ -2,10 +2,12 @@
 import geopandas as gpd
 import pandas as pd
 
+input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
+
 # original layer
-layer1 = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Temp\Sociotop_2024_edited.gpkg", layer="Sociotop_2024_edit3")
+layer1 = gpd.read_file(f"{input_directory}\\Temp\\Sociotop_2024_edited.gpkg", layer="Sociotop_2024_edit3")
 # dissolved layer
-layer2 = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Temp\Sociotop_2024_edited.gpkg", layer="Sociotop_2024_edit3_lagad_geometri_dissolve_vclean_dissolve_join")
+layer2 = gpd.read_file(f"{input_directory}\\Temp\\Sociotop_2024_edited.gpkg", layer="Sociotop_2024_edit3_lagad_geometri_dissolve_vclean_dissolve_join")
 # Layer prep
 layer2 = layer2.reset_index(drop=True)
 layer2 = layer2.drop(columns=['fid'], errors='ignore')

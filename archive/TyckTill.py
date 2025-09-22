@@ -3,10 +3,12 @@ import geopandas as gpd
 import pandas as pd
 from collections import Counter
 
+input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
+
 # =================
 # === LOAD DATA ===
 
-tycktill_df = pd.read_excel(r'C:\Users\lisajos\QGIS_Projects\TyckTill\NEW\Rådata\Raw_TyckTill_2023-01-01_2024-12-31.xlsx')
+tycktill_df = pd.read_excel(f"{input_directory}\\lisajos\\QGIS_Projects\\TyckTill\\NEW\\Rådata\\Raw_TyckTill_2023-01-01_2024-12-31.xlsx")
 
 # =========================
 # ======= OVERVIEW ========
@@ -96,72 +98,6 @@ for t in kategorier:
     HeatMap(heat_data, radius=10, blur=5, min_opacity=0.3).add_to(m)
 
     m.save(f"data/heatmap_type_{t}.html")
-
-
-# ===========================
-# ===== join with parks =====
-
-parks = gpd.read_file("../data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
-
-tycktill_pts = gpd.GeoDataFrame(
-    tycktill_df, geometry=gpd.points_from_xy(
-        tycktill_df['Koordinater_x'],
-        tycktill_df['Koordinater_Y']
-    ),
-    crs=4326)
-
-tycktill_pts.to_file("data/tycktill.gpkg", layer="tycktill_pts", driver="GPKG", mode="w")
-
-tycktill_pts_copy = tycktill_pts.copy()
-
-tycktill_pts_copy = tycktill_pts_copy.to_crs(parks.crs)
-
-parks_x_tycktill = gpd.sjoin(tycktill_pts_copy, parks, how="left", predicate="within")
-parks_x_tycktill = parks_x_tycktill.drop(columns='index_right', errors='ignore')
-
-parks_x_tycktill.to_file("data/tycktill.gpkg", layer="parks_x_tycktill", driver="GPKG", mode="w")
-
-
-# ===========================
-# ===== clip with parks =====
-
-tycktill_pts_in_parks = gpd.sjoin(tycktill_pts_copy, parks[['group', 'geometry']], how="inner", predicate="within")
-tycktill_pts_in_parks = tycktill_pts_in_parks.drop(columns='index_right', errors='ignore')
-
-tycktill_pts_in_parks.to_file("data/tycktill.gpkg", layer="tycktill_pts_in_parks", driver="GPKG", mode="w")
-
-tycktill_pts_in_parks['comment_length'] = tycktill_pts_in_parks['Fritext'].astype(str).apply(len)
-tycktill_pts_in_parks['word_count'] = tycktill_pts_in_parks['Fritext'].astype(str).apply(lambda x: len(x.split()))
-
-summary = tycktill_pts_in_parks.groupby('Kategori').agg(
-    entry_count=('Kategori', 'count'),
-    avg_comment_length=('comment_length', 'mean')
-).reset_index()
-
-print(summary)
-
-print("\n--- Overview of Fritext in parks (most common words) ---")
-all_words = ' '.join(tycktill_pts_in_parks['Fritext'].dropna().astype(str)).lower().split()
-word_counts = Counter(all_words)
-print(word_counts.most_common(50)) # 'klotter', 'skräp' och 'papperskorg' finns i top50 (övriga är 'på', 'och', 'är' osv)
-
-# =====================================
-# === update parks w tycktill stats ===
-
-summary = tycktill_pts_in_parks.groupby('group').agg(
-    num_points=('geometry', 'count'),
-    unique_comments=('Fritext', 'nunique'),
-).reset_index()
-
-summary['park_area'] = summary['group'].map(parks.set_index('group')['park_area'])
-summary['tycktill_pts_per_hectare'] = summary['num_points'] / (summary['park_area'] / 10000)
-parks = parks.merge(summary, on='group', how='left')
-
-tycktill_pts_in_parks['Kategori'] = tycktill_pts_in_parks['Kategori'].fillna('Okänd')
-kategori_counts = tycktill_pts_in_parks.groupby(['group', 'Kategori']).size().unstack(fill_value=0).reset_index()
-parks = parks.merge(kategori_counts, on='group', how='left')
-
-parks.to_file("data/tycktill.gpkg", layer="tycktill_stats_per_park", driver="GPKG", mode="w")
 
 
 

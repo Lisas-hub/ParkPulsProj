@@ -2,6 +2,8 @@
 import geopandas as gpd
 import numpy as np
 
+input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
+
 layer2 = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
 
 # TO DO
@@ -12,7 +14,7 @@ layer2 = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
 # lighting
 def THEME_lighting_to_layer2(layer2):
 
-    street_lighting = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Belysningsmontage_Punkt.gpkg").to_crs(layer2.crs)
+    street_lighting = gpd.read_file(f"{input_directory}\\Input\\STHLM_stad\\Belysningsmontage_Punkt.gpkg").to_crs(layer2.crs)
     layer2["temp_ID"] = layer2.index  # create a column to be used in the merge later
 
     # buffer the lighting points
@@ -52,13 +54,13 @@ layer2 = THEME_lighting_to_layer2(layer2)
 # safety
 def THEME_safety_to_layer2(layer2):
 
-    stadsdelsomrade = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Stadsdelsomraden_Stadskartan.gpkg")
+    stadsdelsomrade = gpd.read_file(f"{input_directory}\\Output\\Stadsdelsomraden_Stadskartan.gpkg")
     stadsdelsomrade['area'] = stadsdelsomrade.geometry.area
     stadsdelsomrade.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_stadsdelsomrade_area", driver="GPKG", mode="w")
 
     # ==========================
     # === safety survey data ===
-    safety_survey = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Safety\Survey_CrimeFear_Basomr_2024_08-29\Survey_CrimeFear_Basomr_2024_08-29.shp").to_crs(layer2.crs)
+    safety_survey = gpd.read_file(f"{input_directory}\\Input\\Safety\\Survey_CrimeFear_Basomr_2024_08-29\\Survey_CrimeFear_Basomr_2024_08-29.shp").to_crs(layer2.crs)
     # data description:
     # Crimevictim = Share that has been previously victimized the past 12 years (any crime)
     # Unsafe_NBHD = Share that feel unsafe/very unsafe in their neighborhood/residential area
@@ -90,7 +92,7 @@ def THEME_safety_to_layer2(layer2):
 
     # =================================
     # === safety - committed crimes ===
-    crimes = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Safety\Basemap_CrimeSocEcon\Basemap_Lisa.shp").to_crs(layer2.crs)
+    crimes = gpd.read_file(f"{input_directory}\\Input\\Safety\\Basemap_CrimeSocEcon\\Basemap_Lisa.shp").to_crs(layer2.crs)
     # data description:
     # (outdoor) crime data from 2019-2020, socioeconomic data from 2021
     # Total_stre: Total Street crime (all crime columns summarized except Res_crime which is Residential crime)

@@ -3,10 +3,12 @@ import pandas as pd
 from shapely.strtree import STRtree
 import networkx as nx
 
+input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
+
 def prepp_layer1():
 
     # ==== layer1: original park layer ====
-    layer1 = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Temp\Sociotop_2024_edited.gpkg", layer="Sociotop_2024_edit3")
+    layer1 = gpd.read_file(f"{input_directory}\\Temp\\Sociotop_2024_edited.gpkg", layer="Sociotop_2024_edit3")
     layer1 = layer1.drop(columns=['AREA', 'ANTAL', 'Inventering_2', 'change_made'], errors='ignore')
 
     # Format the names to remove any capital letters in the middle of a name like Södra Rosendalsparken
@@ -128,7 +130,7 @@ layer2 = NAMN_XXX_to_layer2(layer2)
 def stadsdelar_to_layer2(layer2):
 
     # == add stadsdelar ==
-    stadsdelar = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Stadsdelar_Stadskartan.gpkg").to_crs(layer2.crs)
+    stadsdelar = gpd.read_file(f"{input_directory}\\Output\\Stadsdelar_Stadskartan.gpkg").to_crs(layer2.crs)
     # drop all columns except NAMN (på stadsdelar)
     columns_to_keep_stadsdelar = ["geometry", "NAMN"]
     stadsdelar = stadsdelar[columns_to_keep_stadsdelar]
@@ -152,7 +154,7 @@ layer2 = stadsdelar_to_layer2(layer2)
 def stadsdelsomraden_to_layer2(layer2):
 
     # == add stadsdelsomraden ==
-    stadsdelsomraden = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Stadsdelsomraden_Stadskartan.gpkg").to_crs(layer2.crs)
+    stadsdelsomraden = gpd.read_file(f"{input_directory}\\Output\\Stadsdelsomraden_Stadskartan.gpkg").to_crs(layer2.crs)
     # drop all columns except stadsdelsområden
     columns_to_keep_stadsdelsomraden = ["geometry", "Omrade"]
     stadsdelsomraden = stadsdelsomraden[columns_to_keep_stadsdelsomraden]

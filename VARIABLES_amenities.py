@@ -2,32 +2,30 @@
 import geopandas as gpd
 import pandas as pd
 
-layer2 = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
+input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
 
-# TO DO
-# toilets are not within any park so change format of this variable to within XX m
-# add more amenities?
+layer2 = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
 
 # AMENITIES
 def THEME_amenities_to_layer2(layer2):
 
-    toilet = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Toalett_Punkt.gpkg",
+    toilet = gpd.read_file(f"{input_directory}\\Input\\STHLM_stad\\Toalett_Punkt.gpkg",
                             layer="Toalett_Punkt").to_crs(layer2.crs)
-    bench_pts = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_bench_pts.gpkg").to_crs(
+    bench_pts = gpd.read_file(f"{input_directory}\\Input\\OpenStreetMap\\amenity_bench_pts.gpkg").to_crs(
         layer2.crs)
-    bench_line = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_bench_line.gpkg").to_crs(
+    bench_line = gpd.read_file(f"{input_directory}\\Input\\OpenStreetMap\\amenity_bench_line.gpkg").to_crs(
         layer2.crs)
-    bench_area = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_bench.gpkg").to_crs(
+    bench_area = gpd.read_file(f"{input_directory}\\Input\\OpenStreetMap\\amenity_bench.gpkg").to_crs(
         layer2.crs)
-    bbq_pts = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_bbq_pts.gpkg").to_crs(
+    bbq_pts = gpd.read_file(f"{input_directory}\\Input\\OpenStreetMap\\amenity_bbq_pts.gpkg").to_crs(
         layer2.crs)
-    bbq_area = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_bbq.gpkg").to_crs(layer2.crs)
+    bbq_area = gpd.read_file(f"{input_directory}\\Input\\OpenStreetMap\\amenity_bbq.gpkg").to_crs(layer2.crs)
     drinking_fountain = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Dricksvattenfont%C3%A4ner\Dricksvattenfontäner.shp").to_crs(
+        f"{input_directory}\\Input\\STHLM_stad\\Dricksvattenfont%C3%A4ner\\Dricksvattenfontäner.shp").to_crs(
         layer2.crs)  # not so many in stockholm at all, let alone in parks...
     waste_paper_bin = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Skrapkorg_Punkt.gpkg").to_crs(layer2.crs)
-    picnic_table = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\leisure_picnic_table_pts.gpkg").to_crs(layer2.crs)
+        f"{input_directory}\\Input\\STHLM_stad\\Skrapkorg_Punkt.gpkg").to_crs(layer2.crs)
+    picnic_table = gpd.read_file(f"{input_directory}\\Input\\OpenStreetMap\\leisure_picnic_table_pts.gpkg").to_crs(layer2.crs)
 
     toilet['amenity'] = 'WC'
     for gdf in [bench_pts, bench_line, bench_area]: gdf['amenity'] = 'bench'

@@ -1,6 +1,8 @@
 
 import geopandas as gpd
 
+input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
+
 layer2 = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
 
 # TO DO (optional)
@@ -12,12 +14,12 @@ def THEME_socioeconomic_to_layer2(layer2):
 
     # == socioeconomic ==
 
-    deso_befolkning_age = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Befolkning\Tab1_DeSO_2023_region.shp").to_crs(layer2.crs)
-    deso_befolkning_birthplace = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Befolkning\Tab4_DeSO_2023_region.shp").to_crs(layer2.crs)
-    deso_befolkning_migration = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Befolkning\Tab5_DeSO_2023_region.shp").to_crs(layer2.crs)
-    deso_inkomster = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\SLU_GET\SCB_13juni\Inkomster\Tab11_DeSO_2023_region.shp").to_crs(layer2.crs)
+    deso_befolkning_age = gpd.read_file(f"{input_directory}\\Input\\SLU_GET\\SCB_13juni\\Befolkning\\Tab1_DeSO_2023_region.shp").to_crs(layer2.crs)
+    deso_befolkning_birthplace = gpd.read_file(f"{input_directory}\\Input\\SLU_GET\\SCB_13juni\\Befolkning\\Tab4_DeSO_2023_region.shp").to_crs(layer2.crs)
+    deso_befolkning_migration = gpd.read_file(f"{input_directory}\\Input\\SLU_GET\\SCB_13juni\\Befolkning\\Tab5_DeSO_2023_region.shp").to_crs(layer2.crs)
+    deso_inkomster = gpd.read_file(f"{input_directory}\\Input\\SLU_GET\\SCB_13juni\\Inkomster\\Tab11_DeSO_2023_region.shp").to_crs(layer2.crs)
 
-    municipality = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Kommun_Stadskartan.gpkg").to_crs(layer2.crs)
+    municipality = gpd.read_file(f"{input_directory}\\Output\\Kommun_Stadskartan.gpkg").to_crs(layer2.crs)
 
     deso_befolkning_age = gpd.clip(deso_befolkning_age, municipality)
     deso_befolkning_birthplace = gpd.clip(deso_befolkning_birthplace, municipality)

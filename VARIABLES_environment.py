@@ -3,11 +3,13 @@ import geopandas as gpd
 import pandas as pd
 from shapely.geometry import LineString
 
+input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
+
 layer2 = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
 
 def THEME_biotop_to_layer2(layer2):
 
-    layer_biotop_klass = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Biotopkartan_2019\Biotopkartan_2019_Klass.gpkg", layer="Klass").to_crs(layer2.crs)
+    layer_biotop_klass = gpd.read_file(f"{input_directory}\\Input\\STHLM_stad\\Biotopkartan_2019\\Biotopkartan_2019_Klass.gpkg", layer="Klass").to_crs(layer2.crs)
 
     # make a column of custom categories
     def classify_row(row):
@@ -105,10 +107,10 @@ layer2 = THEME_biotop_to_layer2(layer2)
 def THEME_temperature_to_layer2(layer2):
 
     temperature_lines = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Temperaturkartering\Temperaturkurvor_uppmatt_stralningstemp.gpkg").to_crs(
+        f"{input_directory}\\Input\\STHLM_stad\\Temperaturkartering\\Temperaturkurvor_uppmatt_stralningstemp.gpkg").to_crs(
         layer2.crs)
     temperature_polygons = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Output\Uppmatt_stralningstemp_prepped.gpkg").to_crs(layer2.crs)
+        f"{input_directory}\\Output\\Uppmatt_stralningstemp_prepped.gpkg").to_crs(layer2.crs)
 
     # the original layer was a polyline layer and the extent did not fully align with the municipality boundary so the data had to be pepped outside of this script (some manual editing)
 
@@ -189,13 +191,13 @@ layer2 = THEME_temperature_to_layer2(layer2)
 def THEME_protected_areas_to_layer2(layer2):
 
     # protected areas
-    nature_reserve = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Naturvardsverket\Skyddade_omraden_naturvardsregistret\Naturreservat\PS.protectedSites.NR.gml").to_crs(layer2.crs)
-    culture_reserve = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Naturvardsverket\Skyddade_omraden_naturvardsregistret\Kulturreservat\PS.protectedSites.KR.gml").to_crs(layer2.crs)
-    natural_monument = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Naturvardsverket\Skyddade_omraden_naturvardsregistret\Naturminnen\PS.protectedSites.NM.gml").to_crs(layer2.crs)
-    water_reserve = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Naturvardsverket\Omraden_med_sarskilda_restriktioner\Vattenskyddsomraden\am_drinkingWaterProtectionArea.gml").to_crs(layer2.crs)
-    entry_forbidden = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\Naturvardsverket\Omraden_med_sarskilda_restriktioner\Foreskriftsomraden\am_regulatoryAreas.gml").to_crs(layer2.crs)
+    nature_reserve = gpd.read_file(f"{input_directory}\\Input\\Naturvardsverket\\Skyddade_omraden_naturvardsregistret\\Naturreservat\\PS.protectedSites.NR.gml").to_crs(layer2.crs)
+    culture_reserve = gpd.read_file(f"{input_directory}\\Input\\Naturvardsverket\\Skyddade_omraden_naturvardsregistret\\Kulturreservat\\PS.protectedSites.KR.gml").to_crs(layer2.crs)
+    natural_monument = gpd.read_file(f"{input_directory}\\Input\\Naturvardsverket\\Skyddade_omraden_naturvardsregistret\\Naturminnen\\PS.protectedSites.NM.gml").to_crs(layer2.crs)
+    water_reserve = gpd.read_file(f"{input_directory}\\Input\\Naturvardsverket\\Omraden_med_sarskilda_restriktioner\\Vattenskyddsomraden\\am_drinkingWaterProtectionArea.gml").to_crs(layer2.crs)
+    entry_forbidden = gpd.read_file(f"{input_directory}\\Input\\Naturvardsverket\\Omraden_med_sarskilda_restriktioner\\Foreskriftsomraden\\am_regulatoryAreas.gml").to_crs(layer2.crs)
 
-    municipality = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Kommun_Stadskartan.gpkg").to_crs(layer2.crs)
+    municipality = gpd.read_file(f"{input_directory}\\Output\\Kommun_Stadskartan.gpkg").to_crs(layer2.crs)
 
     nature_reserve = gpd.clip(nature_reserve, municipality)
     culture_reserve = gpd.clip(culture_reserve, municipality)
@@ -270,7 +272,7 @@ layer2 = THEME_protected_areas_to_layer2(layer2)
 
 def noise_to_layer2(layer2):
 
-    noise = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Bullerkartan_2022_Vag_Tag_och_Flyg.gpkg").to_crs(layer2.crs)
+    noise = gpd.read_file(f"{input_directory}\\Input\\STHLM_stad\\Bullerkartan_2022_Vag_Tag_och_Flyg.gpkg").to_crs(layer2.crs)
 
     noise['area'] = noise.geometry.area
 

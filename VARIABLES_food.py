@@ -2,22 +2,24 @@
 import geopandas as gpd
 import pandas as pd
 
+input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
+
 layer2 = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
 
 def THEME_food_to_layer2(layer2):
 
     # === bars / restaurants / etc ===
-    cafe_pts = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_cafe_pts.gpkg").to_crs(
+    cafe_pts = gpd.read_file(f"{input_directory}\\Input\\OpenStreetMap\\amenity_cafe_pts.gpkg").to_crs(
         layer2.crs)
-    cafe_area = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_cafe.gpkg").to_crs(
+    cafe_area = gpd.read_file(f"{input_directory}\\Input\\OpenStreetMap\\amenity_cafe.gpkg").to_crs(
         layer2.crs)
     restaurant_pts = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_restaurant_pts.gpkg").to_crs(layer2.crs)
+        f"{input_directory}\\Input\\OpenStreetMap\\amenity_restaurant_pts.gpkg").to_crs(layer2.crs)
     restaurant_area = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_restaurant.gpkg").to_crs(layer2.crs)
+        f"{input_directory}\\Input\\OpenStreetMap\\amenity_restaurant.gpkg").to_crs(layer2.crs)
     ice_cream_pts = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_ice_cream_pts.gpkg").to_crs(layer2.crs)
-    ice_cream_area = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\amenity_ice_cream.gpkg").to_crs(
+        f"{input_directory}\\Input\\OpenStreetMap\\amenity_ice_cream_pts.gpkg").to_crs(layer2.crs)
+    ice_cream_area = gpd.read_file(f"{input_directory}\\Input\\OpenStreetMap\\amenity_ice_cream.gpkg").to_crs(
         layer2.crs)
 
     # convert areas to centroids
@@ -101,7 +103,7 @@ def THEME_food_to_layer2(layer2):
     FINAL_ice_cream_pts.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_ice_cream_within_buffer_pts", driver="GPKG", mode="w")
 
     # == ice cream shops per stadsdelsområde ==
-    stadsdelsomraden = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Stadsdelsomraden_Stadskartan.gpkg").to_crs(layer2.crs)
+    stadsdelsomraden = gpd.read_file(f"{input_directory}\\Output\\Stadsdelsomraden_Stadskartan.gpkg").to_crs(layer2.crs)
 
     # drop all columns except stadsdelsområden
     columns_to_keep_stadsdelsomraden = ["geometry", "Omrade"]

@@ -2,6 +2,8 @@
 import geopandas as gpd
 import pandas as pd
 
+input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
+
 layer2 = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
 
 # TO DO
@@ -14,10 +16,10 @@ def THEME_accessibility_to_layer2(layer2):
     # == accessibility ==
 
     # public transport
-    bus_stops = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\highway_bus_stop_pts.gpkg").to_crs(
+    bus_stops = gpd.read_file(f"{input_directory}\\Input\\OpenStreetMap\\highway_bus_stop_pts.gpkg").to_crs(
         layer2.crs)  # no need to add bus_stations (only 2, one overlaps w bus_stops and the other is not in STHLM) or bus_stations_pts (6/9 by a sea port and 3/9 by cityterminal/liljeholmen, these are transfer bus stations)
     subway_entrances = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\railway_subway_entrance.gpkg").to_crs(
+        f"{input_directory}\\Input\\OpenStreetMap\\railway_subway_entrance.gpkg").to_crs(
         layer2.crs)  # no need to add railway_subway.gpkg (it's a line layer)
 
     bus_stops['transport_type'] = 'Bus'
@@ -54,9 +56,9 @@ def THEME_accessibility_to_layer2(layer2):
 
     # walking distance by road
     road1 = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Stadskarta_Stockholm_SHP\Vaegutbredning_area.shp").to_crs(layer2.crs)
+        f"{input_directory}\\Input\\STHLM_stad\\Stadskarta_Stockholm_SHP\\Vaegutbredning_area.shp").to_crs(layer2.crs)
     road2 = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Stadskarta_Stockholm_SHP\Trafik_area.shp").to_crs(layer2.crs)
+        f"{input_directory}\\Input\\STHLM_stad\\Stadskarta_Stockholm_SHP\\Trafik_area.shp").to_crs(layer2.crs)
 
     merged = road1.overlay(road2, how="union") # see dropped beometries by adding `keep_geom_type=True`, but dropped geometries have attribute info but don't show up when using zoom to location,
 

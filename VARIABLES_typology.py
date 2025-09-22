@@ -2,10 +2,12 @@
 import geopandas as gpd
 import pandas as pd
 
+input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
+
 def prepp_layer1():
 
     # ==== layer1: original park layer ====
-    layer1 = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Temp\Sociotop_2024_edited.gpkg", layer="Sociotop_2024_edit3")
+    layer1 = gpd.read_file(f"{input_directory}\\Temp\\Sociotop_2024_edited.gpkg", layer="Sociotop_2024_edit3")
     layer1 = layer1.drop(columns=['AREA', 'ANTAL', 'Inventering_2', 'change_made'], errors='ignore')
 
     # Format the names to remove any capital letters in the middle of a name like Södra Rosendalsparken
@@ -38,13 +40,13 @@ def THEME_typology_to_layer2(layer2):
 
     # TYPOLOGY (from OSM layers etc)
     # Import
-    dog_park = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Input\STHLM_stad\Hundrastgard_Yta.gpkg", layer="Hundrastgard_Yta").to_crs(layer2.crs)
+    dog_park = gpd.read_file(f"{input_directory}\\Input\\STHLM_stad\\Hundrastgard_Yta.gpkg", layer="Hundrastgard_Yta").to_crs(layer2.crs)
     outdoor_gym = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\leisure_fitness_station.gpkg").to_crs(layer2.crs)
+        f"{input_directory}\\Input\\OpenStreetMap\\leisure_fitness_station.gpkg").to_crs(layer2.crs)
     OSM_play_ground = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\leisure_playground.gpkg").to_crs(layer2.crs)
+        f"{input_directory}\\Input\\OpenStreetMap\\leisure_playground.gpkg").to_crs(layer2.crs)
     OSM_play_ground_pts = gpd.read_file(
-        r"C:\Users\lisajos\QGIS_Projects\Input\OpenStreetMap\leisure_playground_pts.gpkg").to_crs(layer2.crs)
+        f"{input_directory}\\Input\\OpenStreetMap\\leisure_playground_pts.gpkg").to_crs(layer2.crs)
     play_ground = layer1[layer1['TYPE_2'].str.strip().str.lower() == 'lek'].copy()
     park = layer1[layer1['TYPE_2'].str.strip().str.lower() == 'park'].copy()
     # *** ADD OSM SCHOOLS OR OTHER? NOT ALL SCHOOLS ARE MAPPED IN _edit3 ***
@@ -87,7 +89,7 @@ def THEME_typology_to_layer2(layer2):
     layer2['typology'] = layer2.index.map(grouped_typology.set_index('index_right')['typology']).fillna('None')
 
     # == total playgrounds including outside of parks ==
-    stadsdelsomraden = gpd.read_file(r"C:\Users\lisajos\QGIS_Projects\Output\Stadsdelsomraden_Stadskartan.gpkg").to_crs(layer2.crs)
+    stadsdelsomraden = gpd.read_file(f"{input_directory}\\Output\\Stadsdelsomraden_Stadskartan.gpkg").to_crs(layer2.crs)
     # drop all columns except stadsdelsområden
     columns_to_keep_stadsdelsomraden = ["geometry", "Omrade"]
     stadsdelsomraden = stadsdelsomraden[columns_to_keep_stadsdelsomraden]
