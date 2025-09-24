@@ -91,10 +91,10 @@ tycktill_pts_copy = tycktill_pts.copy()
 
 tycktill_pts_copy = tycktill_pts_copy.to_crs(parks.crs)
 
-parks_x_tycktill = gpd.sjoin(tycktill_pts_copy, parks, how="left", predicate="within")
-parks_x_tycktill = parks_x_tycktill.drop(columns='index_right', errors='ignore')
+tycktill_pts_with_parkinfo = gpd.sjoin(tycktill_pts_copy, parks, how="left", predicate="within")
+tycktill_pts_with_parkinfo = tycktill_pts_with_parkinfo.drop(columns='index_right', errors='ignore')
 
-parks_x_tycktill.to_file("data/tycktill.gpkg", layer="parks_x_tycktill", driver="GPKG", mode="w")
+tycktill_pts_with_parkinfo.to_file("data/tycktill.gpkg", layer="tycktill_pts_with_parkinfo", driver="GPKG", mode="w")
 
 
 # ===========================

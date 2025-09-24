@@ -14,6 +14,7 @@ import geopandas as gpd
 from shapely.geometry import Point
 import folium
 import matplotlib.pyplot as plt
+#import seaborn as sns
 from wordcloud import WordCloud
 import os
 
@@ -44,10 +45,8 @@ tycktill_df_geo = gpd.GeoDataFrame(tycktill_df, geometry="geometry", crs="EPSG:4
 
 # =================================================
 # prepp for filtering inside or outside parks later
-print("Prepping for filtering...")
 parks = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
 
-#tycktill_df_geo["in_park"] = tycktill_df_geo.geometry.within(parks.geometry.union_all()) *super slow so use sjoin instead
 subset_within_parks = gpd.sjoin(tycktill_df_geo, parks, how="inner", predicate="within")
 tycktill_df_geo["in_park"] = tycktill_df_geo.index.isin(subset_within_parks.index)
 
@@ -55,19 +54,17 @@ tycktill_df_geo["in_park"] = tycktill_df_geo.index.isin(subset_within_parks.inde
 # subset by parks and a limited number of rows
 
 # subset tycktill dataset to begin with before committing to processing all 300000+ rows
-#subset_tycktill_df = tycktill_df.head(50).copy() # uses 50 first rows (only from 2023)   * remove? old
-#subset_tycktill_df = subset_within_parks.sample(n=50).copy() # uses 500 random rows      * remove? old
-#subset_tycktill_df = tycktill_df.sample(n=50).copy()                                     * remove? old
-
-n_points = 50
+n_points = 500        # *** RERUN? Update here! ***
 
 sample_in = tycktill_df_geo[tycktill_df_geo["in_park"]].sample(n=n_points, random_state=1) # in_park = true
 sample_out = tycktill_df_geo[~tycktill_df_geo["in_park"]].sample(n=n_points, random_state=1) # in_park = false
 
 subset_tycktill_df = pd.concat([sample_in, sample_out]).copy() # get an equal number from within and outside parks
 
+# =================================================================
 # set up for saving figures based on number of points in the subset
-output_folder = f"data/tyck_till_plots/sample_{n_points * 2}_points"
+
+output_folder = f"data/tyck_till_output/sample_{n_points * 2}_points"
 os.makedirs(output_folder, exist_ok=True)
 
 
@@ -91,192 +88,63 @@ for i, row in subset_tycktill_df.iterrows():
 
 subset_tycktill_df["lemmas"] = lemmatized_rows
 
-# ============================================
-# separate between inside and outside of parks
+# ======================================================================================
+# truncate text before sentiment (because there is a limit to text length with the model
 
-lemmas_in = [lemma for row in subset_tycktill_df[subset_tycktill_df["in_park"]]["lemmas"] for lemma in row]
-lemmas_out = [lemma for row in subset_tycktill_df[~subset_tycktill_df["in_park"]]["lemmas"] for lemma in row]
+from transformers import AutoTokenizer, pipeline
 
-# ======================
-# === WORD FREQUENCY ===
+tokenizer = AutoTokenizer.from_pretrained("KBLab/robust-swedish-sentiment-multiclass")
 
-lemmas_all = [lemma for lemmas_list in subset_tycktill_df["lemmas"] for lemma in lemmas_list]
-lemmas_in = [lemma for lemmas_list in subset_tycktill_df[subset_tycktill_df["in_park"]]["lemmas"] for lemma in lemmas_list]
-lemmas_out = [lemma for lemmas_list in subset_tycktill_df[~subset_tycktill_df["in_park"]]["lemmas"] for lemma in lemmas_list]
+# ================================================================
+# ============ PRETRAINED LANGUAGE MODEL FOR SWEDISH =============
+# ========== KBLab/robust-swedish-sentiment-multiclass ===========
+# https://huggingface.co/KBLab/robust-swedish-sentiment-multiclass
 
-# ================
-# total word count
-# (every occurence regardless of row, so if multiple per row they are all counted)
-word_freq_all = Counter(lemmas_all)
-word_freq_in = Counter(lemmas_in)
-word_freq_out = Counter(lemmas_out)
+from transformers import pipeline
+from transformers import AutoTokenizer
 
-print("\n--- Top Words All ---")
-for word, freq in word_freq_all.most_common(10):
-    print(f"{word}: {freq}")
+model_name = "KBLab/robust-swedish-sentiment-multiclass"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-print("\n--- Top Words Inside Parks ---")
-for word, freq in word_freq_in.most_common(10):
-    print(f"{word}: {freq}")
+# load model
+model = pipeline(
+    "text-classification",
+    model="KBLab/robust-swedish-sentiment-multiclass",
+    top_k=None  # Get all class scores, not just the top one
+)
 
-print("\n--- Top Words Outside Parks ---")
-for word, freq in word_freq_out.most_common(10):
-    print(f"{word}: {freq}")
 
-# =======================
-# word count per Kategori
-category_word_freq_all = {} # create a dictionary for storage
-
-for category, group in subset_tycktill_df.groupby("Kategori"):
-    lemmas_all = [lemma for lemmas_list in group["lemmas"] for lemma in lemmas_list]
-    word_freq_all = Counter(lemmas_all)
-    category_word_freq_all[category] = word_freq_all
-
-for category, frequencies in category_word_freq_all.items():
-    print(f"\nCategory: {category}")
-    for word, count in frequencies.most_common(5):
-        print(f"{word}: {count}")
-
-# word frequency plots
-# bar chart
-for category, frequencies in category_word_freq_all.items():
-    common = frequencies.most_common(10)
-    words, counts = zip(*common)
-
-    plt.figure(figsize=(10, 4))
-    plt.bar(words, counts)
-    plt.title(f"Top words in category: {category}")
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-
-    safe_category = category.replace(" ", "_").replace("/", "_")
-    plt.savefig(f"{output_folder}/barchart_{safe_category}.png", dpi=300, bbox_inches="tight")
-    #plt.show()
-
-# word cloud
-for category, frequencies in category_word_freq_all.items():
-    wordcloud = WordCloud(width=800, height=400).generate_from_frequencies(frequencies)
-
-    plt.figure(figsize=(10, 5))
-    plt.imshow(wordcloud, interpolation='bilinear')
-    plt.axis("off")
-    plt.title(f"Word cloud for {category}")
-    plt.tight_layout()
-
-    safe_category = category.replace(" ", "_").replace("/", "_")
-    plt.savefig(f"{output_folder}/wordcloud_{safe_category}.png", dpi=300, bbox_inches="tight")
-    #plt.show()
-
-# inside parks vs outside (1 june 2023 - 30 may 2024   vs   1 june 2024 - 30 may 2025)
-grouped = subset_tycktill_df.groupby(["year_label", "in_park"])
-word_freqs = {}
-for (year_label, in_park), group in grouped:
-    all_lemmas = [lemma for lemmas in group["lemmas"] for lemma in lemmas]
-    freq = Counter(all_lemmas)
-    label = ("In Park" if in_park else "Outside Park")
-    word_freqs[(year_label, label)] = freq
-
-year_labels = ["June 2023–May 2024", "June 2024–May 2025"]
-
-for year_label in year_labels:
-    in_freq = word_freqs.get((year_label, "In Park"), Counter())
-    out_freq = word_freqs.get((year_label, "Outside Park"), Counter())
-
-    combined = in_freq + out_freq
-    top_words = [word for word, _ in combined.most_common(10)]
-
-    total_in = sum(in_freq.values())
-    total_out = sum(out_freq.values())
-    normalized_freq_data = {
-        "In Park": [in_freq.get(word, 0) / total_in * 100 for word in top_words],
-        "Outside Park": [out_freq.get(word, 0) / total_out * 100 for word in top_words],
-    }
-
-    freq_df = pd.DataFrame(normalized_freq_data, index=top_words)
-
-    freq_df.plot(kind="bar", figsize=(12, 6))
-    plt.title(f"Top 10 Words in {year_label}: In Park vs Outside Park")
-    plt.xlabel("Word")
-    plt.ylabel("Frequency")
-    plt.xticks(rotation=45)
-    plt.legend(title="Location")
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.tight_layout()
-    plt.savefig(f"{output_folder}/word_freq_{year_label}.png", dpi=300, bbox_inches="tight")
-    #plt.show()
-
-# =======================
-# word count by date/time
-
-monthly_counts = subset_tycktill_df.groupby("month").size()
-print(monthly_counts)
-
-weekday_counts = subset_tycktill_df["weekday"].value_counts()
-print(weekday_counts)
-
-# date/time plots
-# entries per month for 2023 and 2024
-month_order_nums = [6, 7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5]
-month_labels = ["Jun", "Jul", "Aug", "Sep", "Oct", "Nov",
-               "Dec", "Jan", "Feb", "Mar", "Apr", "May"]
-month_to_custom_order = {month: i for i, month in enumerate(month_order_nums)}
-
-monthly_counts = subset_tycktill_df.groupby(["year_label", "month"]).size().reset_index(name="count")
-monthly_counts["month_order"] = monthly_counts["month"].map(month_to_custom_order)
-
-monthly_counts = monthly_counts.sort_values(["year_label", "month_order"])
-
-plt.figure(figsize=(10, 5))
-for year in monthly_counts["year_label"].unique():
-    year_data = monthly_counts[monthly_counts["year_label"] == year]     # get only that year's data
-    year_data = year_data.sort_values("month_order")
-
-    plt.plot(
-        year_data["month_order"],
-        year_data["count"],
-        label=str(year),
-        marker='o'
+def prepare_inputs(texts, tokenizer, max_length=512):
+    return tokenizer(
+        texts,
+        truncation=True,
+        max_length=max_length,
+        padding=False,         # Or True/“max_length” if batching
+        return_tensors=None    # Set to "pt" if feeding directly to model
     )
 
-plt.xticks(ticks=range(12), labels=month_labels)
-plt.title("Entries per Month (by Year)")
-plt.xlabel("Month")
-plt.ylabel("Count")
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
-plt.savefig(f"{output_folder}/entries_per_month_plot.png", dpi=300, bbox_inches="tight")
-#plt.show()
+# Apply to your DataFrame column
+texts = subset_tycktill_df["clean_Fritext"].astype(str).tolist()
 
-# entries per weekday for 2023 and 2024
-weekday_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-weekday_to_num = {day: i for i, day in enumerate(weekday_order)}
+# apply sentiment analysis
+# Run through the sentiment pipeline directly — it handles truncation automatically
+sentiments = model(texts, truncation=True)
+#sentiments = model(texts)
+subset_tycktill_df["sentiment_label"] = [s[0]["label"] for s in sentiments]
+subset_tycktill_df["sentiment_score"] = [s[0]["score"] for s in sentiments]
+subset_tycktill_df["sentiment_all"] = sentiments # keep all class scores (positive/neutral/negative)
+subset_tycktill_df.to_excel("data/tycktill_with_sentiment.xlsx", index=False)
 
-subset_tycktill_df["weekday_num"] = subset_tycktill_df["weekday"].map(weekday_to_num)                   # map weekday names to numbers
-weekday_counts = subset_tycktill_df.groupby(["year_label", "weekday"]).size().reset_index(name="count") # group weekday counts to year
-weekday_counts["weekday_num"] = weekday_counts["weekday"].map(weekday_to_num)
-weekday_counts = weekday_counts.sort_values(["year_label", "weekday_num"])
+# ================
+# make point layer
 
-plt.figure(figsize=(10, 5))
-for year in weekday_counts["year_label"].unique():
-    year_data = weekday_counts[weekday_counts["year_label"] == year]
-    year_data = year_data.sort_values("weekday_num")
-    plt.plot(year_data["weekday"], year_data["count"], label=str(year), marker='o')
+tycktill_pts_with_sentiment = gpd.GeoDataFrame(
+    subset_tycktill_df, geometry=gpd.points_from_xy(
+        subset_tycktill_df['Koordinater_x'],
+        subset_tycktill_df['Koordinater_Y']
+    ),
+    crs=4326)
 
-plt.xticks(ticks=range(7), labels=weekday_order)
+tycktill_pts_with_sentiment.to_file(f"{output_folder}/tycktill.gpkg", layer="tycktill_pts_with_sentiment", driver="GPKG", mode="w")
+# =================================================================================================================================
 
-plt.title("Entries per Weekday (by Year)")
-plt.xlabel("Weekday")
-plt.ylabel("Count")
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
-plt.savefig(f"{output_folder}/entries_per_weekday_plot.png", dpi=300, bbox_inches="tight")
-#plt.show()
-
-
-# ========
-
-
-
-# =======================
