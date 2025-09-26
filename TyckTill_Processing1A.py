@@ -1,5 +1,5 @@
 
-
+# >>> STANZA NLP PIPELINE using n_points subset <<<
 
 # natural language processing (NLP) packages
 import nltk # has some swedish, use for stopwords and maybe more
@@ -12,10 +12,6 @@ import numpy as np
 from collections import Counter
 import geopandas as gpd
 from shapely.geometry import Point
-import folium
-import matplotlib.pyplot as plt
-#import seaborn as sns
-from wordcloud import WordCloud
 import os
 
 from nltk.corpus import stopwords
@@ -54,7 +50,7 @@ tycktill_df_geo["in_park"] = tycktill_df_geo.index.isin(subset_within_parks.inde
 # subset by parks and a limited number of rows
 
 # subset tycktill dataset to begin with before committing to processing all 300000+ rows
-n_points = 500        # *** RERUN? Update here! ***
+n_points = 10000        # *** RERUN? Update here! ***
 
 sample_in = tycktill_df_geo[tycktill_df_geo["in_park"]].sample(n=n_points, random_state=1) # in_park = true
 sample_out = tycktill_df_geo[~tycktill_df_geo["in_park"]].sample(n=n_points, random_state=1) # in_park = false
@@ -88,63 +84,5 @@ for i, row in subset_tycktill_df.iterrows():
 
 subset_tycktill_df["lemmas"] = lemmatized_rows
 
-# ======================================================================================
-# truncate text before sentiment (because there is a limit to text length with the model
-
-from transformers import AutoTokenizer, pipeline
-
-tokenizer = AutoTokenizer.from_pretrained("KBLab/robust-swedish-sentiment-multiclass")
-
-# ================================================================
-# ============ PRETRAINED LANGUAGE MODEL FOR SWEDISH =============
-# ========== KBLab/robust-swedish-sentiment-multiclass ===========
-# https://huggingface.co/KBLab/robust-swedish-sentiment-multiclass
-
-from transformers import pipeline
-from transformers import AutoTokenizer
-
-model_name = "KBLab/robust-swedish-sentiment-multiclass"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-
-# load model
-model = pipeline(
-    "text-classification",
-    model="KBLab/robust-swedish-sentiment-multiclass",
-    top_k=None  # Get all class scores, not just the top one
-)
-
-
-def prepare_inputs(texts, tokenizer, max_length=512):
-    return tokenizer(
-        texts,
-        truncation=True,
-        max_length=max_length,
-        padding=False,         # Or True/“max_length” if batching
-        return_tensors=None    # Set to "pt" if feeding directly to model
-    )
-
-# Apply to your DataFrame column
-texts = subset_tycktill_df["clean_Fritext"].astype(str).tolist()
-
-# apply sentiment analysis
-# Run through the sentiment pipeline directly — it handles truncation automatically
-sentiments = model(texts, truncation=True)
-#sentiments = model(texts)
-subset_tycktill_df["sentiment_label"] = [s[0]["label"] for s in sentiments]
-subset_tycktill_df["sentiment_score"] = [s[0]["score"] for s in sentiments]
-subset_tycktill_df["sentiment_all"] = sentiments # keep all class scores (positive/neutral/negative)
-subset_tycktill_df.to_excel("data/tycktill_with_sentiment.xlsx", index=False)
-
-# ================
-# make point layer
-
-tycktill_pts_with_sentiment = gpd.GeoDataFrame(
-    subset_tycktill_df, geometry=gpd.points_from_xy(
-        subset_tycktill_df['Koordinater_x'],
-        subset_tycktill_df['Koordinater_Y']
-    ),
-    crs=4326)
-
-tycktill_pts_with_sentiment.to_file(f"{output_folder}/tycktill.gpkg", layer="tycktill_pts_with_sentiment", driver="GPKG", mode="w")
-# =================================================================================================================================
+subset_tycktill_df.to_excel(f"{output_folder}/tycktill_with_lemmas.xlsx", index=False)
 

@@ -53,7 +53,7 @@ layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_temporary", driver="G
 
 
 # ================================
-# rest från TyckTill_Processing.py
+# rest från TyckTill_Processing1A.py
 
 # =======================
 # word count per Kategori

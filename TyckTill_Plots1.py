@@ -1,18 +1,15 @@
 
+# >>> PLOTS using n_points subset <<<
+
 import pandas as pd
 import numpy as np
 from collections import Counter
 import geopandas as gpd
-from shapely.geometry import Point
 import folium
 import matplotlib.pyplot as plt
 import seaborn as sns
 from wordcloud import WordCloud
 import os
-
-# ======================
-# load processed dataset
-df = pd.read_excel("data/tycktill_with_sentiment.xlsx", parse_dates=["Inkommet datum"])
 
 # =====================================
 # set up for saving in the right folder
@@ -27,6 +24,9 @@ except ValueError:
 folder_name = f"sample_{n_points * 2}_points"
 output_folder = os.path.join("data", "tyck_till_output", folder_name)
 
+# ======================
+# load processed dataset
+df = pd.read_excel(f"{output_folder}/tycktill_with_sentiment.xlsx", parse_dates=["Inkommet datum"])
 
 # =======================================
 # === lineplot (weekday vs sentiment) ===   # abbreviate weekdays to Mon, Tue, etc + flip horizontal + rename sentiments to Negative/Neutral/Positive
