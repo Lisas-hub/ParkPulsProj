@@ -50,7 +50,7 @@ tycktill_df_geo["in_park"] = tycktill_df_geo.index.isin(subset_within_parks.inde
 # subset by parks and a limited number of rows
 
 # subset tycktill dataset to begin with before committing to processing all 300000+ rows
-kategori_filter = "Idé"
+kategori_filter = "Remiss skickad"
 # ^^RERUN? Update here!^^
 
 subset_tycktill_df = tycktill_df_geo[tycktill_df_geo["Kategori"] == kategori_filter].copy()
@@ -58,7 +58,7 @@ subset_tycktill_df = tycktill_df_geo[tycktill_df_geo["Kategori"] == kategori_fil
 print(f"Selected {len(subset_tycktill_df)} rows with Kategori = '{kategori_filter}' out of {len(tycktill_df_geo)} total rows.")
 # Selected 2122 rows with Kategori = 'Beröm' out of 393989 total rows.
 # Selected 6257 rows with Kategori = 'Idé' out of 393989 total rows.
-
+# Selected 8487 rows with Kategori = 'Klagomål' out of 393989 total rows.
 
 # =================================================================
 # set up for saving figures based on number of points in the subset

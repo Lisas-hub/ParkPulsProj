@@ -29,7 +29,7 @@ output_folder = os.path.join("data", "tyck_till_output", folder_name)
 df = pd.read_excel(f"{output_folder}/tycktill_with_sentiment.xlsx", parse_dates=["Inkommet datum"])
 
 # =======================================
-# === lineplot (weekday vs sentiment) ===   # abbreviate weekdays to Mon, Tue, etc + flip horizontal + rename sentiments to Negative/Neutral/Positive
+# === lineplot (weekday vs sentiment) ===
 
 df['sentiment_label'] = df['sentiment_label'].str.title()
 sentiment_order = ['Negative', 'Neutral', 'Positive']
