@@ -367,7 +367,7 @@ def noiseXbiotop_to_layer2(layer2):
     df_grouped['Proportion'] = (df_grouped['Estimated_Area'] / df_grouped['Total_Area']) * 100
 
     #df_grouped.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_noiseXbiotop1", driver="GPKG", mode="w")
-    df_grouped.to_csv(r"C:\Users\lisajos\PycharmProjects\landcover_by_noise_group.csv", index=False)
+    df_grouped.to_csv("data\landcover_by_noise_group.csv", index=False)
 
     # Pivot to get land cover types as columns
     df_pivot = df_grouped.pivot(index='Noise_Group', columns='Land_Cover', values='Proportion')
@@ -415,6 +415,7 @@ def noiseXbiotop_to_layer2(layer2):
 
     return layer2
 layer2 = noiseXbiotop_to_layer2(layer2)
+
 
 layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_environment", driver="GPKG", mode="w")
 
