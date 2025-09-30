@@ -21,6 +21,8 @@ from nltk.corpus import stopwords
 #nltk.download('stopwords')
 #stanza.download('sv')
 
+input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
+
 # ===============================
 # === LOAD PRE-PROCESSED DATA ===
 
@@ -48,17 +50,32 @@ tycktill_df_geo["in_park"] = tycktill_df_geo.index.isin(subset_within_parks.inde
 
 # ============================================
 # subset by parks and a limited number of rows
+municipality = gpd.read_file(f"{input_directory}\\Output\\Kommun_Stadskartan_SWEREF99TM.gpkg").to_crs("EPSG:3006")
+municipality_geom = municipality.geometry.iloc[0]
 
 # subset tycktill dataset to begin with before committing to processing all 300000+ rows
-kategori_filter = "Remiss skickad"
+kategori_filter = "Fordonsflytt"
+in_park_filter = True
 # ^^RERUN? Update here!^^
 
-subset_tycktill_df = tycktill_df_geo[tycktill_df_geo["Kategori"] == kategori_filter].copy()
+subset_tycktill_df = tycktill_df_geo[
+    (tycktill_df_geo["Kategori"] == kategori_filter) &
+    (tycktill_df_geo["in_park"] == in_park_filter) &
+    (tycktill_df_geo.geometry.within(municipality_geom))
+].copy()
 
-print(f"Selected {len(subset_tycktill_df)} rows with Kategori = '{kategori_filter}' out of {len(tycktill_df_geo)} total rows.")
+#print(f"Selected {len(subset_tycktill_df)} rows with Kategori = '{kategori_filter}' out of {len(tycktill_df_geo)} total rows.")
+print(f"Selected {len(subset_tycktill_df)} rows with Kategori = '{kategori_filter}' and in_park = {in_park_filter} out of {len(tycktill_df_geo)} total rows.")
 # Selected 2122 rows with Kategori = 'Beröm' out of 393989 total rows.
 # Selected 6257 rows with Kategori = 'Idé' out of 393989 total rows.
 # Selected 8487 rows with Kategori = 'Klagomål' out of 393989 total rows.
+# Selected 8503 rows with Kategori = 'Fråga' out of 393989 total rows.
+# Selected 78357 rows with Kategori = 'Felanmälan' and in_park = True out of 393989 total rows.  *** NOT with 'in municipality' filter ***
+# Selected 78356 rows with Kategori = 'Felanmälan' and in_park = True out of 393989 total rows.  *** WITH 'in municipality' filter ***
+# Selected 2 rows with Kategori = 'Fordonsflytt' and in_park = True out of 393989 total rows.    *** WITH 'in municipality' filter ***
+# Selected 43 rows with Kategori = 'Arbetsorder ska skickas' out of 393989 total rows.           *** WITH 'in municipality' filter ***
+# Selected 18 rows with Kategori = 'Ordningsstörning' out of 393989 total rows.                  *** WITH 'in municipality' filter ***
+# Selected 64 rows with Kategori = 'Remiss skickad' out of 393989 total rows.                    *** WITH 'in municipality' filter ***
 
 # =================================================================
 # set up for saving figures based on number of points in the subset
@@ -86,5 +103,6 @@ for i, row in subset_tycktill_df.iterrows():
 
 subset_tycktill_df["lemmas"] = lemmatized_rows
 
-subset_tycktill_df.to_excel(f"{output_folder}/tycktill_with_lemmas_{kategori_filter}.xlsx", index=False)
+#subset_tycktill_df.to_excel(f"{output_folder}/tycktill_with_lemmas_{kategori_filter}.xlsx", index=False)
+subset_tycktill_df.to_excel(f"{output_folder}/tycktill_with_lemmas_{kategori_filter}_in_park_{in_park_filter}.xlsx", index=False)
 
