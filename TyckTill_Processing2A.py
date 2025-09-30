@@ -54,24 +54,27 @@ municipality = gpd.read_file(f"{input_directory}\\Output\\Kommun_Stadskartan_SWE
 municipality_geom = municipality.geometry.iloc[0]
 
 # subset tycktill dataset to begin with before committing to processing all 300000+ rows
-kategori_filter = "Fordonsflytt"
-in_park_filter = True
+kategori_filter = "Remiss skickad"
+#in_park_filter = True
 # ^^RERUN? Update here!^^
 
 subset_tycktill_df = tycktill_df_geo[
     (tycktill_df_geo["Kategori"] == kategori_filter) &
-    (tycktill_df_geo["in_park"] == in_park_filter) &
+    #(tycktill_df_geo["in_park"] == in_park_filter) &
     (tycktill_df_geo.geometry.within(municipality_geom))
 ].copy()
 
-#print(f"Selected {len(subset_tycktill_df)} rows with Kategori = '{kategori_filter}' out of {len(tycktill_df_geo)} total rows.")
-print(f"Selected {len(subset_tycktill_df)} rows with Kategori = '{kategori_filter}' and in_park = {in_park_filter} out of {len(tycktill_df_geo)} total rows.")
+print(f"Selected {len(subset_tycktill_df)} rows with Kategori = '{kategori_filter}' out of {len(tycktill_df_geo)} total rows.")
+#print(f"Selected {len(subset_tycktill_df)} rows with Kategori = '{kategori_filter}' and in_park = {in_park_filter} out of {len(tycktill_df_geo)} total rows.")
+
 # Selected 2122 rows with Kategori = 'Beröm' out of 393989 total rows.
 # Selected 6257 rows with Kategori = 'Idé' out of 393989 total rows.
 # Selected 8487 rows with Kategori = 'Klagomål' out of 393989 total rows.
 # Selected 8503 rows with Kategori = 'Fråga' out of 393989 total rows.
+
 # Selected 78357 rows with Kategori = 'Felanmälan' and in_park = True out of 393989 total rows.  *** NOT with 'in municipality' filter ***
 # Selected 78356 rows with Kategori = 'Felanmälan' and in_park = True out of 393989 total rows.  *** WITH 'in municipality' filter ***
+
 # Selected 2 rows with Kategori = 'Fordonsflytt' and in_park = True out of 393989 total rows.    *** WITH 'in municipality' filter ***
 # Selected 43 rows with Kategori = 'Arbetsorder ska skickas' out of 393989 total rows.           *** WITH 'in municipality' filter ***
 # Selected 18 rows with Kategori = 'Ordningsstörning' out of 393989 total rows.                  *** WITH 'in municipality' filter ***
@@ -103,6 +106,42 @@ for i, row in subset_tycktill_df.iterrows():
 
 subset_tycktill_df["lemmas"] = lemmatized_rows
 
-#subset_tycktill_df.to_excel(f"{output_folder}/tycktill_with_lemmas_{kategori_filter}.xlsx", index=False)
-subset_tycktill_df.to_excel(f"{output_folder}/tycktill_with_lemmas_{kategori_filter}_in_park_{in_park_filter}.xlsx", index=False)
+# ===============
+# Topic Modelling    *** move to after sentiments and run topic model on all rows at once? ***
+
+from bertopic import BERTopic
+from sentence_transformers import SentenceTransformer
+
+texts = subset_tycktill_df['lemmas'].apply(lambda words: ' '.join(words)).tolist()
+
+embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+
+# create topic model
+topic_model = BERTopic(
+    embedding_model=embedding_model,
+    language="swedish",
+    min_topic_size=2, # probably adjust this one when using a bigger subset
+    verbose=True
+)
+
+topics, probs = topic_model.fit_transform(texts)
+subset_tycktill_df['topic'] = topics
+subset_tycktill_df['topic_prob'] = probs
+
+topic_info = topic_model.get_topic_info()
+topic_words = topic_model.get_topic(0)
+print(topic_info)
+print(topic_words)
+
+def get_top_words(topic_num):
+    words = topic_model.get_topic(topic_num)
+    return ', '.join([word for word, _ in words]) if words else ''
+
+subset_tycktill_df['topic_keywords'] = subset_tycktill_df['topic'].apply(get_top_words)
+
+# ====
+# Save
+
+subset_tycktill_df.to_excel(f"{output_folder}/tycktill_with_lemmas_{kategori_filter}.xlsx", index=False)
+#subset_tycktill_df.to_excel(f"{output_folder}/tycktill_with_lemmas_{kategori_filter}_in_park_{in_park_filter}.xlsx", index=False)
 
