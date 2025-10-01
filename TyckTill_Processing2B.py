@@ -1,11 +1,11 @@
 
 # >>> SENTIMENT MODEL per kategori <<<
 
-import pandas as pd
-import numpy as np
 from collections import Counter
 import geopandas as gpd
 import os
+import pandas as pd
+import numpy as np
 
 
 # =====================================
@@ -80,5 +80,5 @@ tycktill_pts_with_sentiment = gpd.GeoDataFrame(
     crs=4326)
 
 tycktill_pts_with_sentiment.to_file(f"{output_folder}/tycktill_{kategori_input}.gpkg", layer=f"tycktill_pts_with_sentiment_{kategori_input}", driver="GPKG", mode="w")
-# =================================================================================================================================
+
 
