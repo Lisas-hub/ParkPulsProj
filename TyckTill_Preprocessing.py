@@ -2,25 +2,21 @@
 import pandas as pd
 import numpy as np
 import geopandas as gpd
-from collections import Counter
 
 input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
 
 df = pd.read_excel(f"{input_directory}\\TyckTill\\NEW\\Tycktill_2023-06-01_2025-06-30.xlsx")
 
-# ============================================
-# === PRE PROCESSING OF ADDITIONAL COLUMNS ===
-
 print("\n--- Before cleaning ---")
 print(f"Initially {len(df)} total rows.")
 
-# =========
-# Kategori
+# ==================================
+# === PRE PROCESSING OF KATEGORI ===
 
 # nothing to fix
 
-# =====================================
-# date and time column (Inkommet datum)
+# =============================================
+# === date and time column (Inkommet datum) ===
 
 datetime_before = len(df)
 
@@ -56,8 +52,8 @@ datetime_after = len(df)
 datetime_removed = datetime_before - datetime_after
 print(f"Removed {datetime_removed} rows outside the valid timeframe, {len(df)} total rows remaining.")
 
-# ===========
-# coordinates
+# =====================================
+# === PRE PROCESSING OF COORDINATES ===
 
 df["Koordinater_x"] = df["Koordinater_x"].replace(0, np.nan)
 df["Koordinater_Y"] = df["Koordinater_Y"].replace(0, np.nan)
@@ -122,8 +118,9 @@ print(f"Removed {removed_outside} rows with coordinates outside the municipality
 df.to_excel("data/cleaned_dataset.xlsx")
 
 
-# ============================================
-# ============================================
+# =========================================================
+# === create layers for tycktill.gpkg + summarize stats ===
+
 parks = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base").to_crs(3006)
 
 # get points in parks only

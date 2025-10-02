@@ -5,7 +5,7 @@ from collections import Counter
 import geopandas as gpd
 import os
 import pandas as pd
-import numpy as np
+from tqdm import tqdm
 
 
 # =====================================
@@ -44,30 +44,36 @@ tokenizer = AutoTokenizer.from_pretrained(model_name)
 # load model
 model = pipeline(
     "text-classification",
-    model="KBLab/robust-swedish-sentiment-multiclass",
+    model=model_name,
     top_k=None  # Get all class scores, not just the top one
 )
 
-def prepare_inputs(texts, tokenizer, max_length=512):
-    return tokenizer(
-        texts,
-        truncation=True,
-        max_length=max_length,
-        padding=False,         # Or True/“max_length” if batching
-        return_tensors=None    # Set to "pt" if feeding directly to model
-    )
-
-# Apply to your DataFrame column
 texts = df["clean_Fritext"].astype(str).tolist()
 
-# apply sentiment analysis
-# Run through the sentiment pipeline directly — it handles truncation automatically
-sentiments = model(texts, truncation=True)
-#sentiments = model(texts)
-df["sentiment_label"] = [s[0]["label"] for s in sentiments]
-df["sentiment_score"] = [s[0]["score"] for s in sentiments]
-df["sentiment_all"] = sentiments # keep all class scores (positive/neutral/negative)
-df.to_excel(f"{output_folder}/tycktill_with_sentiment_{kategori_input}.xlsx", index=False)
+batch_size = 32                  # <<< adjust here <<<
+
+# lists to store results
+all_labels = []
+all_scores = []
+all_outputs = []
+
+print("\n--- Running sentiment analysis ---")
+for i in tqdm(range(0, len(texts), batch_size)):
+    batch_texts = texts[i:i+batch_size]
+    batch_output = model(batch_texts, truncation=True)
+
+    # first label and score from each result
+    all_labels.extend([s[0]["label"] for s in batch_output])
+    all_scores.extend([s[0]["score"] for s in batch_output])
+    all_outputs.extend(batch_output)
+
+# add results to DataFrame
+df["sentiment_label"] = all_labels
+df["sentiment_score"] = all_scores
+df["sentiment_all"] = all_outputs
+
+df.to_excel(f"{output_folder}/with_sentiment_{kategori_input}.xlsx", index=False)
+print("\n✅ Sentiment analysis completed and saved.")
 
 # ================
 # make point layer
