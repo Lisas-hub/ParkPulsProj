@@ -6,10 +6,13 @@ from collections import Counter
 
 input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
 
-tycktill_df = pd.read_excel(f"{input_directory}\\TyckTill\\NEW\\TyckTill_2023-06-01_2025-06-30.xlsx")
+df = pd.read_excel(f"{input_directory}\\TyckTill\\NEW\\Tycktill_2023-06-01_2025-06-30.xlsx")
 
 # ============================================
 # === PRE PROCESSING OF ADDITIONAL COLUMNS ===
+
+print("\n--- Before cleaning ---")
+print(f"Initially {len(df)} total rows.")
 
 # =========
 # Kategori
@@ -19,122 +22,187 @@ tycktill_df = pd.read_excel(f"{input_directory}\\TyckTill\\NEW\\TyckTill_2023-06
 # =====================================
 # date and time column (Inkommet datum)
 
+datetime_before = len(df)
+
 # convert to appropriate datetime format
-tycktill_df["Inkommet datum"] = pd.to_datetime(tycktill_df["Inkommet datum"], errors="coerce")
+df["Inkommet datum"] = pd.to_datetime(df["Inkommet datum"], errors="coerce")
 
 # drop rows from 1-30 june 2025 (to get just 2 years: 1 june 2023 to 31 may 2025)
 start_date = '2023-06-01'
 end_date = '2025-06-01' # if i set 2025-05-31 i only get up until 2025-05-30 23:43:07.590000
-mask = (tycktill_df['Inkommet datum'] > start_date) & (tycktill_df['Inkommet datum'] <= end_date)
+mask = (df['Inkommet datum'] > start_date) & (df['Inkommet datum'] <= end_date)
 
-tycktill_df = tycktill_df.loc[mask]
+df = df.loc[mask]
 
-print(tycktill_df['Inkommet datum'].min(), tycktill_df['Inkommet datum'].max())
+print("\n--- Cleaning Date and Time ---")
+print("first and last entry within valid the time frame:")
+print(df['Inkommet datum'].min(), df['Inkommet datum'].max())
 
 # extract date (or time) only
-tycktill_df["year"] = tycktill_df["Inkommet datum"].dt.year
-tycktill_df["month"] = tycktill_df["Inkommet datum"].dt.month
-tycktill_df["day"] = tycktill_df["Inkommet datum"].dt.day
-tycktill_df["weekday"] = tycktill_df["Inkommet datum"].dt.day_name()
-tycktill_df["hour"] = tycktill_df["Inkommet datum"].dt.hour
+df["year"] = df["Inkommet datum"].dt.year
+df["month"] = df["Inkommet datum"].dt.month
+df["day"] = df["Inkommet datum"].dt.day
+df["weekday"] = df["Inkommet datum"].dt.day_name()
+df["hour"] = df["Inkommet datum"].dt.hour
 
 # group into period 1 and 2
-tycktill_df["custom_year"] = tycktill_df["Inkommet datum"].apply(
+df["custom_year"] = df["Inkommet datum"].apply(
     lambda x: x.year if x.month >= 6 else x.year - 1
 ) # 6 refers to the month of june and 1 year from that
 
-tycktill_df["year_label"] = "June " + tycktill_df["custom_year"].astype(str) + "–May " + (tycktill_df["custom_year"] + 1).astype(str)
+df["year_label"] = "June " + df["custom_year"].astype(str) + "–May " + (df["custom_year"] + 1).astype(str)
+
+datetime_after = len(df)
+datetime_removed = datetime_before - datetime_after
+print(f"Removed {datetime_removed} rows outside the valid timeframe, {len(df)} total rows remaining.")
 
 # ===========
 # coordinates
 
-# handle 0 and null
-tycktill_df["Koordinater_x"] = tycktill_df["Koordinater_x"].replace(0, np.nan)
-tycktill_df["Koordinater_Y"] = tycktill_df["Koordinater_Y"].replace(0, np.nan)
+df["Koordinater_x"] = df["Koordinater_x"].replace(0, np.nan)
+df["Koordinater_Y"] = df["Koordinater_Y"].replace(0, np.nan)
+
+before_count = len(df)
+df = df.dropna(subset=["Koordinater_x", "Koordinater_Y"]) # drop rows where either coordinate is missing
+after_count = len(df)
+removed = before_count - after_count
+print("\n--- Cleaning coordinates ---")
+print(f"Removed {removed} rows without valid coordinates, {len(df)} total rows remaining.") # Removed 84213 rows without valid coordinates.
 
 # =================================
 # === PRE PROCESSING OF FRITEXT ===
 
-# FILTERING (removing rows that don't need to be included)
+freetext_before = len(df)
 
 # keep rows that have something in them + remove empty space in the beginning or end of cells and remove any rows that don't have anything left after this
-tycktill_df = tycktill_df[tycktill_df["Fritext"].notna() & tycktill_df["Fritext"].str.strip().ne("")]
+df = df[df["Fritext"].notna() & df["Fritext"].str.strip().ne("")]
 
 # remove rows with numbers or symbols (incl emojis) and no text, in other words remove all rows without at least one letter
 import re
-tycktill_df = tycktill_df[tycktill_df["Fritext"].apply(lambda x: re.search(r"[a-zA-ZåäöÅÄÖ]", str(x)) is not None)]
+df = df[df["Fritext"].apply(lambda x: re.search(r"[a-zA-ZåäöÅÄÖ]", str(x)) is not None)]
 
 # make all text lowercase
-tycktill_df["clean_Fritext"] = tycktill_df["Fritext"].str.lower()
+df["clean_Fritext"] = df["Fritext"].str.lower()
 
 # clean up text that includes certain symbols or emojis by removing them but keeping the text
-tycktill_df["clean_Fritext"] = tycktill_df["clean_Fritext"].str.replace(r"[^a-zA-ZåäöÅÄÖ0-9\s]", "", regex=True)
+df["clean_Fritext"] = df["clean_Fritext"].str.replace(r"[^a-zA-ZåäöÅÄÖ0-9\s]", "", regex=True)
 
-tycktill_df.to_excel("data/cleaned_dataset.xlsx")
+freetext_after = len(df)
+freetext_removed = freetext_before - freetext_after
 
+print("\n--- Cleaning Fritext ---")
+print(f"Removed {freetext_removed} rows without valid text in 'Fritext', {len(df)} total rows remaining.")
 
-# ===========================
-# ===== join with parks =====
+# ================================
+# === PRE PROCESSING OF EXTENT ===
 
-parks = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
+municipality = gpd.read_file(f"{input_directory}\\Output\\Kommun_Stadskartan_SWEREF99TM.gpkg").to_crs("EPSG:3006")
+municipality_geom = municipality.geometry.iloc[0]
 
-tycktill_pts = gpd.GeoDataFrame(
-    tycktill_df, geometry=gpd.points_from_xy(
-        tycktill_df['Koordinater_x'],
-        tycktill_df['Koordinater_Y']
+pts = gpd.GeoDataFrame(
+    df, geometry=gpd.points_from_xy(
+        df['Koordinater_x'],
+        df['Koordinater_Y']
     ),
     crs=4326)
+pts = pts.to_crs("EPSG:3006")
 
-tycktill_pts.to_file("data/tycktill.gpkg", layer="tycktill_pts", driver="GPKG", mode="w")
+pts.to_file("data/tycktill.gpkg", layer="all_points", driver="GPKG", mode="w")
 
-tycktill_pts_copy = tycktill_pts.copy()
+within_before = len(pts)
+pts = pts[pts.geometry.within(municipality_geom)].copy()
+within_after = len(pts)
+removed_outside = within_before - within_after
 
-tycktill_pts_copy = tycktill_pts_copy.to_crs(parks.crs)
+df = df.loc[pts.index]
 
-tycktill_pts_with_parkinfo = gpd.sjoin(tycktill_pts_copy, parks, how="left", predicate="within")
-tycktill_pts_with_parkinfo = tycktill_pts_with_parkinfo.drop(columns='index_right', errors='ignore')
+print("\n--- Filtering by municipality ---")
+print(f"Removed {removed_outside} rows with coordinates outside the municipality boundary, {len(df)} total rows remaining.")
 
-tycktill_pts_with_parkinfo.to_file("data/tycktill.gpkg", layer="tycktill_pts_with_parkinfo", driver="GPKG", mode="w")
+df.to_excel("data/cleaned_dataset.xlsx")
 
 
-# ===========================
-# ===== clip with parks =====
+# ============================================
+# ============================================
+parks = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base").to_crs(3006)
 
-tycktill_pts_in_parks = gpd.sjoin(tycktill_pts_copy, parks[['group', 'geometry']], how="inner", predicate="within")
-tycktill_pts_in_parks = tycktill_pts_in_parks.drop(columns='index_right', errors='ignore')
+# get points in parks only
+pts_in_parks = gpd.sjoin(pts, parks, how="inner", predicate="within").drop(columns='index_right', errors='ignore')
+pts_in_parks.to_file("data/tycktill.gpkg", layer="pts_in_parks", driver="GPKG", mode="w")
 
-tycktill_pts_in_parks.to_file("data/tycktill.gpkg", layer="tycktill_pts_in_parks", driver="GPKG", mode="w")
-
-tycktill_pts_in_parks['comment_length'] = tycktill_pts_in_parks['Fritext'].astype(str).apply(len)
-tycktill_pts_in_parks['word_count'] = tycktill_pts_in_parks['Fritext'].astype(str).apply(lambda x: len(x.split()))
-
-summary = tycktill_pts_in_parks.groupby('Kategori').agg(
-    entry_count=('Kategori', 'count'),
-    avg_comment_length=('comment_length', 'mean')
-).reset_index()
-
-print(summary)
-
-print("\n--- Overview of Fritext in parks (most common words) ---")
-all_words = ' '.join(tycktill_pts_in_parks['Fritext'].dropna().astype(str)).lower().split()
-word_counts = Counter(all_words)
-print(word_counts.most_common(50)) # 'klotter', 'skräp' och 'papperskorg' finns i top50 (övriga är 'på', 'och', 'är' osv)
-
-# =====================================
-# === update parks w tycktill stats ===
-
-summary = tycktill_pts_in_parks.groupby('group').agg(
+# tycktill stats per park
+summary = pts_in_parks.groupby('group').agg(
     num_points=('geometry', 'count'),
     unique_comments=('Fritext', 'nunique'),
 ).reset_index()
 
 summary['park_area'] = summary['group'].map(parks.set_index('group')['park_area'])
-summary['tycktill_pts_per_hectare'] = summary['num_points'] / (summary['park_area'] / 10000)
+summary['pts_per_hectare'] = summary['num_points'] / (summary['park_area'] / 10000)
+
 parks = parks.merge(summary, on='group', how='left')
 
-tycktill_pts_in_parks['Kategori'] = tycktill_pts_in_parks['Kategori'].fillna('Okänd')
-kategori_counts = tycktill_pts_in_parks.groupby(['group', 'Kategori']).size().unstack(fill_value=0).reset_index()
+# category stats per park
+pts_in_parks['Kategori'] = pts_in_parks['Kategori'].fillna('Okänd')
+kategori_counts = pts_in_parks.groupby(['group', 'Kategori']).size().unstack(fill_value=0).reset_index()
 parks = parks.merge(kategori_counts, on='group', how='left')
 
-parks.to_file("data/tycktill.gpkg", layer="tycktill_stats_per_park", driver="GPKG", mode="w")
+parks.to_file("data/tycktill.gpkg", layer="stats_per_park", driver="GPKG", mode="w")
+
+# count entries per Kategori inside and outside parks
+pts['in_park'] = pts.index.isin(pts_in_parks.index)
+
+kategori_in = pts[pts['in_park']].groupby('Kategori').size()
+kategori_out = pts[~pts['in_park']].groupby('Kategori').size()
+kategori_total = pts.groupby('Kategori').size()
+
+kategori_summary = pd.DataFrame({
+    'In parks': kategori_in,
+    'Outside parks': kategori_out,
+    'Total': kategori_total
+}).fillna(0).astype(int).reset_index()
+
+print("\n--- Entry count by Kategori ---")
+print(kategori_summary)
+
+
+# ==============
+# === OUTPUT ===
+
+# --- Before cleaning ---
+# Initially 414481 total rows.
+#
+# --- Cleaning Date and Time ---
+# first and last entry within valid the time frame:
+# 2023-06-01 00:06:55.153000 2025-05-31 23:36:03.390000
+# Removed 20277 rows outside the valid timeframe, 394204 total rows remaining.
+#
+# --- Cleaning coordinates ---
+# Removed 84213 rows without valid coordinates, 309991 total rows remaining.
+#
+# --- Cleaning Fritext ---
+# Removed 215 rows without valid text in 'Fritext', 309776 total rows remaining.
+#
+# --- Filtering by municipality ---
+# Removed 241 rows with coordinates outside the municipality boundary, 309535 total rows remaining.
+#
+# --- Entry count by Kategori ---
+#                   Kategori  In parks  Outside parks   Total
+# 0                  Ansökan         0              3       3
+# 1  Arbetsorder ska skickas        10             33      43
+# 2                    Beröm       301           1633    1934
+# 3               Felanmälan     78356         206961  285317
+# 4             Fordonsflytt         2             27      29   # there were almost 80 000 in Fordonsflytt but almost none have coordinates
+# 5                    Fråga      1170           6793    7963
+# 6                      Idé       844           5026    5870
+# 7                 Klagomål      1411           6883    8294
+# 8         Ordningsstörning         7             11      18
+# 9           Remiss skickad         2             62      64
+
+
+
+
+
+
+
+
 
