@@ -292,26 +292,7 @@ plt.tight_layout()
 plt.show()
 
 
-# =======================
-# rest från TyckTill_Processing2B
 
-def prepare_inputs(texts, tokenizer, max_length=512):
-    return tokenizer(
-        texts,
-        truncation=True,
-        max_length=max_length,
-        padding=False,         # Or True/“max_length” if batching
-        return_tensors=None    # Set to "pt" if feeding directly to model
-    )
-
-# apply sentiment analysis
-# Run through the sentiment pipeline directly — it handles truncation automatically
-sentiments = model(texts, truncation=True)
-#sentiments = model(texts)
-df["sentiment_label"] = [s[0]["label"] for s in sentiments]
-df["sentiment_score"] = [s[0]["score"] for s in sentiments]
-df["sentiment_all"] = sentiments # keep all class scores (positive/neutral/negative)
-df.to_excel(f"{output_folder}/tycktill_with_sentiment_{kategori_input}.xlsx", index=False)
 
 
 

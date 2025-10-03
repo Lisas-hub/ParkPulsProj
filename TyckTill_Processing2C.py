@@ -2,6 +2,7 @@
 # >>> point density rasters <<<
 
 import geopandas as gpd
+import pandas as pd
 import numpy as np
 import os
 import rasterio
@@ -27,7 +28,7 @@ if municipality.crs.to_epsg() != target_crs:
     municipality = municipality.to_crs(target_crs)
 
 # set up for raster
-pixel_size = 10
+pixel_size = 500
 minx, miny, maxx, maxy = municipality.total_bounds
 width = int((maxx - minx) / pixel_size)
 height = int((maxy - miny) / pixel_size)
@@ -44,18 +45,10 @@ municipality_mask = rasterize(
 )
 
 # load point layers per cateory
-#categories = {
-#    "Klagomål": gpd.read_file("data/tyck_till_output/per_kategori/tycktill_Klagomål.gpkg"),
-#    "Beröm": gpd.read_file("data/tyck_till_output/per_kategori/tycktill_Beröm.gpkg"),
-#    "Idé": gpd.read_file("data/tyck_till_output/per_kategori/tycktill_Idé.gpkg"),
-#}
 categories = {
-    name: gdf[~gdf.geometry.is_empty & gdf.geometry.notnull()] # dropping rows without coordinates for now,change back to above when OG dataset has been cleaned of these rows
-    for name, gdf in {
-        "Klagomål": gpd.read_file("data/tyck_till_output/per_kategori/tycktill_Klagomål.gpkg"),
-        "Beröm": gpd.read_file("data/tyck_till_output/per_kategori/tycktill_Beröm.gpkg"),
-        "Idé": gpd.read_file("data/tyck_till_output/per_kategori/tycktill_Idé.gpkg"),
-    }.items()
+    "Klagomål": gpd.read_file("data/tyck_till_output/per_kategori/tycktill_Klagomål.gpkg"),
+    "Beröm": gpd.read_file("data/tyck_till_output/per_kategori/tycktill_Beröm.gpkg"),
+    "Idé": gpd.read_file("data/tyck_till_output/per_kategori/tycktill_Idé.gpkg"),
 }
 
 for key in categories:
@@ -63,17 +56,6 @@ for key in categories:
         categories[key] = categories[key].to_crs(epsg=target_crs)
     elif categories[key].crs.to_epsg() != target_crs:
         categories[key] = categories[key].to_crs(epsg=target_crs)
-
-
-####################################
-for name, gdf in categories.items(): # Checking for empty geometries, aka missing coordinates
-    print(f"\n{name}")
-    print("  Total features:", len(gdf))
-    print("  Empty geometries:", gdf.geometry.is_empty.sum())
-    print("  Null geometries:", gdf.geometry.isnull().sum())
-    print("  Invalid geometries:", (~gdf.is_valid).sum())
-####################################
-
 
 # create point density rasters
 def rasterize_points(gdf):
@@ -116,7 +98,8 @@ for name, gdf in categories.items():
 
 complaints = density_rasters["Klagomål"]
 ideas = density_rasters["Idé"]
-total = complaints + ideas
+praise = density_rasters["Beröm"]
+total = complaints + ideas + praise
 
 # avoid division by 0
 with np.errstate(divide='ignore', invalid='ignore'):
@@ -127,7 +110,7 @@ masked_ratio = np.where(municipality_mask == 0, ratio, nodata_value)
 
 # save
 with rasterio.open(
-    f"{output_folder}/complaints_idea_ratio.tif",
+    f"{output_folder}/complaints_idea_praise_ratio.tif",
     'w',
     driver='GTiff',
     height=height,
@@ -140,7 +123,144 @@ with rasterio.open(
 ) as dst:
     dst.write(masked_ratio.astype('float32'), 1)
 
+# ==================================================================
+# === sentiment positive/negative ratio + sentiment score raster ===
 
+# prepp
+gdfs = [
+    gpd.read_file("data/tyck_till_output/per_kategori/tycktill_Klagomål.gpkg"),
+    gpd.read_file("data/tyck_till_output/per_kategori/tycktill_Beröm.gpkg"),
+    gpd.read_file("data/tyck_till_output/per_kategori/tycktill_Idé.gpkg")
+]
+
+all_points = gpd.GeoDataFrame(pd.concat(gdfs, ignore_index=True), crs=gdfs[0].crs)
+
+positive_gdf = all_points[all_points["sentiment_label"] == "POSITIVE"]
+neutral_gdf = all_points[all_points["sentiment_label"] == "NEUTRAL"]
+negative_gdf = all_points[all_points["sentiment_label"] == "NEGATIVE"]
+
+if not positive_gdf.crs.is_projected:
+    positive_gdf = positive_gdf.to_crs(epsg=target_crs)
+    neutral_gdf = neutral_gdf.to_crs(epsg=target_crs)
+    negative_gdf = negative_gdf.to_crs(epsg=target_crs)
+
+# rasterize
+positive_raster = rasterize_points(positive_gdf)
+neutral_raster = rasterize_points(neutral_gdf)
+negative_raster = rasterize_points(negative_gdf)
+
+# =============
+# compute ratio
+total_sentiment = positive_raster + neutral_raster + negative_raster
+
+with np.errstate(divide='ignore', invalid='ignore'):
+    sentiment_ratio = np.true_divide(negative_raster, total_sentiment)
+    sentiment_ratio[total_sentiment == 0] = nodata_value
+
+masked_sentiment_ratio = np.where(municipality_mask == 0, sentiment_ratio, nodata_value)
+
+# save
+output_path = os.path.join(output_folder, "sentiment_ratio_neg_vs_pos_neu.tif")
+with rasterio.open(
+    output_path,
+    'w',
+    driver='GTiff',
+    height=height,
+    width=width,
+    count=1,
+    dtype='float32',
+    crs=municipality.crs,
+    transform=transform,
+    nodata=nodata_value
+) as dst:
+    dst.write(masked_sentiment_ratio.astype('float32'), 1)
+
+# ==============
+# compute scores
+score_raster = (
+    positive_raster.astype('int16') * 1 +
+    neutral_raster.astype('int16') * 0 +
+    negative_raster.astype('int16') * -1
+)
+masked_score = np.where(municipality_mask == 0, score_raster, nodata_value)
+
+# save
+output_path = os.path.join(output_folder, "sentiment_score.tif")
+with rasterio.open(
+    output_path,
+    'w',
+    driver='GTiff',
+    height=height,
+    width=width,
+    count=1,
+    dtype='int16',
+    crs=municipality.crs,
+    transform=transform,
+    nodata=nodata_value
+) as dst:
+    dst.write(masked_score.astype('int16'), 1)
+
+# ====================================================================
+# === sentiment positive/negative ratio + sentiment score PER PARK ===
+
+parks = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base").to_crs(target_crs)
+if parks.crs.to_epsg() != target_crs:
+    parks = parks.to_crs(target_crs)
+
+# filter only points inside parks
+park_points = all_points[all_points["in_park"]].copy()
+if park_points.crs.to_epsg() != target_crs:
+    park_points = park_points.to_crs(target_crs)
+
+# add group value to each point
+park_points = gpd.sjoin(
+    park_points,
+    parks[["group", "geometry"]],
+    how="inner",
+    predicate="within"
+)
+
+# ========================
+# sentiment ratio per park
+
+# group by park and count each sentiment type
+sentiment_counts = (
+    park_points.groupby("group")["sentiment_label"]
+    .value_counts()
+    .unstack(fill_value=0)
+)
+
+for col in ["POSITIVE", "NEUTRAL", "NEGATIVE"]:
+    if col not in sentiment_counts.columns:
+        sentiment_counts[col] = 0
+
+sentiment_counts["total"] = (
+    sentiment_counts["POSITIVE"] + sentiment_counts["NEUTRAL"] + sentiment_counts["NEGATIVE"]
+)
+sentiment_counts["negative_ratio"] = (
+    sentiment_counts["NEGATIVE"] / sentiment_counts["total"]
+)
+
+# ========================
+# sentiment score per park
+
+park_points["score"] = park_points["sentiment_label"].map({
+    "POSITIVE": 1,
+    "NEUTRAL": 0,
+    "NEGATIVE": -1
+})
+park_scores = park_points.groupby("group")["score"].sum()
+
+# merge back and save
+parks = parks.merge(sentiment_counts[["negative_ratio"]], on="group", how="left")
+parks = parks.merge(park_scores.rename("sentiment_score"), on="group", how="left")
+
+# normalise by park area
+parks["park_area"] = parks["park_area"].replace(0, np.nan)
+parks["sentiment_score_per_ha"] = parks["sentiment_score"] / (parks["park_area"]/10000)
+
+
+parks.to_file("data/tycktill.gpkg", layer="sentiments_per_park", driver="GPKG", mode="w")
 
 
 # ====================
