@@ -41,7 +41,7 @@ tycktill_df_geo = gpd.GeoDataFrame(tycktill_df, geometry="geometry", crs="EPSG:4
 
 # =================================================
 # prepp for filtering inside or outside parks later
-parks = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
+parks = gpd.read_file("../data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
 
 subset_within_parks = gpd.sjoin(tycktill_df_geo, parks, how="inner", predicate="within")
 tycktill_df_geo["in_park"] = tycktill_df_geo.index.isin(subset_within_parks.index)
