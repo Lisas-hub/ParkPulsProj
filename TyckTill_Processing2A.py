@@ -48,7 +48,7 @@ tycktill_df_geo["in_park"] = tycktill_df_geo.index.isin(subset_within_parks.inde
 # subset by parks and a limited number of rows
 
 # subset tycktill dataset to begin with before committing to processing all 300000+ rows
-kategori_filter = "Felanmälan"
+kategori_filter = "Fråga"
 #in_park_filter = True
 # ^^RERUN? Update here!^^
 

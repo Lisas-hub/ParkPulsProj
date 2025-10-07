@@ -72,7 +72,7 @@ df["sentiment_label"] = all_labels
 df["sentiment_score"] = all_scores
 df["sentiment_all"] = all_outputs
 
-df.to_excel(f"{output_folder}/with_sentiment_{kategori_input}.xlsx", index=False)
+df.to_excel(f"{output_folder}/tycktill_with_sentiment_{kategori_input}.xlsx", index=False)
 print("\n✅ Sentiment analysis completed and saved.")
 
 # ================
