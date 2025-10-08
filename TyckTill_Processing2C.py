@@ -1,5 +1,5 @@
 
-# >>> point density rasters <<<
+# >>> rasters, vector layers, figures and topic model <<<
 
 import geopandas as gpd
 import pandas as pd
@@ -9,6 +9,8 @@ import rasterio
 from rasterio.transform import from_origin
 from rasterio.features import rasterize
 from rasterio.enums import MergeAlg
+from collections import defaultdict, Counter
+
 
 input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
 
@@ -296,11 +298,8 @@ for i in range(len(dfs)):
     dfs[i] = dfs[i].drop(columns=['topic', 'topic_prob', 'topic_keywords'], errors='ignore')
 
 all_lemmas = pd.concat(dfs, ignore_index=True)
-all_lemmas = all_lemmas.sample(10000, random_state=42) # *** REMOVE LINE TO RUN ON ALL ROWS, NOT JUST A SAMPLE ***
-#print(all_lemmas['lemmas'].head())
+all_lemmas = all_lemmas.sample(5000, random_state=42)        # *** REMOVE LINE TO RUN ON ALL ROWS, NOT JUST A SAMPLE ***
 
-#texts = all_lemmas['lemmas'].apply(lambda words: ' '.join(words)).tolist()
-#print(texts[:10])
 texts = all_lemmas['lemmas'].apply(lambda words: ' '.join(w.strip() for w in words)).tolist()
 print(texts[:10])
 
@@ -330,30 +329,93 @@ def get_top_words(topic_num, top_n=5): # reduce from default 10 top words to 5
 
 all_lemmas['topic_keywords'] = all_lemmas['topic'].apply(get_top_words)
 
+# save as excel
 all_lemmas.to_excel(f"{output_folder}/tycktill_with_topics.xlsx", index=False)
 
-# ====================
-# topic visualisations
+# save as points gpkg
+pts_with_topics = gpd.GeoDataFrame(
+    all_lemmas, geometry=gpd.points_from_xy(
+        all_lemmas['Koordinater_x'],
+        all_lemmas['Koordinater_Y']
+    ),
+    crs=4326)
+pts_with_topics = pts_with_topics.to_crs("EPSG:3006")
 
+pts_with_topics.to_file("data/tycktill.gpkg", layer="pts_with_topics", driver="GPKG", mode="w")
+
+
+# ============================
+# === topic visualisations ===
+
+# =========================
 # topic frequency bar chart
 topic_model.visualize_barchart(top_n_topics=20)
 fig = topic_model.visualize_barchart(top_n_topics=20)
 fig.write_html(f"{output_folder}/topic_barchart.html")
 
+# ====
 # UMAP
 topic_model.visualize_topics()
-fig = topic_model.visualize_topics()
-fig.write_html(f"{output_folder}/topic_visualization.html")
+fig.write_html("topic_map_with_labels.html")
 
-# importance of individual words for topics
-topic_model.visualize_barchart(top_n_topics=10)
-#topic_model.visualize_barchart(top_n_topics=1, topics=[5]) # use this for one chosen topic
-fig = topic_model.visualize_barchart()
-fig.write_html(f"{output_folder}/topic_visualization_barchart.html")
+# =====================
+# dominant topic raster
+target_crs = 3857
+if pts_with_topics.crs.to_epsg() != target_crs:
+    pts_with_topics = pts_with_topics.to_crs(target_crs)
 
-# heatmap
-topic_model.visualize_heatmap()
-fig = topic_model.visualize_heatmap()
-fig.write_html(f"{output_folder}/topic_heatmap.html")
+cols = ((pts_with_topics.geometry.x - minx) // pixel_size).astype(int)
+rows = ((maxy - pts_with_topics.geometry.y) // pixel_size).astype(int)
+
+topic_bins = defaultdict(list)     # for dominant topic
+topic_sets = defaultdict(set)      # for topic diversity
+
+# get topics per cell
+for row, col, topic in zip(rows, cols, pts_with_topics['topic']):
+    if 0 <= row < height and 0 <= col < width:
+        topic_bins[(row, col)].append(topic)
+        topic_sets[(row, col)].add(topic)
+
+dominant_topic = np.full((height, width), nodata_value, dtype=np.int16)
+topic_count = np.full((height, width), nodata_value, dtype=np.int16)
+
+# fill dominant topic raster
+for (row, col), topics in topic_bins.items():
+    dominant = Counter(topics).most_common(1)[0][0]
+    dominant_topic[row, col] = dominant
+
+# fill topic diversity raster
+for (row, col), topic_set in topic_sets.items():
+    topic_count[row, col] = len(topic_set)
+
+# save
+with rasterio.open(
+    f"{output_folder}/dominant_topic.tif",
+    "w",
+    driver="GTiff",
+    height=height,
+    width=width,
+    count=1,
+    dtype=dominant_topic.dtype,
+    crs=gdf.crs,
+    transform=transform,
+    nodata=nodata_value
+) as dst:
+    dst.write(dominant_topic, 1)
+
+with rasterio.open(
+    f"{output_folder}/topic_diversity.tif",
+    "w",
+    driver="GTiff",
+    height=height,
+    width=width,
+    count=1,
+    dtype=topic_count.dtype,
+    crs=pts_with_topics.crs,
+    transform=transform,
+    nodata=nodata_value
+) as dst:
+    dst.write(topic_count, 1)
+
 
 # ====================
