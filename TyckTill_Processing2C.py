@@ -30,7 +30,7 @@ if municipality.crs.to_epsg() != target_crs:
     municipality = municipality.to_crs(target_crs)
 
 # set up for raster
-pixel_size = 250                                       # <<< used 500 previously (before error report was added)
+pixel_size = 100                                       # <<< used 500 previously (before error report was added)
 minx, miny, maxx, maxy = municipality.total_bounds
 width = int((maxx - minx) / pixel_size)
 height = int((maxy - miny) / pixel_size)
@@ -280,68 +280,68 @@ from sentence_transformers import SentenceTransformer
 import ast
 
 # prepp
-dfs = [
-    pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Beröm.xlsx", parse_dates=["Inkommet datum"]),
-    pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Idé.xlsx", parse_dates=["Inkommet datum"]),
-    pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Klagomål.xlsx", parse_dates=["Inkommet datum"]),
-    pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Felanmälan.xlsx", parse_dates=["Inkommet datum"])
-    #pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Fråga.xlsx", parse_dates=["Inkommet datum"])
-]
+#dfs = [
+#    pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Beröm.xlsx", parse_dates=["Inkommet datum"]),
+#    pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Idé.xlsx", parse_dates=["Inkommet datum"]),
+#    pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Klagomål.xlsx", parse_dates=["Inkommet datum"]),
+#    pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Felanmälan.xlsx", parse_dates=["Inkommet datum"])
+#    #pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Fråga.xlsx", parse_dates=["Inkommet datum"])
+#]
 
 # convert lemmas column from stringified lists to actual lists
-for i in range(len(dfs)):
-    if isinstance(dfs[i]['lemmas'].iloc[0], str):  # only if it's a string, not a real list
-        dfs[i]['lemmas'] = dfs[i]['lemmas'].apply(ast.literal_eval)
+#for i in range(len(dfs)):
+#    if isinstance(dfs[i]['lemmas'].iloc[0], str):  # only if it's a string, not a real list
+#        dfs[i]['lemmas'] = dfs[i]['lemmas'].apply(ast.literal_eval)
 
 # drop old topic model columns from when topic model was in tycktill_with_lemmas{}_.xlsx
-for i in range(len(dfs)):
-    dfs[i] = dfs[i].drop(columns=['topic', 'topic_prob', 'topic_keywords'], errors='ignore')
+#for i in range(len(dfs)):
+#    dfs[i] = dfs[i].drop(columns=['topic', 'topic_prob', 'topic_keywords'], errors='ignore')
 
-all_lemmas = pd.concat(dfs, ignore_index=True)
-all_lemmas = all_lemmas.sample(5000, random_state=42)        # *** REMOVE LINE TO RUN ON ALL ROWS, NOT JUST A SAMPLE ***
+#all_lemmas = pd.concat(dfs, ignore_index=True)
+#all_lemmas = all_lemmas.sample(15000, random_state=42)        # *** REMOVE LINE TO RUN ON ALL ROWS, NOT JUST A SAMPLE ***
 
-texts = all_lemmas['lemmas'].apply(lambda words: ' '.join(w.strip() for w in words)).tolist()
-print(texts[:10])
+#texts = all_lemmas['lemmas'].apply(lambda words: ' '.join(w.strip() for w in words)).tolist()
+#print(texts[:10])
 
-embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+#embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
 
 # create topic model
-topic_model = BERTopic(
-    embedding_model=embedding_model,
-    language="swedish",
-    min_topic_size=50,            # can try 100 for very general topics
-    verbose=True
-)
+#topic_model = BERTopic(
+#    embedding_model=embedding_model,
+#    language="swedish",
+#    min_topic_size=50,            # can try 100 for very general topics
+#    verbose=True
+#)
 
-topics, probs = topic_model.fit_transform(texts)
-all_lemmas['topic'] = topics
-all_lemmas['topic_prob'] = probs
+#topics, probs = topic_model.fit_transform(texts)
+#all_lemmas['topic'] = topics
+#all_lemmas['topic_prob'] = probs
 
-topic_info = topic_model.get_topic_info()
-topic_words = topic_model.get_topic(0)
-print(topic_info)
-print(topic_words)
+#topic_info = topic_model.get_topic_info()
+#topic_words = topic_model.get_topic(0)
+#print(topic_info)
+#print(topic_words)
 
-def get_top_words(topic_num, top_n=5): # reduce from default 10 top words to 5
-    words = topic_model.get_topic(topic_num)
+#def get_top_words(topic_num, top_n=5): # reduce from default 10 top words to 5
+#    words = topic_model.get_topic(topic_num)
     #return ', '.join([word for word, _ in words]) if words else ''
-    return ', '.join([word for word, _ in words[:top_n]]) if words else ''
+#    return ', '.join([word for word, _ in words[:top_n]]) if words else ''
 
-all_lemmas['topic_keywords'] = all_lemmas['topic'].apply(get_top_words)
+#all_lemmas['topic_keywords'] = all_lemmas['topic'].apply(get_top_words)
 
 # save as excel
-all_lemmas.to_excel(f"{output_folder}/tycktill_with_topics.xlsx", index=False)
+#all_lemmas.to_excel(f"{output_folder}/tycktill_with_topics.xlsx", index=False)
 
 # save as points gpkg
-pts_with_topics = gpd.GeoDataFrame(
-    all_lemmas, geometry=gpd.points_from_xy(
-        all_lemmas['Koordinater_x'],
-        all_lemmas['Koordinater_Y']
-    ),
-    crs=4326)
-pts_with_topics = pts_with_topics.to_crs("EPSG:3006")
+#pts_with_topics = gpd.GeoDataFrame(
+#    all_lemmas, geometry=gpd.points_from_xy(
+#        all_lemmas['Koordinater_x'],
+#        all_lemmas['Koordinater_Y']
+#    ),
+#    crs=4326)
+#pts_with_topics = pts_with_topics.to_crs("EPSG:3006")
 
-pts_with_topics.to_file("data/tycktill.gpkg", layer="pts_with_topics", driver="GPKG", mode="w")
+#pts_with_topics.to_file("data/tycktill.gpkg", layer="pts_with_topics", driver="GPKG", mode="w")
 
 
 # ============================
@@ -349,17 +349,19 @@ pts_with_topics.to_file("data/tycktill.gpkg", layer="pts_with_topics", driver="G
 
 # =========================
 # topic frequency bar chart
-topic_model.visualize_barchart(top_n_topics=20)
-fig = topic_model.visualize_barchart(top_n_topics=20)
-fig.write_html(f"{output_folder}/topic_barchart.html")
+#topic_model.visualize_barchart(top_n_topics=20)
+#fig = topic_model.visualize_barchart(top_n_topics=20)
+#fig.write_html(f"{output_folder}/topic_barchart.html")
 
 # ====
 # UMAP
-topic_model.visualize_topics()
-fig.write_html("topic_map_with_labels.html")
+#topic_model.visualize_topics()
+#fig.write_html("topic_map_with_labels.html")
 
-# =====================
-# dominant topic raster
+# =======================================
+# dominant topic raster + topic diversity
+pts_with_topics = gpd.read_file(f"{output_folder}/ons_8_okt_all_rows/tycktill.gpkg", layer="pts_with_topics") # *** remove this row if doing a new subset ***
+
 target_crs = 3857
 if pts_with_topics.crs.to_epsg() != target_crs:
     pts_with_topics = pts_with_topics.to_crs(target_crs)
@@ -416,6 +418,39 @@ with rasterio.open(
     nodata=nodata_value
 ) as dst:
     dst.write(topic_count, 1)
+
+# ===============
+# topics per park
+
+park_points2 = gpd.sjoin(
+    pts_with_topics,
+    parks[["group", "geometry"]],
+    how="left",
+    predicate="intersects"
+)
+
+# count unique topics per park
+topic_diversity_in_park = (
+    park_points2.groupby("group")["topic"]
+    .nunique(dropna=True)
+)
+
+# join back with parks
+parks_with_topic_diversity = parks.merge(
+    topic_diversity_in_park,
+    on="group",
+    how="left"
+)
+
+parks_with_topic_diversity["topic_diversity"] = parks_with_topic_diversity["topic"].fillna(0).astype(int)
+
+parks_with_topic_diversity["topic_diversity_per_ha"] = (
+    parks_with_topic_diversity["topic_diversity"] / (parks_with_topic_diversity["park_area"] / 10000)
+)
+
+parks_with_topic_diversity.to_file("data/tycktill.gpkg", layer="parks_with_topic_diversity", driver="GPKG", mode="w")
+
+
 
 
 # ====================
