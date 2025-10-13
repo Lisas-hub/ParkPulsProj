@@ -143,6 +143,18 @@ pts_in_parks['Kategori'] = pts_in_parks['Kategori'].fillna('Okänd')
 kategori_counts = pts_in_parks.groupby(['group', 'Kategori']).size().unstack(fill_value=0).reset_index()
 parks = parks.merge(kategori_counts, on='group', how='left')
 
+# normalize category counts by total number of points in each park
+kategori_cols = kategori_counts.columns.difference(['group'])  # all category columns
+
+#for col in kategori_cols:
+#    parks[f'{col}_rel'] = parks[col] / parks['num_points']
+
+for col in kategori_cols:
+    parks[f'{col}_rel'] = parks.apply(
+        lambda row: row[col] / row['num_points'] if pd.notna(row[col]) and pd.notna(row['num_points']) and row['num_points'] > 0 else 0,
+        axis=1
+    )
+
 parks.to_file("data/tycktill.gpkg", layer="stats_per_park", driver="GPKG", mode="w")
 
 # count entries per Kategori inside and outside parks

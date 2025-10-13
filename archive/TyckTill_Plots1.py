@@ -22,7 +22,7 @@ except ValueError:
     exit()
 
 folder_name = f"sample_{n_points * 2}_points"
-output_folder = os.path.join("data", "tyck_till_output", folder_name)
+output_folder = os.path.join("../data", "tyck_till_output", folder_name)
 
 # ======================
 # load processed dataset
