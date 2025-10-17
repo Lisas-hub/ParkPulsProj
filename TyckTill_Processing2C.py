@@ -52,22 +52,21 @@ embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
 topic_model = BERTopic(
     embedding_model=embedding_model,
     language="swedish",
-    min_topic_size=50,            # can try 100 for very general topics
+    min_topic_size=50,                                         # *** try 100 for very general topics ***
     verbose=True
 )
 
 topics, probs = topic_model.fit_transform(texts)
 all_lemmas['topic'] = topics
-all_lemmas['topic_prob'] = probs
+all_lemmas['topic_prob'] = probs                     # *** undersök topic_prob, typ alla (?) med generell topic (-1) har topic_prob = 0 ***
 
 topic_info = topic_model.get_topic_info()
 topic_words = topic_model.get_topic(0)
 print(topic_info)
 print(topic_words)
 
-def get_top_words(topic_num, top_n=5): # reduce from default 10 top words to 5
+def get_top_words(topic_num, top_n=5):
     words = topic_model.get_topic(topic_num)
-    #return ', '.join([word for word, _ in words]) if words else ''
     return ', '.join([word for word, _ in words[:top_n]]) if words else ''
 
 all_lemmas['topic_keywords'] = all_lemmas['topic'].apply(get_top_words)
@@ -90,12 +89,10 @@ pts_with_topics.to_file("data/tyck_till_output/tycktill.gpkg", layer="pts_with_t
 # === topic visualisations ===
 
 # topic frequency bar chart
-topic_model.visualize_barchart(top_n_topics=20)
 fig = topic_model.visualize_barchart(top_n_topics=20)
 fig.write_html(f"{output_folder}/topic_barchart.html")
 
 # intertopic distance map
-# *** add ***
 fig = topic_model.visualize_topics()
 fig.write_html(f"{output_folder}/intertopic_distance_map.html")
 
@@ -132,7 +129,7 @@ topic_flags_df = pd.DataFrame({
 })
 
 # ===============
-# save 2 versions
+# save 3 versions
 
 # all park related topics based on keywords (this includes comments that don't necessarily have a keyword but it is the same topic as at least one other comment that DOES include a keyword)
 park_comments_by_topic = all_lemmas[all_lemmas['topic'].isin(park_related_topics_manual)]

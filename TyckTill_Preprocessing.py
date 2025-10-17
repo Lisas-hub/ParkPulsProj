@@ -65,12 +65,24 @@ removed = before_count - after_count
 print("\n--- Cleaning coordinates ---")
 print(f"Removed {removed} rows without valid coordinates, {len(df)} total rows remaining.") # Removed 84213 rows without valid coordinates.
 
+# =======================================
+# === DUPLICATE COORDINATES + FRITEXT ===
+
+duplicates_before = len(df)
+
+# keep first occurence and then remove duplicates if same content in Koordinater_x", "Koordinater_Y" and "Fritext"
+df = df.drop_duplicates(subset=["Koordinater_x", "Koordinater_Y", "Fritext"])
+
+duplicates_after = len(df)
+print("\n--- Cleaning duplicates ---")
+print(f"Removed {duplicates_before - duplicates_after} duplicate rows based on coordinates and Fritext.")
+
 # =================================
 # === PRE PROCESSING OF FRITEXT ===
 
 freetext_before = len(df)
 
-# keep rows that have something in them + remove empty space in the beginning or end of cells and remove any rows that don't have anything left after this
+# remove empty or whitespace only rows
 df = df[df["Fritext"].notna() & df["Fritext"].str.strip().ne("")]
 
 # remove rows with numbers or symbols (incl emojis) and no text, in other words remove all rows without at least one letter
@@ -82,6 +94,28 @@ df["clean_Fritext"] = df["Fritext"].str.lower()
 
 # clean up text that includes certain symbols or emojis by removing them but keeping the text
 df["clean_Fritext"] = df["clean_Fritext"].str.replace(r"[^a-zA-ZåäöÅÄÖ0-9\s]", "", regex=True)
+
+# remove standalone 'k' as a word
+df["clean_Fritext"] = df["clean_Fritext"].str.replace(r"\bk\b", "", regex=True)
+
+# remove dn trädgård och dn trädgårdl
+unwanted_phrases = [
+    r"\bdn\s+trädgård(l)?\b",                    # add to list if necessary
+]
+for phrase in unwanted_phrases:
+    df["clean_Fritext"] = df["clean_Fritext"].str.replace(phrase, "", flags=re.IGNORECASE, regex=True)
+
+df["clean_Fritext"] = df["clean_Fritext"].str.replace(r"\s{2,}", " ", regex=True).str.strip()   # remove any extra whitespace
+
+# remove standalone numbers and IDs where there is a mix of numbers and letters (e.g. abc123)
+df["clean_Fritext"] = df["clean_Fritext"].apply(
+    lambda x: " ".join([
+        word for word in x.split()
+        if not re.fullmatch(r"(?=.*[a-zA-ZåäöÅÄÖ])(?=.*\d)[a-zA-ZåäöÅÄÖ0-9]+|\d+", word)
+    ])
+)
+
+df = df[df["clean_Fritext"].str.strip().ne("")]                                                 # remove any now empty rows
 
 freetext_after = len(df)
 freetext_removed = freetext_before - freetext_after
@@ -188,24 +222,29 @@ print(kategori_summary)
 # --- Cleaning coordinates ---
 # Removed 84213 rows without valid coordinates, 309991 total rows remaining.
 #
+# --- Cleaning duplicates ---
+# Removed 11005 duplicate rows based on coordinates and Fritext.
+#
 # --- Cleaning Fritext ---
-# Removed 215 rows without valid text in 'Fritext', 309776 total rows remaining.
+# Removed 707 rows without valid text in 'Fritext', 298279 total rows remaining.
 #
 # --- Filtering by municipality ---
-# Removed 241 rows with coordinates outside the municipality boundary, 309535 total rows remaining.
+# Removed 235 rows with coordinates outside the municipality boundary, 298044 total rows remaining.
 #
 # --- Entry count by Kategori ---
 #                   Kategori  In parks  Outside parks   Total
 # 0                  Ansökan         0              3       3
 # 1  Arbetsorder ska skickas        10             33      43
-# 2                    Beröm       301           1633    1934
-# 3               Felanmälan     78356         206961  285317
+# 2                    Beröm       301           1620    1921
+# 3               Felanmälan     75823         198252  274075
 # 4             Fordonsflytt         2             27      29   # there were almost 80 000 in Fordonsflytt but almost none have coordinates
-# 5                    Fråga      1170           6793    7963
-# 6                      Idé       844           5026    5870
-# 7                 Klagomål      1411           6883    8294
+# 5                    Fråga      1158           6711    7869
+# 6                      Idé       828           4967    5795
+# 7                 Klagomål      1404           6823    8227
 # 8         Ordningsstörning         7             11      18
 # 9           Remiss skickad         2             62      64
+#
+# Process finished with exit code 0
 
 
 
