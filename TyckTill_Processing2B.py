@@ -7,6 +7,7 @@ import os
 import pandas as pd
 from tqdm import tqdm
 
+from transformers import AutoTokenizer, pipeline
 
 # =====================================
 # set up for saving in the right folder
@@ -23,20 +24,12 @@ output_folder = os.path.join("data", "tyck_till_output", "per_kategori")
 # load processed dataset
 df = pd.read_excel(f"{output_folder}/tycktill_with_lemmas_{kategori_input}.xlsx", parse_dates=["Inkommet datum"])
 
-# ======================================================================================
-# truncate text before sentiment (because there is a limit to text length with the model
-
-from transformers import AutoTokenizer, pipeline
-
-tokenizer = AutoTokenizer.from_pretrained("KBLab/robust-swedish-sentiment-multiclass")
-
 # ================================================================
 # ============ PRETRAINED LANGUAGE MODEL FOR SWEDISH =============
 # ========== KBLab/robust-swedish-sentiment-multiclass ===========
 # https://huggingface.co/KBLab/robust-swedish-sentiment-multiclass
 
-from transformers import pipeline
-from transformers import AutoTokenizer
+tokenizer = AutoTokenizer.from_pretrained("KBLab/robust-swedish-sentiment-multiclass")
 
 model_name = "KBLab/robust-swedish-sentiment-multiclass"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -45,7 +38,7 @@ tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = pipeline(
     "text-classification",
     model=model_name,
-    top_k=None  # Get all class scores, not just the top one
+    top_k=None  # get all class scores, not just the top one
 )
 
 texts = df["clean_Fritext"].astype(str).tolist()
@@ -60,7 +53,7 @@ all_outputs = []
 print("\n--- Running sentiment analysis ---")
 for i in tqdm(range(0, len(texts), batch_size)):
     batch_texts = texts[i:i+batch_size]
-    batch_output = model(batch_texts, truncation=True)
+    batch_output = model(batch_texts, truncation=True) # truncate text before sentiment (because there is a limit to text length with the model
 
     # first label and score from each result
     all_labels.extend([s[0]["label"] for s in batch_output])

@@ -87,39 +87,6 @@ for i, row in subset_tycktill_df.iterrows():
 
 subset_tycktill_df["lemmas"] = lemmatized_rows
 
-# ===============
-# Topic Modelling    *** move to after sentiments and run topic model on all rows at once? ***
-
-#from bertopic import BERTopic
-#from sentence_transformers import SentenceTransformer
-
-#texts = subset_tycktill_df['lemmas'].apply(lambda words: ' '.join(words)).tolist()
-
-#embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
-
-# create topic model
-#topic_model = BERTopic(
-#    embedding_model=embedding_model,
-#    language="swedish",
-#    min_topic_size=2, # probably adjust this one when using a bigger subset
-#    verbose=True
-#)
-
-#topics, probs = topic_model.fit_transform(texts)
-#subset_tycktill_df['topic'] = topics
-#subset_tycktill_df['topic_prob'] = probs
-
-#topic_info = topic_model.get_topic_info()
-#topic_words = topic_model.get_topic(0)
-#print(topic_info)
-#print(topic_words)
-
-#def get_top_words(topic_num):
-#    words = topic_model.get_topic(topic_num)
-#    return ', '.join([word for word, _ in words]) if words else ''
-
-#subset_tycktill_df['topic_keywords'] = subset_tycktill_df['topic'].apply(get_top_words)
-
 # ====
 # Save
 

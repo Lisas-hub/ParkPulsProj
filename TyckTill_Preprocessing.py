@@ -103,7 +103,7 @@ pts = gpd.GeoDataFrame(
     crs=4326)
 pts = pts.to_crs("EPSG:3006")
 
-pts.to_file("data/tycktill.gpkg", layer="all_points", driver="GPKG", mode="w")
+pts.to_file("data/tyck_till_output/tycktill.gpkg", layer="all_points", driver="GPKG", mode="w")
 
 within_before = len(pts)
 pts = pts[pts.geometry.within(municipality_geom)].copy()
@@ -125,7 +125,7 @@ parks = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base").to_crs(
 
 # get points in parks only
 pts_in_parks = gpd.sjoin(pts, parks, how="inner", predicate="within").drop(columns='index_right', errors='ignore')
-pts_in_parks.to_file("data/tycktill.gpkg", layer="pts_in_parks", driver="GPKG", mode="w")
+pts_in_parks.to_file("data/tyck_till_output/tycktill.gpkg", layer="pts_in_parks", driver="GPKG", mode="w")
 
 # tycktill stats per park
 summary = pts_in_parks.groupby('group').agg(
@@ -155,7 +155,7 @@ for col in kategori_cols:
         axis=1
     )
 
-parks.to_file("data/tycktill.gpkg", layer="stats_per_park", driver="GPKG", mode="w")
+parks.to_file("data/tyck_till_output/tycktill.gpkg", layer="stats_per_park", driver="GPKG", mode="w")
 
 # count entries per Kategori inside and outside parks
 pts['in_park'] = pts.index.isin(pts_in_parks.index)
