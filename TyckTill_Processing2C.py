@@ -27,7 +27,7 @@ dfs = [
     pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Beröm.xlsx", parse_dates=["Inkommet datum"]),
     pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Idé.xlsx", parse_dates=["Inkommet datum"]),
     pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Klagomål.xlsx", parse_dates=["Inkommet datum"]),
-    pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Felanmälan.xlsx", parse_dates=["Inkommet datum"])
+    #pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Felanmälan.xlsx", parse_dates=["Inkommet datum"])  # *** ADD BACK IN ***
     #pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Fråga.xlsx", parse_dates=["Inkommet datum"])
 ]
 
@@ -41,10 +41,10 @@ for i in range(len(dfs)):
     dfs[i] = dfs[i].drop(columns=['topic', 'topic_prob', 'topic_keywords'], errors='ignore')
 
 all_lemmas = pd.concat(dfs, ignore_index=True)
-#all_lemmas = all_lemmas.sample(10000, random_state=42)        # *** REMOVE LINE TO RUN ON ALL ROWS, NOT JUST A SAMPLE ***
+all_lemmas = all_lemmas.sample(10000, random_state=42)        # *** REMOVE LINE TO RUN ON ALL ROWS, NOT JUST A SAMPLE ***
 
 texts = all_lemmas['lemmas'].apply(lambda words: ' '.join(w.strip() for w in words)).tolist()
-print(texts[:10])
+#print(texts[:10])
 
 embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
 
@@ -62,8 +62,8 @@ all_lemmas['topic_prob'] = probs                     # *** undersök topic_prob,
 
 topic_info = topic_model.get_topic_info()
 topic_words = topic_model.get_topic(0)
-print(topic_info)
-print(topic_words)
+#print(topic_info)
+#print(topic_words)
 
 def get_top_words(topic_num, top_n=5):
     words = topic_model.get_topic(topic_num)

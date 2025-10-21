@@ -17,7 +17,8 @@ input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
 # =====================================
 # set up for saving in the right folder
 
-output_folder = os.path.join("data", "tyck_till_output", "per_kategori", "plots")
+output_folder = os.path.join("data", "tyck_till_output", "per_kategori")
+output_folder_plots = os.path.join("data", "tyck_till_output", "per_kategori", "plots")
 
 
 # =======================================
@@ -80,7 +81,7 @@ for name, gdf in categories.items():
     density_data = rasterize_points(gdf)
     masked_density = np.where(municipality_mask == 0, density_data, nodata_value).astype('int16')
 
-    output_path = os.path.join(output_folder, f"point_density_{name}.tif")
+    output_path = os.path.join(output_folder_plots, f"point_density_{name}.tif")
     with rasterio.open(
         output_path,
         'w',
@@ -117,7 +118,7 @@ masked_ratio = np.where(municipality_mask == 0, ratio, nodata_value)
 
 # save
 with rasterio.open(
-    f"{output_folder}/complaints_errorreport_idea_praise_ratio.tif",
+    f"{output_folder_plots}/complaints_errorreport_idea_praise_ratio.tif",
     'w',
     driver='GTiff',
     height=height,
@@ -169,7 +170,7 @@ with np.errstate(divide='ignore', invalid='ignore'):
 masked_sentiment_ratio = np.where(municipality_mask == 0, sentiment_ratio, nodata_value)
 
 # save
-output_path = os.path.join(output_folder, "sentiment_ratio_neg_vs_pos_neu.tif")
+output_path = os.path.join(output_folder_plots, "sentiment_ratio_neg_vs_pos_neu.tif")
 with rasterio.open(
     output_path,
     'w',
@@ -194,7 +195,7 @@ score_raster = (
 masked_score = np.where(municipality_mask == 0, score_raster, nodata_value)
 
 # save
-output_path = os.path.join(output_folder, "sentiment_score.tif")
+output_path = os.path.join(output_folder_plots, "sentiment_score.tif")
 with rasterio.open(
     output_path,
     'w',
@@ -309,7 +310,7 @@ for (row, col), topic_set in topic_sets.items():
 
 # save
 with rasterio.open(
-    f"{output_folder}/dominant_topic.tif",
+    f"{output_folder_plots}/dominant_topic.tif",
     "w",
     driver="GTiff",
     height=height,
@@ -323,7 +324,7 @@ with rasterio.open(
     dst.write(dominant_topic, 1)
 
 with rasterio.open(
-    f"{output_folder}/topic_diversity.tif",
+    f"{output_folder_plots}/topic_diversity.tif",
     "w",
     driver="GTiff",
     height=height,
