@@ -9,6 +9,10 @@ import os
 from bertopic import BERTopic
 from sentence_transformers import SentenceTransformer
 import ast
+from bertopic.representation import MaximalMarginalRelevance
+from hdbscan import HDBSCAN
+import umap
+
 
 input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
 
@@ -27,7 +31,7 @@ dfs = [
     pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Beröm.xlsx", parse_dates=["Inkommet datum"]),
     pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Idé.xlsx", parse_dates=["Inkommet datum"]),
     pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Klagomål.xlsx", parse_dates=["Inkommet datum"]),
-    #pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Felanmälan.xlsx", parse_dates=["Inkommet datum"])  # *** ADD BACK IN ***
+    pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Felanmälan.xlsx", parse_dates=["Inkommet datum"])
     #pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Fråga.xlsx", parse_dates=["Inkommet datum"])
 ]
 
@@ -41,34 +45,61 @@ for i in range(len(dfs)):
     dfs[i] = dfs[i].drop(columns=['topic', 'topic_prob', 'topic_keywords'], errors='ignore')
 
 all_lemmas = pd.concat(dfs, ignore_index=True)
-all_lemmas = all_lemmas.sample(10000, random_state=42)        # *** REMOVE LINE TO RUN ON ALL ROWS, NOT JUST A SAMPLE ***
+all_lemmas = all_lemmas.sample(30000, random_state=42)        # *** REMOVE LINE TO RUN ON ALL ROWS, NOT JUST A SAMPLE ***
 
 texts = all_lemmas['lemmas'].apply(lambda words: ' '.join(w.strip() for w in words)).tolist()
-#print(texts[:10])
 
-embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+# set up embedding ("transforming our input documents into numerical representations" - https://maartengr.github.io/BERTopic/getting_started/embeddings/embeddings.html)
+embedding_model = SentenceTransformer("KBLab/sentence-bert-swedish-cased")        # better with a swedish specific model?
+#embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+
+# set up UMAP
+umap_model = umap.UMAP(
+    n_neighbors=15,        # smaller = more local structure
+    n_components=5,        # higher = more dimensions preserved
+    min_dist=0.0,          # lower = tighter clusters
+    metric='cosine',       # 'cosine', 'euclidean', 'manhattan'
+    random_state=42
+)
+
+# set up HDBSCAN (cluster into groups of similar embeddings)
+hdbscan_model = HDBSCAN(
+    min_cluster_size=50,       # reduce to get smaller topics
+    min_samples=5,             # controls strictness of clustering (higher = conservative, so lower to make less strict)(had >20% noise, aka topic -1, so fix w reduced strictnes)
+    metric='euclidean',        # other options: 'cosine' or 'manhattan'
+    cluster_selection_method='eom',
+    prediction_data=True
+)
+
+# set up mmr
+mmr = MaximalMarginalRelevance(diversity=0.5)
 
 # create topic model
 topic_model = BERTopic(
     embedding_model=embedding_model,
+    umap_model=umap_model,
+    hdbscan_model=hdbscan_model,
     language="swedish",
-    min_topic_size=50,                                         # *** try 100 for very general topics ***
-    verbose=True
+    min_topic_size=50,                   # the higher the number the more general topics
+    verbose=True,
+    calculate_probabilities=True,
+    representation_model=mmr,            # enable MMR-style keyword diversity
+    top_n_words=10                       # number of keywords shown as summary of a topic
 )
 
 topics, probs = topic_model.fit_transform(texts)
+assigned_probs = [row[topic] if topic != -1 else 0 for row, topic in zip(probs, topics)] # assign 0 for noise (topic -1)
 all_lemmas['topic'] = topics
-all_lemmas['topic_prob'] = probs                     # *** undersök topic_prob, typ alla (?) med generell topic (-1) har topic_prob = 0 ***
+all_lemmas['topic_prob'] = assigned_probs
 
 topic_info = topic_model.get_topic_info()
 topic_words = topic_model.get_topic(0)
 #print(topic_info)
 #print(topic_words)
 
-def get_top_words(topic_num, top_n=5):
+def get_top_words(topic_num, top_n=10):
     words = topic_model.get_topic(topic_num)
     return ', '.join([word for word, _ in words[:top_n]]) if words else ''
-
 all_lemmas['topic_keywords'] = all_lemmas['topic'].apply(get_top_words)
 
 # save as excel
@@ -95,6 +126,19 @@ fig.write_html(f"{output_folder}/topic_barchart.html")
 # intertopic distance map
 fig = topic_model.visualize_topics()
 fig.write_html(f"{output_folder}/intertopic_distance_map.html")
+
+# topic probability
+fig = topic_model.visualize_distribution(probs[0], min_probability=0.001)  # example for one document
+fig.write_html(f"{output_folder}/topic_distribution_doc0.html")
+# loop through a few to inspect more
+for i in range(5):
+    fig = topic_model.visualize_distribution(probs[i], min_probability=0.001)
+    fig.write_html(f"{output_folder}/topic_distribution_doc{i}.html")
+
+# check and potentially filter out noise (topic -1)
+print(all_lemmas[all_lemmas['topic'] == -1]['lemmas'].sample(5))
+#noise_comments = all_lemmas[all_lemmas['topic'] == -1]s
+#print(f"Noise documents: {len(noise_comments)} / {len(all_lemmas)}")
 
 # ================================================
 # === find park topics based on selected words ===
