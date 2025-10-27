@@ -12,6 +12,7 @@ import ast
 from bertopic.representation import MaximalMarginalRelevance
 from hdbscan import HDBSCAN
 import umap
+from bertopic.representation import KeyBERTInspired
 
 
 input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
@@ -41,13 +42,16 @@ for i in range(len(dfs)):
         dfs[i]['lemmas'] = dfs[i]['lemmas'].apply(ast.literal_eval)
 
 # drop old topic model columns from when topic model was in tycktill_with_lemmas{}_.xlsx
-for i in range(len(dfs)):
-    dfs[i] = dfs[i].drop(columns=['topic', 'topic_prob', 'topic_keywords'], errors='ignore')
+#for i in range(len(dfs)):
+#    dfs[i] = dfs[i].drop(columns=['topic', 'topic_prob', 'topic_keywords'], errors='ignore')
 
-all_lemmas = pd.concat(dfs, ignore_index=True)
-all_lemmas = all_lemmas.sample(30000, random_state=42)        # *** REMOVE LINE TO RUN ON ALL ROWS, NOT JUST A SAMPLE ***
+all_comments = pd.concat(dfs, ignore_index=True)
+all_comments = all_comments.sample(30000, random_state=42)        # *** REMOVE LINE TO RUN ON ALL ROWS, NOT JUST A SAMPLE ***
 
-texts = all_lemmas['lemmas'].apply(lambda words: ' '.join(w.strip() for w in words)).tolist()
+#texts = all_comments['clean_Fritext'].apply(lambda words: ' '.join(w.strip() for w in words)).tolist()  # *** used lemmas before but
+mask = all_comments["clean_Fritext"].astype(str).str.strip().str.len() >= 3
+all_comments_filtered = all_comments[mask].copy()    # filter rows where text is too short/empty
+texts = all_comments["clean_Fritext"].astype(str).tolist()
 
 # set up embedding ("transforming our input documents into numerical representations" - https://maartengr.github.io/BERTopic/getting_started/embeddings/embeddings.html)
 embedding_model = SentenceTransformer("KBLab/sentence-bert-swedish-cased")        # better with a swedish specific model?
@@ -55,8 +59,8 @@ embedding_model = SentenceTransformer("KBLab/sentence-bert-swedish-cased")      
 
 # set up UMAP
 umap_model = umap.UMAP(
-    n_neighbors=15,        # smaller = more local structure
-    n_components=5,        # higher = more dimensions preserved
+    n_neighbors=40,        # smaller = more local structure
+    n_components=10,       # higher = more dimensions preserved
     min_dist=0.0,          # lower = tighter clusters
     metric='cosine',       # 'cosine', 'euclidean', 'manhattan'
     random_state=42
@@ -64,15 +68,16 @@ umap_model = umap.UMAP(
 
 # set up HDBSCAN (cluster into groups of similar embeddings)
 hdbscan_model = HDBSCAN(
-    min_cluster_size=50,       # reduce to get smaller topics
-    min_samples=5,             # controls strictness of clustering (higher = conservative, so lower to make less strict)(had >20% noise, aka topic -1, so fix w reduced strictnes)
-    metric='euclidean',        # other options: 'cosine' or 'manhattan'
+    min_cluster_size=40,          # reduce to get smaller topics
+    min_samples=1,                # controls strictness of clustering (higher = conservative, so lower to make less strict. None balances strictness automatically)
+    metric='euclidean',           # other options: 'euclidean' or 'manhattan'
     cluster_selection_method='eom',
     prediction_data=True
 )
 
-# set up mmr
+# set up representation model
 mmr = MaximalMarginalRelevance(diversity=0.5)
+rep_model = KeyBERTInspired(top_n_words=10)    # use mmr or BERTInspired - which is best?
 
 # create topic model
 topic_model = BERTopic(
@@ -83,14 +88,14 @@ topic_model = BERTopic(
     min_topic_size=50,                   # the higher the number the more general topics
     verbose=True,
     calculate_probabilities=True,
-    representation_model=mmr,            # enable MMR-style keyword diversity
+    representation_model=rep_model,
     top_n_words=10                       # number of keywords shown as summary of a topic
 )
 
 topics, probs = topic_model.fit_transform(texts)
 assigned_probs = [row[topic] if topic != -1 else 0 for row, topic in zip(probs, topics)] # assign 0 for noise (topic -1)
-all_lemmas['topic'] = topics
-all_lemmas['topic_prob'] = assigned_probs
+all_comments['topic'] = topics
+all_comments['topic_prob'] = assigned_probs
 
 topic_info = topic_model.get_topic_info()
 topic_words = topic_model.get_topic(0)
@@ -100,16 +105,16 @@ topic_words = topic_model.get_topic(0)
 def get_top_words(topic_num, top_n=10):
     words = topic_model.get_topic(topic_num)
     return ', '.join([word for word, _ in words[:top_n]]) if words else ''
-all_lemmas['topic_keywords'] = all_lemmas['topic'].apply(get_top_words)
+all_comments['topic_keywords'] = all_comments['topic'].apply(get_top_words)
 
 # save as excel
-all_lemmas.to_excel(f"{output_folder}/tycktill_with_topics.xlsx", index=False)
+all_comments.to_excel(f"{output_folder}/tycktill_with_topics.xlsx", index=False)
 
 # save as points gpkg
 pts_with_topics = gpd.GeoDataFrame(
-    all_lemmas, geometry=gpd.points_from_xy(
-        all_lemmas['Koordinater_x'],
-        all_lemmas['Koordinater_Y']
+    all_comments, geometry=gpd.points_from_xy(
+        all_comments['Koordinater_x'],
+        all_comments['Koordinater_Y']
     ),
     crs=4326)
 pts_with_topics = pts_with_topics.to_crs("EPSG:3006")
@@ -124,8 +129,8 @@ fig = topic_model.visualize_barchart(top_n_topics=20)
 fig.write_html(f"{output_folder}/topic_barchart.html")
 
 # intertopic distance map
-fig = topic_model.visualize_topics()
-fig.write_html(f"{output_folder}/intertopic_distance_map.html")
+#fig = topic_model.visualize_topics()
+#fig.write_html(f"{output_folder}/intertopic_distance_map.html")
 
 # topic probability
 fig = topic_model.visualize_distribution(probs[0], min_probability=0.001)  # example for one document
@@ -136,9 +141,9 @@ for i in range(5):
     fig.write_html(f"{output_folder}/topic_distribution_doc{i}.html")
 
 # check and potentially filter out noise (topic -1)
-print(all_lemmas[all_lemmas['topic'] == -1]['lemmas'].sample(5))
-#noise_comments = all_lemmas[all_lemmas['topic'] == -1]s
-#print(f"Noise documents: {len(noise_comments)} / {len(all_lemmas)}")
+print(all_comments[all_comments['topic'] == -1]['clean_Fritext'].sample(5))
+#noise_comments = all_comments[all_comments['topic'] == -1]s
+#print(f"Noise documents: {len(noise_comments)} / {len(all_comments)}")
 
 # ================================================
 # === find park topics based on selected words ===
@@ -176,48 +181,48 @@ topic_flags_df = pd.DataFrame({
 # save 3 versions
 
 # all park related topics based on keywords (this includes comments that don't necessarily have a keyword but it is the same topic as at least one other comment that DOES include a keyword)
-park_comments_by_topic = all_lemmas[all_lemmas['topic'].isin(park_related_topics_manual)]
-park_comments_by_topic.to_excel(f"{output_folder}/park_comments_by_topic1.xlsx", index=False)
+#park_comments_by_topic = all_comments[all_comments['topic'].isin(park_related_topics_manual)]
+#park_comments_by_topic.to_excel(f"{output_folder}/park_comments_by_topic1.xlsx", index=False)
 
-pts_with_topics1 = gpd.GeoDataFrame(
-    park_comments_by_topic, geometry=gpd.points_from_xy(
-        park_comments_by_topic['Koordinater_x'],
-        park_comments_by_topic['Koordinater_Y']
-    ),
-    crs=4326)
-pts_with_topics1 = pts_with_topics1.to_crs("EPSG:3006")
+#pts_with_topics1 = gpd.GeoDataFrame(
+#    park_comments_by_topic, geometry=gpd.points_from_xy(
+#        park_comments_by_topic['Koordinater_x'],
+#        park_comments_by_topic['Koordinater_Y']
+#    ),
+#    crs=4326)
+#pts_with_topics1 = pts_with_topics1.to_crs("EPSG:3006")
 
-pts_with_topics1.to_file("data/tyck_till_output/tycktill.gpkg", layer="pts_with_park_comments_by_topic1", driver="GPKG", mode="w")
+#pts_with_topics1.to_file("data/tyck_till_output/tycktill.gpkg", layer="pts_with_park_comments_by_topic1", driver="GPKG", mode="w")
 
 # all rows where a keyword exists in the comment
-def contains_park_keyword(lemmas):
-    return any(kw.lower() in [word.lower() for word in lemmas] for kw in park_keywords)
-park_comments_by_keyword = all_lemmas[all_lemmas['lemmas'].apply(contains_park_keyword)]
-park_comments_by_keyword.to_excel(f"{output_folder}/park_comments_by_keyword1.xlsx", index=False)
+#def contains_park_keyword(comments):
+#    return any(kw.lower() in [word.lower() for word in comments] for kw in park_keywords)
+#park_comments_by_keyword = all_comments[all_comments['clean_Fritext'].apply(contains_park_keyword)]
+#park_comments_by_keyword.to_excel(f"{output_folder}/park_comments_by_keyword1.xlsx", index=False)
 
-pts_with_topics1 = gpd.GeoDataFrame(
-    park_comments_by_keyword, geometry=gpd.points_from_xy(
-        park_comments_by_keyword['Koordinater_x'],
-        park_comments_by_keyword['Koordinater_Y']
-    ),
-    crs=4326)
-pts_with_topics1 = pts_with_topics1.to_crs("EPSG:3006")
+#pts_with_topics1 = gpd.GeoDataFrame(
+#    park_comments_by_keyword, geometry=gpd.points_from_xy(
+#        park_comments_by_keyword['Koordinater_x'],
+#        park_comments_by_keyword['Koordinater_Y']
+#    ),
+#    crs=4326)
+#pts_with_topics1 = pts_with_topics1.to_crs("EPSG:3006")
 
-pts_with_topics1.to_file("data/tyck_till_output/tycktill.gpkg", layer="pts_with_park_comments_by_keyword1", driver="GPKG", mode="w")
+#pts_with_topics1.to_file("data/tyck_till_output/tycktill.gpkg", layer="pts_with_park_comments_by_keyword1", driver="GPKG", mode="w")
 
 # park related topics but ONLY rows where a keyword exists in the comment
-park_comments_by_topic_and_keyword = park_comments_by_topic[park_comments_by_topic['lemmas'].apply(contains_park_keyword)]
-park_comments_by_topic_and_keyword.to_excel(f"{output_folder}/park_comments_by_topic_and_keyword1.xlsx", index=False)
+#park_comments_by_topic_and_keyword = park_comments_by_topic[park_comments_by_topic['clean_Fritext'].apply(contains_park_keyword)]
+#park_comments_by_topic_and_keyword.to_excel(f"{output_folder}/park_comments_by_topic_and_keyword1.xlsx", index=False)
 
-pts_with_topics1 = gpd.GeoDataFrame(
-    park_comments_by_topic_and_keyword, geometry=gpd.points_from_xy(
-        park_comments_by_topic_and_keyword['Koordinater_x'],
-        park_comments_by_topic_and_keyword['Koordinater_Y']
-    ),
-    crs=4326)
-pts_with_topics1 = pts_with_topics1.to_crs("EPSG:3006")
+#pts_with_topics1 = gpd.GeoDataFrame(
+#    park_comments_by_topic_and_keyword, geometry=gpd.points_from_xy(
+#        park_comments_by_topic_and_keyword['Koordinater_x'],
+#        park_comments_by_topic_and_keyword['Koordinater_Y']
+#    ),
+#    crs=4326)
+#pts_with_topics1 = pts_with_topics1.to_crs("EPSG:3006")
 
-pts_with_topics1.to_file("data/tyck_till_output/tycktill.gpkg", layer="pts_with_park_comments_by_topic_and_keyword1", driver="GPKG", mode="w")
+#pts_with_topics1.to_file("data/tyck_till_output/tycktill.gpkg", layer="pts_with_park_comments_by_topic_and_keyword1", driver="GPKG", mode="w")
 
 
 

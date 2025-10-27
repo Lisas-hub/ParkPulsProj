@@ -90,10 +90,11 @@ import re
 df = df[df["Fritext"].apply(lambda x: re.search(r"[a-zA-ZåäöÅÄÖ]", str(x)) is not None)]
 
 # make all text lowercase
-df["clean_Fritext"] = df["Fritext"].str.lower()
+#df["clean_Fritext"] = df["Fritext"].str.lower                                                     # removed this too to help issue with BERTopic and -1
 
 # clean up text that includes certain symbols or emojis by removing them but keeping the text
-df["clean_Fritext"] = df["clean_Fritext"].str.replace(r"[^a-zA-ZåäöÅÄÖ0-9\s]", "", regex=True)
+#df["clean_Fritext"] = df["clean_Fritext"].str.replace(r"[^a-zA-ZåäöÅÄÖ0-9\s]", "", regex=True)    # used this initially, but it might be to aggressive for TOPICmodel
+df["clean_Fritext"] = df["clean_Fritext"].str.replace(r"[^\w\s.,!?åäöÅÄÖ]", "", regex=True)        # so keeping normal symbols but removing emojis might be better
 
 # remove standalone 'k' as a word
 df["clean_Fritext"] = df["clean_Fritext"].str.replace(r"\bk\b", "", regex=True)
@@ -111,11 +112,13 @@ df["clean_Fritext"] = df["clean_Fritext"].str.replace(r"\s{2,}", " ", regex=True
 df["clean_Fritext"] = df["clean_Fritext"].apply(
     lambda x: " ".join([
         word for word in x.split()
-        if not re.fullmatch(r"(?=.*[a-zA-ZåäöÅÄÖ])(?=.*\d)[a-zA-ZåäöÅÄÖ0-9]+|\d+", word)
+        #if not re.fullmatch(r"(?=.*[a-zA-ZåäöÅÄÖ])(?=.*\d)[a-zA-ZåäöÅÄÖ0-9]+|\d+", word)         # removed this too to help issue with BERTopic and -1
+        if not re.fullmatch(r"\d+", word)                                                         # keeping only numbers without any letters mixed in
     ])
 )
 
-df = df[df["clean_Fritext"].str.strip().ne("")]                                                 # remove any now empty rows
+# remove any now empty rows
+df = df[df["clean_Fritext"].str.strip().ne("")]
 
 freetext_after = len(df)
 freetext_removed = freetext_before - freetext_after
@@ -226,7 +229,7 @@ print(kategori_summary)
 # Removed 11005 duplicate rows based on coordinates and Fritext.
 #
 # --- Cleaning Fritext ---
-# Removed 707 rows without valid text in 'Fritext', 298279 total rows remaining.
+# Removed 653 rows without valid text in 'Fritext', 298333 total rows remaining.
 #
 # --- Filtering by municipality ---
 # Removed 235 rows with coordinates outside the municipality boundary, 298044 total rows remaining.
@@ -236,10 +239,10 @@ print(kategori_summary)
 # 0                  Ansökan         0              3       3
 # 1  Arbetsorder ska skickas        10             33      43
 # 2                    Beröm       301           1620    1921
-# 3               Felanmälan     75823         198252  274075
+# 3               Felanmälan     75835         198283  274118
 # 4             Fordonsflytt         2             27      29   # there were almost 80 000 in Fordonsflytt but almost none have coordinates
-# 5                    Fråga      1158           6711    7869
-# 6                      Idé       828           4967    5795
+# 5                    Fråga      1158           6712    7870
+# 6                      Idé       829           4976    5805
 # 7                 Klagomål      1404           6823    8227
 # 8         Ordningsstörning         7             11      18
 # 9           Remiss skickad         2             62      64

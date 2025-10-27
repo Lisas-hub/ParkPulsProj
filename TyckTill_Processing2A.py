@@ -99,7 +99,7 @@ print(f"Removed {removed_rows} rows that were empty after stopword removal, {len
 
 
 # ====
-# Save
+# Sav
 
 subset_df.to_excel(f"{output_folder}/tycktill_with_lemmas_{kategori_filter}.xlsx", index=False)
 #subset_df.to_excel(f"{output_folder}/tycktill_with_lemmas_{kategori_filter}_in_park_{in_park_filter}.xlsx", index=False)
