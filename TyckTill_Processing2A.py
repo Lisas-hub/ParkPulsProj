@@ -66,7 +66,7 @@ print(f"Selected {rows_before} rows with Kategori = '{kategori_filter}' out of {
 # =================================================================
 # set up for saving figures based on number of points in the subset
 
-output_folder = f"data/tyck_till_output/per_kategori"
+output_folder = f"data/tycktill_output/per_kategori"
 os.makedirs(output_folder, exist_ok=True)
 
 # ============
@@ -99,7 +99,7 @@ print(f"Removed {removed_rows} rows that were empty after stopword removal, {len
 
 
 # ====
-# Sav
+# Save
 
 subset_df.to_excel(f"{output_folder}/tycktill_with_lemmas_{kategori_filter}.xlsx", index=False)
 #subset_df.to_excel(f"{output_folder}/tycktill_with_lemmas_{kategori_filter}_in_park_{in_park_filter}.xlsx", index=False)

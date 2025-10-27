@@ -22,7 +22,7 @@ if not kategori_input:
     print("❌ enter a valid kategori ❌")
     exit()
 
-output_folder = os.path.join("data", "tyck_till_output", "per_kategori")
+output_folder = os.path.join("data", "tycktill_output", "per_kategori")
 
 # ======================
 # load processed dataset

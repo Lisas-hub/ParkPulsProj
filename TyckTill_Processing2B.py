@@ -19,7 +19,7 @@ from transformers import AutoTokenizer, pipeline
 #    print("❌ enter a valid kategori ❌")
 #    exit()
 
-#output_folder = os.path.join("data", "tyck_till_output", "per_kategori")
+#output_folder = os.path.join("data", "tycktill_output", "per_kategori")
 
 # ======================
 # load processed dataset
@@ -49,7 +49,7 @@ df_geo["in_park"] = df_geo.index.isin(subset_within_parks.index)
 # subset by parks and a limited number of rows
 
 # subset dataset to begin with before committing to processing all 300000+ rows
-kategori_filter = "Remiss skickad"
+kategori_filter = "Beröm"
 #in_park_filter = True
 # ^^RERUN? Update here!^^
 
@@ -61,11 +61,8 @@ subset_df = df_geo[
 # =================================================================
 # set up for saving figures based on number of points in the subset
 
-output_folder = f"data/tyck_till_output/per_kategori"
+output_folder = f"data/tycktill_output/per_kategori"
 os.makedirs(output_folder, exist_ok=True)
-
-
-
 
 
 # ================================================================

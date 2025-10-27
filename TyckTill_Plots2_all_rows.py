@@ -17,8 +17,8 @@ input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
 # =====================================
 # set up for saving in the right folder
 
-output_folder = os.path.join("data", "tyck_till_output", "per_kategori")
-output_folder_plots = os.path.join("data", "tyck_till_output", "per_kategori", "plots")
+output_folder = os.path.join("data", "tycktill_output", "per_kategori")
+output_folder_plots = os.path.join("data", "tycktill_output", "per_kategori", "plots")
 
 
 # =======================================
@@ -50,11 +50,11 @@ municipality_mask = rasterize(
 
 # load point layers per cateory
 categories = {
-    "Klagomål": gpd.read_file("data/tyck_till_output/per_kategori/tycktill_Klagomål.gpkg"),
-    "Beröm": gpd.read_file("data/tyck_till_output/per_kategori/tycktill_Beröm.gpkg"),
-    "Idé": gpd.read_file("data/tyck_till_output/per_kategori/tycktill_Idé.gpkg"),
-    "Felanmälan": gpd.read_file("data/tyck_till_output/per_kategori/tycktill_Felanmälan.gpkg"),
-    #"Fråga": gpd.read_file("data/tyck_till_output/per_kategori/tycktill_Fråga.gpkg"),
+    "Klagomål": gpd.read_file("data/tycktill_output/per_kategori/tycktill_Klagomål.gpkg"),
+    "Beröm": gpd.read_file("data/tycktill_output/per_kategori/tycktill_Beröm.gpkg"),
+    "Idé": gpd.read_file("data/tycktill_output/per_kategori/tycktill_Idé.gpkg"),
+    "Felanmälan": gpd.read_file("data/tycktill_output/per_kategori/tycktill_Felanmälan.gpkg"),
+    #"Fråga": gpd.read_file("data/tycktill_output/per_kategori/tycktill_Fråga.gpkg"),
 }
 
 for key in categories:
@@ -270,7 +270,7 @@ parks["park_area"] = parks["park_area"].replace(0, np.nan)
 parks["sentiment_score_per_ha"] = parks["sentiment_score"] / (parks["park_area"]/10000)
 
 # save
-parks.to_file("data/tyck_till_output_tycktill.gpkg", layer="sentiments_per_park", driver="GPKG", mode="w")
+parks.to_file("data/tycktill_output_tycktill.gpkg", layer="sentiments_per_park", driver="GPKG", mode="w")
 
 
 
@@ -278,7 +278,7 @@ parks.to_file("data/tyck_till_output_tycktill.gpkg", layer="sentiments_per_park"
 # dominant topic raster + topic diversity raster
 #pts_with_topics = gpd.read_file(f"{output_folder}/ons_8_okt_all_rows/tycktill.gpkg", layer="pts_with_topics") # *** remove this row if doing a new subset ***
 
-pts_with_topics = gpd.read_file("data/tyck_till_output/tycktill.gpkg", layer="pts_with_topics")
+pts_with_topics = gpd.read_file("data/tycktill_output/tycktill.gpkg", layer="pts_with_topics")
 
 target_crs = 3857
 if pts_with_topics.crs.to_epsg() != target_crs:
@@ -366,7 +366,7 @@ parks_with_topic_diversity["topic_diversity_per_ha"] = (
     parks_with_topic_diversity["topic_diversity"] / (parks_with_topic_diversity["park_area"] / 10000)
 )
 
-parks_with_topic_diversity.to_file("data/tyck_till_output/tycktill.gpkg", layer="parks_with_topic_diversity", driver="GPKG", mode="w")
+parks_with_topic_diversity.to_file("data/tycktill_output/tycktill.gpkg", layer="parks_with_topic_diversity", driver="GPKG", mode="w")
 
 # =====================
 # top 5 topics per park
@@ -393,7 +393,7 @@ for i in range(1, 6):
     print(f"Most common in {col}:")
     print(parks_with_top5_topics[col].value_counts().head(5), end="\n\n")
 
-parks_with_top5_topics.to_file("data/tyck_till_output/tycktill.gpkg", layer="parks_with_top5_topics", driver="GPKG", mode="w")
+parks_with_top5_topics.to_file("data/tycktill_output/tycktill.gpkg", layer="parks_with_top5_topics", driver="GPKG", mode="w")
 
 # =====================
 #

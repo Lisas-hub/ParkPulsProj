@@ -20,7 +20,7 @@ input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
 # =====================================
 # set up for saving in the right folder
 
-output_folder = os.path.join("data", "tyck_till_output", "per_kategori")
+output_folder = os.path.join("data", "tycktill_output", "per_kategori")
 
 
 # ==================================================================================
@@ -32,7 +32,7 @@ dfs = [
     pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Beröm.xlsx", parse_dates=["Inkommet datum"]),
     pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Idé.xlsx", parse_dates=["Inkommet datum"]),
     pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Klagomål.xlsx", parse_dates=["Inkommet datum"]),
-    pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Felanmälan.xlsx", parse_dates=["Inkommet datum"])
+    #pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Felanmälan.xlsx", parse_dates=["Inkommet datum"])      # *** LÄGG TBX ***
     #pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Fråga.xlsx", parse_dates=["Inkommet datum"])
 ]
 
@@ -119,7 +119,7 @@ pts_with_topics = gpd.GeoDataFrame(
     crs=4326)
 pts_with_topics = pts_with_topics.to_crs("EPSG:3006")
 
-pts_with_topics.to_file("data/tyck_till_output/tycktill.gpkg", layer="pts_with_topics", driver="GPKG", mode="w")
+pts_with_topics.to_file("data/tycktill_output/tycktill.gpkg", layer="pts_with_topics", driver="GPKG", mode="w")
 
 # ============================
 # === topic visualisations ===
@@ -192,7 +192,7 @@ topic_flags_df = pd.DataFrame({
 #    crs=4326)
 #pts_with_topics1 = pts_with_topics1.to_crs("EPSG:3006")
 
-#pts_with_topics1.to_file("data/tyck_till_output/tycktill.gpkg", layer="pts_with_park_comments_by_topic1", driver="GPKG", mode="w")
+#pts_with_topics1.to_file("data/tycktill_output/tycktill.gpkg", layer="pts_with_park_comments_by_topic1", driver="GPKG", mode="w")
 
 # all rows where a keyword exists in the comment
 #def contains_park_keyword(comments):
@@ -208,7 +208,7 @@ topic_flags_df = pd.DataFrame({
 #    crs=4326)
 #pts_with_topics1 = pts_with_topics1.to_crs("EPSG:3006")
 
-#pts_with_topics1.to_file("data/tyck_till_output/tycktill.gpkg", layer="pts_with_park_comments_by_keyword1", driver="GPKG", mode="w")
+#pts_with_topics1.to_file("data/tycktill_output/tycktill.gpkg", layer="pts_with_park_comments_by_keyword1", driver="GPKG", mode="w")
 
 # park related topics but ONLY rows where a keyword exists in the comment
 #park_comments_by_topic_and_keyword = park_comments_by_topic[park_comments_by_topic['clean_Fritext'].apply(contains_park_keyword)]
@@ -222,7 +222,7 @@ topic_flags_df = pd.DataFrame({
 #    crs=4326)
 #pts_with_topics1 = pts_with_topics1.to_crs("EPSG:3006")
 
-#pts_with_topics1.to_file("data/tyck_till_output/tycktill.gpkg", layer="pts_with_park_comments_by_topic_and_keyword1", driver="GPKG", mode="w")
+#pts_with_topics1.to_file("data/tycktill_output/tycktill.gpkg", layer="pts_with_park_comments_by_topic_and_keyword1", driver="GPKG", mode="w")
 
 
 
