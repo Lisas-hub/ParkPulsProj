@@ -66,7 +66,7 @@ print(f"Selected {rows_before} rows with Kategori = '{kategori_filter}' out of {
 # =================================================================
 # set up for saving figures based on number of points in the subset
 
-output_folder = f"data/tycktill_output/per_kategori"
+output_folder = f"data/tycktill_output"
 os.makedirs(output_folder, exist_ok=True)
 
 # ============

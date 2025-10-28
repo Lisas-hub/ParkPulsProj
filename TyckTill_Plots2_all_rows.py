@@ -17,8 +17,8 @@ input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
 # =====================================
 # set up for saving in the right folder
 
-output_folder = os.path.join("data", "tycktill_output", "per_kategori")
-output_folder_plots = os.path.join("data", "tycktill_output", "per_kategori", "plots")
+output_folder = os.path.join("data", "tycktill_output")
+output_folder_plots = os.path.join("data", "tycktill_output", "plots")
 
 
 # =======================================
@@ -50,11 +50,11 @@ municipality_mask = rasterize(
 
 # load point layers per cateory
 categories = {
-    "Klagomål": gpd.read_file("data/tycktill_output/per_kategori/tycktill_Klagomål.gpkg"),
-    "Beröm": gpd.read_file("data/tycktill_output/per_kategori/tycktill_Beröm.gpkg"),
-    "Idé": gpd.read_file("data/tycktill_output/per_kategori/tycktill_Idé.gpkg"),
-    "Felanmälan": gpd.read_file("data/tycktill_output/per_kategori/tycktill_Felanmälan.gpkg"),
-    #"Fråga": gpd.read_file("data/tycktill_output/per_kategori/tycktill_Fråga.gpkg"),
+    "Klagomål": gpd.read_file("data/tycktill_output/tycktill_Klagomål.gpkg"),
+    "Beröm": gpd.read_file("data/tycktill_output/tycktill_Beröm.gpkg"),
+    "Idé": gpd.read_file("data/tycktill_output/tycktill_Idé.gpkg"),
+    "Felanmälan": gpd.read_file("data/tycktill_output/tycktill_Felanmälan.gpkg"),
+    #"Fråga": gpd.read_file("data/tycktill_output/tycktill_Fråga.gpkg"),
 }
 
 for key in categories:
