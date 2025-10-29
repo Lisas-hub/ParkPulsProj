@@ -20,7 +20,7 @@ input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
 # =====================================
 # set up for saving in the right folder
 
-output_folder = os.path.join("data", "tycktill_output")
+output_folder = os.path.join("../data", "tycktill_output")
 
 
 # ==================================================================================
@@ -141,7 +141,7 @@ for i in range(5):
 # ================================================
 # === find park topics based on selected words ===
 
-keywords_file_path = 'data/keywords.xlsx'
+keywords_file_path = '../data/keywords.xlsx'
 selected_sheets = ['Sheet1', 'Sheet2', 'Sheet3', 'Sheet4']
 
 park_keywords = []

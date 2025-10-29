@@ -37,7 +37,7 @@ dfs = [
 ]
 
 all_comments = pd.concat(dfs, ignore_index=True)
-all_comments = all_comments.sample(3000, random_state=42)        # *** REMOVE LINE TO RUN ON ALL ROWS, NOT JUST A SAMPLE ***
+#all_comments = all_comments.sample(3000, random_state=42)        # *** REMOVE LINE TO RUN ON ALL ROWS, NOT JUST A SAMPLE ***
 
 print("\n--- Rows before filtering ---")
 print(f"Loaded {len(all_comments):,} rows before filtering.")
@@ -153,4 +153,13 @@ pts = gpd.GeoDataFrame(
     geometry=gpd.points_from_xy(all_comments['Koordinater_x'], all_comments['Koordinater_Y']),
     crs=4326
 ).to_crs("EPSG:3006")
-pts.to_file("data/output/tycktill.gpkg", layer="pts_with_topics", driver="GPKG", mode="w")
+pts.to_file("data/tycktill_output/tycktill.gpkg", layer="pts_with_topics", driver="GPKG", mode="w")
+
+
+# With all rows:
+#
+# --- Rows before filtering ---
+# Loaded 290,505 rows before filtering.
+#
+# --- Rows after filtering ---
+# 290,005 rows remain after filtering short/empty texts.

@@ -83,7 +83,7 @@ for ax, year in zip(axes, years):
     ax.set_xlabel("Weekday")
     ax.set_ylabel(f"TyckTill entries, {kategori_input} (count)")
     ax.set_xticklabels(weekday_order, rotation=0)
-    ax.set_ylim(ymax=16000)                          # <<< set appropriate y axis maximum (16 000 for Felanmälan, 600 for the rest)
+    ax.set_ylim(ymax=600)                          # <<< set appropriate y axis maximum (16 000 for Felanmälan, 600 for the rest)
     ax.legend(title="Sentiment")
 
 plt.tight_layout()
@@ -132,7 +132,7 @@ for ax, year in zip(axes, years):
     ax.set_ylabel(f"TyckTill entries, {kategori_input} (count)")
     ax.set_xticks(range(12))
     ax.set_xticklabels(month_labels, rotation=0)
-    ax.set_ylim(ymax=12000)                          # <<< set appropriate y axis maximum (12 000 for Felanmälan, 600 for the rest
+    ax.set_ylim(ymax=600)                          # <<< set appropriate y axis maximum (12 000 for Felanmälan, 600 for the rest
     ax.legend(title="Sentiment")
 
 plt.tight_layout()
@@ -183,7 +183,7 @@ for ax, year in zip(axes, years):
             bottom += subset[sentiment]
     ax.set_title(f"{year}")
     ax.set_xlabel("In a park?")
-    ax.set_ylim(ymax=120000)                    # <<< set appropriate y axis maximum (120 000 for Felanmälan, 4000 for the rest)
+    ax.set_ylim(ymax=4000)                    # <<< set appropriate y axis maximum (120 000 for Felanmälan, 4000 for the rest)
     axes[0].set_ylabel(f"TyckTill entries, ({kategori_input}) (count)")  # label only on left plot
     axes[1].set_ylabel("")
     ax.legend(title="Sentiment")

@@ -3,12 +3,10 @@ import os
 import pandas as pd
 import geopandas as gpd
 from bertopic import BERTopic
-#from bertopic._topics import topics_over_time
-
-
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
+import re
 
 # =====
 # paths
@@ -60,8 +58,7 @@ fig.write_html(f"{output_folder}/intertopic_distance_map.html")
 
 
 # === alt to BERTopics own topics over time ===
-# BERTopic topics over time requires the format that is in Inkommet datum but it causes error so using seaborn is an alternative way
-# con - it is not dynamic like BERTopic visualisations
+# BERTopic topics over time requires the format that is in Inkommet datum but it causes error so using seaborn is an alternative way BUT it's not dynamic like BERTopic visualisations
 
 df = pd.read_excel(f"{output_folder}\\tycktill_with_topics.xlsx", parse_dates=["Inkommet datum"]),
 
@@ -133,10 +130,25 @@ for sheet in selected_sheets:
 
 park_keywords = list(set([w.strip().lower() for w in park_keywords]))
 
+swedish_endings = r'(en|et|ar|er|or|na|n|s)?'
+pattern = re.compile(
+    r'\b(' + '|'.join(
+        rf"{re.escape(kw)}{swedish_endings}" for kw in park_keywords
+    ) + r')\b',
+    flags=re.IGNORECASE
+)
+
 # function to check if a comment contains any keyword
 def contains_park_keyword(text):
-    text_lower = str(text).lower()
-    return any(kw in text_lower for kw in park_keywords)
+    return bool(pattern.search(str(text)))
+
+#pattern = re.compile(r'\b(' + '|'.join(re.escape(kw) for kw in park_keywords) + r')\b')
+#def contains_park_keyword(text):
+#    return bool(pattern.search(str(text).lower()))   # <<< this works but requires the keyword to be exact, so kronoberkspark will not catch kronobergsparken
+
+#def contains_park_keyword(text):
+#    text_lower = str(text).lower()
+#    return any(kw in text_lower for kw in park_keywords)     # <<< this included too much, like 'park' could catch 'sparkcykel' because in has 'park' in it
 
 # find topics that are park-related (based on topic keywords)
 park_related_topics = []
@@ -144,8 +156,16 @@ for topic_id in topic_model.get_topics().keys():
     if topic_id == -1:
         continue
     topic_words = [w.lower() for w, _ in topic_model.get_topic(topic_id)]
-    if any(kw in topic_words for kw in park_keywords):
+    topic_text = " ".join(topic_words)
+    # if any park keyword (with endings) matches the topic words
+    if pattern.search(topic_text):
         park_related_topics.append(topic_id)
+
+# print what keywords got picked up in park topics
+matched_keywords = [kw for kw in park_keywords if re.search(rf"\b{re.escape(kw)}{swedish_endings}\b", topic_text, flags=re.IGNORECASE)]
+if matched_keywords:
+    park_related_topics.append(topic_id)
+    print(f"Topic {topic_id} matched with: {matched_keywords}")
 
 # save all comments that contain a park keyword (regardless of topic)
 park_comments_by_keyword = all_comments[all_comments["clean_Fritext"].apply(contains_park_keyword)]
@@ -190,6 +210,11 @@ print(f"Found {len(park_related_topics)} park-related topics.")
 print(f"Saved {len(park_comments_by_keyword):,} comments containing park keywords.")
 print(f"Saved {len(park_comments_by_topic):,} comments in park-related topics.")
 print(f"Saved {len(park_comments_by_topic_and_keyword):,} comments in park topics AND with keywords.")
+
+# With all rows:
+#
+# --- Park related topics by specific words ---
+# Found ...
 
 
 # === by the model ("unsupervised") ===
