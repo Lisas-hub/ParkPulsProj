@@ -238,17 +238,18 @@ print(f"Saved {len(park_comments_by_topic_and_keyword):,} comments in park_topic
 # With all rows:
 #
 # --- Park related topics by specific words ---
-# Found ...
+# Found 76 park-related topics.
+# Saved 25,204 comments containing park keywords.
+# Saved 32,238 comments in park-related topics.
+# Saved 11,996 comments in park_topics AND with keywords.
+#
+# --- Park related topics by BERTopic ---
+# Saved 1431 park-related comments
 
 
 # === by the model ("unsupervised") ===
 
 similar_topics, similarity = topic_model.find_topics("park", top_n=5)
-
-#for topic_id, score in zip(similar_topics, similarity):
-#    print(f"Topic {topic_id} (similarity: {score:.4f})")
-#    print(topic_model.get_topic(topic_id))
-#    print()
 
 topic_similarity_df = pd.DataFrame({
     "topic": similar_topics,
@@ -286,3 +287,74 @@ fig = topic_model.visualize_topics(topics=similar_topics, custom_labels=True)
 fig.write_html(f"{output_folder}/intertopic_distance_map_parks_by_BERTopic.html")
 
 
+# === topics over time for filtered park comments ===
+
+def plot_topics_over_time(df, title, output_path):
+
+    df["Inkommet datum"] = pd.to_datetime(df["Inkommet datum"], errors="coerce")
+    df = df.dropna(subset=["Inkommet datum", "topic", "year_label"])
+
+    df["month"] = df["Inkommet datum"].dt.month
+
+    grouped = (
+        df.groupby(["year_label", "month", "topic"])
+        .size()
+        .reset_index(name="count")
+    )
+
+    # --- pick top topics within this filtered dataset ---
+    top_topics = (
+        grouped.groupby("topic")["count"]
+        .sum()
+        .nlargest(5)
+        .index
+    )
+    grouped = grouped[grouped["topic"].isin(top_topics)]
+    grouped["topic"] = grouped["topic"].astype(str)
+
+    # --- Custom month order (June–May) ---
+    month_order = [6,7,8,9,10,11,12,1,2,3,4,5]
+    month_labels = ["Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar","Apr","May"]
+    month_to_custom_order = {m: i for i, m in enumerate(month_order)}
+    grouped["month_order"] = grouped["month"].map(month_to_custom_order)
+
+    # --- plot ---
+    sns.set(style="whitegrid")
+    year_labels = sorted(grouped["year_label"].unique())
+    fig, axes = plt.subplots(1, len(year_labels), figsize=(7 * len(year_labels), 5), sharey=True)
+    if len(year_labels) == 1:
+        axes = [axes]
+
+    fig.suptitle(title, fontsize=16)
+    for ax, yl in zip(axes, year_labels):
+        subset = grouped[grouped["year_label"] == yl]
+        sns.lineplot(
+            data=subset.sort_values("month_order"),
+            x="month_order",
+            y="count",
+            hue="topic",
+            marker="o",
+            ax=ax
+        )
+        ax.set_title(yl)
+        ax.set_xlabel("Month")
+        ax.set_ylabel("Comment Count")
+        ax.set_xticks(range(12))
+        ax.set_xticklabels(month_labels)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.show()
+
+
+# --- apply to filtered datasets ---
+plot_topics_over_time(
+    park_comments_by_BERTopic,
+    "Topic Frequency per Month – Park-related Topics (BERTopic Similarity)",
+    f"{output_folder}/topics_over_time_park_by_BERTopic.png"
+)
+
+plot_topics_over_time(
+    park_comments_by_topic_and_keyword,
+    "Topic Frequency per Month – Park Topics + Keywords",
+    f"{output_folder}/topics_over_time_park_by_topic_and_keyword.png"
+)
