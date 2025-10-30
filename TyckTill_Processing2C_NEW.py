@@ -12,6 +12,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 from nltk.corpus import stopwords
 import numpy as np
 
+
 # =====
 # paths
 
@@ -87,8 +88,8 @@ hdbscan_model = HDBSCAN(
 # === representation model ===
 # extracts topic keywords that best represent the topics (MMR or BERTInspired, which is best?)
 
-mmr = MaximalMarginalRelevance(diversity=0.5)
-rep_model = KeyBERTInspired(top_n_words=10)
+mmr = MaximalMarginalRelevance(diversity=0.3)
+rep_model = KeyBERTInspired(top_n_words=10)      # with this i got some fuzzy topic_keywords, for example one topic that is clearly about potholes but the words pothål, grop, etc still did not occur in the label
 
 # === vectorizer model ===
 # removes stopwords from topic keywords
@@ -109,7 +110,7 @@ topic_model = BERTopic(
     min_topic_size=50,                   # the higher the number the more general topics
     verbose=True,
     calculate_probabilities=True,        # if False, processing will be a lot quicker but it's need for .reduce_outliers() later
-    representation_model=rep_model,
+    representation_model=mmr,            # switched to try if MMR makes better topic_keywords than BERTInspired
     top_n_words=10,                      # number of keywords shown as summary of a topic
     vectorizer_model=vectorizer_model
 )

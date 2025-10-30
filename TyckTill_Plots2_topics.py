@@ -60,7 +60,7 @@ fig.write_html(f"{output_folder}/intertopic_distance_map.html")
 # === alt to BERTopics own topics over time ===
 # BERTopic topics over time requires the format that is in Inkommet datum but it causes error so using seaborn is an alternative way BUT it's not dynamic like BERTopic visualisations
 
-df = pd.read_excel(f"{output_folder}\\tycktill_with_topics.xlsx", parse_dates=["Inkommet datum"]),
+tycktill_with_topics = pd.read_excel(f"{output_folder}\\tycktill_with_topics.xlsx", parse_dates=["Inkommet datum"])
 
 # group topic counts per month per custom year
 grouped_topics = (
@@ -68,6 +68,16 @@ grouped_topics = (
     .size()
     .reset_index(name='count')
 )
+
+top_topics = (
+    grouped_topics.groupby('topic')['count']
+    .sum()
+    .nlargest(5)
+    .index
+)
+
+grouped_topics = grouped_topics[grouped_topics['topic'].isin(top_topics)]
+grouped_topics['topic'] = grouped_topics['topic'].astype(str)
 
 month_order = [6, 7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5]
 month_labels = ["Jun", "Jul", "Aug", "Sep", "Oct", "Nov",
@@ -79,7 +89,7 @@ grouped_topics['month_order'] = grouped_topics['month'].map(month_to_custom_orde
 # plot
 sns.set(style='whitegrid')
 fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
-fig.suptitle("Topic Frequency per Month", fontsize=16)
+fig.suptitle("Topic Frequency per Month for Top 5 Topics", fontsize=16)
 
 years = grouped_topics['year_label'].unique()
 for ax, year in zip(axes, years):
@@ -205,11 +215,25 @@ park_comments_by_topic_and_keyword = gpd.GeoDataFrame(
 park_comments_by_topic_and_keyword = park_comments_by_topic_and_keyword.to_crs("EPSG:3006")
 park_comments_by_topic_and_keyword.to_file("data/tycktill_output/tycktill.gpkg", layer="park_comments_by_topic_and_keyword", driver="GPKG", mode="w")
 
+# === topic barcharts ===
+filtered_topic_ids = park_comments_by_topic_and_keyword["topic"].unique().tolist()
+fig = topic_model.visualize_barchart(
+    topics=filtered_topic_ids,
+    top_n_topics=len(filtered_topic_ids),
+    n_words=5,
+    custom_labels=True
+)
+fig.write_html(f"{output_folder}/topic_barchart_parks_by_topic_and_keyword.html")
+
+# === intertopic distance map ===
+fig = topic_model.visualize_topics(topics=filtered_topic_ids, custom_labels=True)
+fig.write_html(f"{output_folder}/intertopic_distance_map_parks_by_topic_and_keyword.html")
+
 print("\n--- Park related topics by specific words ---")
 print(f"Found {len(park_related_topics)} park-related topics.")
 print(f"Saved {len(park_comments_by_keyword):,} comments containing park keywords.")
 print(f"Saved {len(park_comments_by_topic):,} comments in park-related topics.")
-print(f"Saved {len(park_comments_by_topic_and_keyword):,} comments in park topics AND with keywords.")
+print(f"Saved {len(park_comments_by_topic_and_keyword):,} comments in park_topics AND with keywords.")
 
 # With all rows:
 #
@@ -219,5 +243,46 @@ print(f"Saved {len(park_comments_by_topic_and_keyword):,} comments in park topic
 
 # === by the model ("unsupervised") ===
 
+similar_topics, similarity = topic_model.find_topics("park", top_n=5)
+
+#for topic_id, score in zip(similar_topics, similarity):
+#    print(f"Topic {topic_id} (similarity: {score:.4f})")
+#    print(topic_model.get_topic(topic_id))
+#    print()
+
+topic_similarity_df = pd.DataFrame({
+    "topic": similar_topics,
+    "park_similarity": similarity
+})
+
+filtered_comments = tycktill_with_topics[tycktill_with_topics["topic"].isin(similar_topics)].copy()
+
+filtered_comments = filtered_comments.merge(topic_similarity_df, on="topic", how="left")
+
+park_comments_by_BERTopic = gpd.GeoDataFrame(
+    filtered_comments,
+    geometry=gpd.points_from_xy(
+        filtered_comments["Koordinater_x"],
+        filtered_comments["Koordinater_Y"]
+    ),
+    crs=4326
+)
+park_comments_by_BERTopic.to_file("data/tycktill_output/tycktill.gpkg", layer="park_comments_by_BERTopic", driver="GPKG", mode="w")
+
+print("\n--- Park related topics by BERTopic ---")
+print(f"Saved {len(filtered_comments)} park-related comments")
+
+# === topic barcharts ===
+fig = topic_model.visualize_barchart(
+    topics=similar_topics,
+    top_n_topics=len(similar_topics),
+    n_words=5,
+    custom_labels=True
+)
+fig.write_html(f"{output_folder}/topic_barchart_parks_by_BERTopic.html")
+
+# === intertopic distance map ===
+fig = topic_model.visualize_topics(topics=similar_topics, custom_labels=True)
+fig.write_html(f"{output_folder}/intertopic_distance_map_parks_by_BERTopic.html")
 
 

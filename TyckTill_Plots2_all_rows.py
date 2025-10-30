@@ -270,7 +270,7 @@ parks["park_area"] = parks["park_area"].replace(0, np.nan)
 parks["sentiment_score_per_ha"] = parks["sentiment_score"] / (parks["park_area"]/10000)
 
 # save
-parks.to_file("data/tycktill_output_tycktill.gpkg", layer="sentiments_per_park", driver="GPKG", mode="w")
+parks.to_file("data/tycktill_output/tycktill.gpkg", layer="sentiments_per_park", driver="GPKG", mode="w")
 
 
 
