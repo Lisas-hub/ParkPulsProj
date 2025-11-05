@@ -129,7 +129,6 @@ for i in range(5):
 # =========
 # filtering
 
-# === by specific keywords ("supervised") ===
 keywords_file_path = 'data/keywords.xlsx'
 selected_sheets = ['Sheet1', 'Sheet2', 'Sheet3', 'Sheet4']
 
@@ -140,7 +139,8 @@ for sheet in selected_sheets:
 
 park_keywords = list(set([w.strip().lower() for w in park_keywords]))
 
-swedish_endings = r'(en|et|ar|er|or|na|n|s)?'
+# match endings with keywords i the texts
+swedish_endings = r'(en|et|ar|er|or|na|n|s|ens|ets|arnas|ernas|ornas|ens|ets|as)?'
 pattern = re.compile(
     r'\b(' + '|'.join(
         rf"{re.escape(kw)}{swedish_endings}" for kw in park_keywords
@@ -148,8 +148,15 @@ pattern = re.compile(
     flags=re.IGNORECASE
 )
 
+# === by specific keywords ("supervised") ===      uses clean_Fritext
+
 # function to check if a comment contains any keyword
+def find_matched_keywords(text):
+    """list of all keywords matched in a comment"""
+    text = str(text)
+    return [kw for kw in park_keywords if re.search(rf"\b{re.escape(kw)}{swedish_endings}\b", text, flags=re.IGNORECASE)]
 def contains_park_keyword(text):
+    """if comment contains at least one park keyword"""
     return bool(pattern.search(str(text)))
 
 #pattern = re.compile(r'\b(' + '|'.join(re.escape(kw) for kw in park_keywords) + r')\b')
@@ -159,6 +166,10 @@ def contains_park_keyword(text):
 #def contains_park_keyword(text):
 #    text_lower = str(text).lower()
 #    return any(kw in text_lower for kw in park_keywords)     # <<< this included too much, like 'park' could catch 'sparkcykel' because in has 'park' in it
+
+# add new column listing matched keywords
+park_comments_by_keyword = all_comments[all_comments["clean_Fritext"].apply(contains_park_keyword)].copy()
+park_comments_by_keyword["matched_keywords"] = park_comments_by_keyword["clean_Fritext"].apply(find_matched_keywords)
 
 # find topics that are park-related (based on topic keywords)
 park_related_topics = []
@@ -170,12 +181,11 @@ for topic_id in topic_model.get_topics().keys():
     # if any park keyword (with endings) matches the topic words
     if pattern.search(topic_text):
         park_related_topics.append(topic_id)
-
-# print what keywords got picked up in park topics
-matched_keywords = [kw for kw in park_keywords if re.search(rf"\b{re.escape(kw)}{swedish_endings}\b", topic_text, flags=re.IGNORECASE)]
-if matched_keywords:
-    park_related_topics.append(topic_id)
-    print(f"Topic {topic_id} matched with: {matched_keywords}")
+        matched_keywords = [
+            kw for kw in park_keywords
+            if re.search(rf"\b{re.escape(kw)}{swedish_endings}\b", topic_text, flags=re.IGNORECASE)
+        ]
+        print(f"Topic {topic_id} matched with: {matched_keywords}")
 
 # save all comments that contain a park keyword (regardless of topic)
 park_comments_by_keyword = all_comments[all_comments["clean_Fritext"].apply(contains_park_keyword)]
@@ -187,7 +197,7 @@ park_comments_by_keyword = gpd.GeoDataFrame(
     ),
     crs=4326)
 park_comments_by_topic_and_keyword = park_comments_by_keyword.to_crs("EPSG:3006")
-park_comments_by_keyword.to_file("data/tycktill_output/tycktill.gpkg", layer="park_comments_by_keyword", driver="GPKG", mode="w")
+park_comments_by_keyword.to_file("data/tycktill_output/tycktill_filtered.gpkg", layer="park_comments_by_keyword", driver="GPKG", mode="w")
 
 # save all comments belonging to a park topic (regardless of keyword presence in individual comments)
 park_comments_by_topic = all_comments[all_comments["topic"].isin(park_related_topics)]
@@ -199,7 +209,7 @@ park_comments_by_topic = gpd.GeoDataFrame(
     ),
     crs=4326)
 park_comments_by_topic = park_comments_by_topic.to_crs("EPSG:3006")
-park_comments_by_topic.to_file("data/tycktill_output/tycktill.gpkg", layer="park_comments_by_topic", driver="GPKG", mode="w")
+park_comments_by_topic.to_file("data/tycktill_output/tycktill_filtered.gpkg", layer="park_comments_by_topic", driver="GPKG", mode="w")
 
 # save comments that BOTH contain a keyword AND belong to a park topic
 park_comments_by_topic_and_keyword = park_comments_by_topic[
@@ -213,10 +223,10 @@ park_comments_by_topic_and_keyword = gpd.GeoDataFrame(
     ),
     crs=4326)
 park_comments_by_topic_and_keyword = park_comments_by_topic_and_keyword.to_crs("EPSG:3006")
-park_comments_by_topic_and_keyword.to_file("data/tycktill_output/tycktill.gpkg", layer="park_comments_by_topic_and_keyword", driver="GPKG", mode="w")
+park_comments_by_topic_and_keyword.to_file("data/tycktill_output/tycktill_filtered.gpkg", layer="park_comments_by_topic_and_keyword", driver="GPKG", mode="w")
 
 # === topic barcharts ===
-filtered_topic_ids = park_comments_by_topic_and_keyword["topic"].unique().tolist()
+filtered_topic_ids = park_comments_by_keyword["topic"].unique().tolist()
 fig = topic_model.visualize_barchart(
     topics=filtered_topic_ids,
     top_n_topics=len(filtered_topic_ids),
@@ -227,7 +237,7 @@ fig.write_html(f"{output_folder}/topic_barchart_parks_by_topic_and_keyword.html"
 
 # === intertopic distance map ===
 fig = topic_model.visualize_topics(topics=filtered_topic_ids, custom_labels=True)
-fig.write_html(f"{output_folder}/intertopic_distance_map_parks_by_topic_and_keyword.html")
+fig.write_html(f"{output_folder}/intertopic_distance_map_parks_by_keyword.html")
 
 print("\n--- Park related topics by specific words ---")
 print(f"Found {len(park_related_topics)} park-related topics.")
@@ -235,55 +245,99 @@ print(f"Saved {len(park_comments_by_keyword):,} comments containing park keyword
 print(f"Saved {len(park_comments_by_topic):,} comments in park-related topics.")
 print(f"Saved {len(park_comments_by_topic_and_keyword):,} comments in park_topics AND with keywords.")
 
-# With all rows:
+# With all rows (OLD):
 #
 # --- Park related topics by specific words ---
 # Found 76 park-related topics.
-# Saved 25,204 comments containing park keywords.
+# Saved 25,204 comments containing park keywords.   <<< USE THIS ONE
 # Saved 32,238 comments in park-related topics.
 # Saved 11,996 comments in park_topics AND with keywords.
 #
 # --- Park related topics by BERTopic ---
-# Saved 1431 park-related comments
+# Saved 1431 park-related comments                  <<< used only "park" for this one instead of all keywords from excel
+
+# With all rows:
+#
+#--- Park related topics by specific words ---
+#Found 77 park-related topics.
+#Saved 26,089 comments containing park keywords.     <<< USE THIS ONE
+#Saved 32,311 comments in park-related topics.
+#Saved 12,220 comments in park_topics AND with keywords.
+#
+#--- Park related topics by BERTopic ---
+#Saved 56879 park-related comments
 
 
-# === by the model ("unsupervised") ===
+# === by the model ("unsupervised") ===       uses topic_keywords
 
-similar_topics, similarity = topic_model.find_topics("park", top_n=5)
+similar_topics_all = []
+similarity_all = []
+
+for kw in park_keywords:
+    try:
+        similar_topics, similarity = topic_model.find_topics(kw, top_n=5)
+        similar_topics_all.extend(similar_topics)
+        similarity_all.extend(similarity)
+    except Exception as e:
+        print(f"Skipping keyword '{kw}' due to error: {e}")
 
 topic_similarity_df = pd.DataFrame({
-    "topic": similar_topics,
-    "park_similarity": similarity
-})
+    "topic": similar_topics_all,
+    "similarity": similarity_all
+}).drop_duplicates(subset=["topic"])
 
-filtered_comments = tycktill_with_topics[tycktill_with_topics["topic"].isin(similar_topics)].copy()
+# keep only topics with similarity > 0.3
+topic_similarity_df = topic_similarity_df[topic_similarity_df["similarity"] > 0.3]   # *** höj threshold? ELLER ta bort keywords som sandlåda etc ***
 
-filtered_comments = filtered_comments.merge(topic_similarity_df, on="topic", how="left")
+# find which Excel keywords matched each topic label
+topic_matches = []
+for topic_id in topic_similarity_df["topic"]:
+    topic_words = [w.lower() for w, _ in topic_model.get_topic(topic_id)]
+    topic_text = " ".join(topic_words)
+    matched_topic_keywords = [
+        kw for kw in park_keywords
+        if re.search(rf"\b{re.escape(kw)}{swedish_endings}\b", topic_text, flags=re.IGNORECASE)
+    ]
+    topic_matches.append({
+        "topic": topic_id,
+        "matched_topic_keywords": matched_topic_keywords
+    })
+
+topic_matches_df = pd.DataFrame(topic_matches)
+
+topic_similarity_df = topic_similarity_df.merge(topic_matches_df, on="topic", how="left")
+
+# filter comments belonging to these topics
+park_comments_by_BERTopic = tycktill_with_topics[
+    tycktill_with_topics["topic"].isin(topic_similarity_df["topic"])
+].copy()
+
+park_comments_by_BERTopic = park_comments_by_BERTopic.merge(topic_similarity_df, on="topic", how="left")
 
 park_comments_by_BERTopic = gpd.GeoDataFrame(
-    filtered_comments,
+    park_comments_by_BERTopic,
     geometry=gpd.points_from_xy(
-        filtered_comments["Koordinater_x"],
-        filtered_comments["Koordinater_Y"]
+        park_comments_by_BERTopic["Koordinater_x"],
+        park_comments_by_BERTopic["Koordinater_Y"]
     ),
     crs=4326
 )
-park_comments_by_BERTopic.to_file("data/tycktill_output/tycktill.gpkg", layer="park_comments_by_BERTopic", driver="GPKG", mode="w")
+park_comments_by_BERTopic.to_file("data/tycktill_output/tycktill_filtered.gpkg", layer="park_comments_by_BERTopic", driver="GPKG", mode="w")
 
 print("\n--- Park related topics by BERTopic ---")
-print(f"Saved {len(filtered_comments)} park-related comments")
+print(f"Saved {len(park_comments_by_BERTopic)} park-related comments")
 
 # === topic barcharts ===
 fig = topic_model.visualize_barchart(
-    topics=similar_topics,
-    top_n_topics=len(similar_topics),
+    topics=similar_topics_all,
+    top_n_topics=len(similar_topics_all),
     n_words=5,
     custom_labels=True
 )
 fig.write_html(f"{output_folder}/topic_barchart_parks_by_BERTopic.html")
 
 # === intertopic distance map ===
-fig = topic_model.visualize_topics(topics=similar_topics, custom_labels=True)
+fig = topic_model.visualize_topics(topics=similar_topics_all, custom_labels=True)
 fig.write_html(f"{output_folder}/intertopic_distance_map_parks_by_BERTopic.html")
 
 
@@ -358,3 +412,26 @@ plot_topics_over_time(
     "Topic Frequency per Month – Park Topics + Keywords",
     f"{output_folder}/topics_over_time_park_by_topic_and_keyword.png"
 )
+
+
+# === comparing output of both filters ===
+
+id_col = "Ärendenummer"
+
+ids_1 = set(park_comments_by_keyword[id_col])
+ids_2 = set(park_comments_by_BERTopic[id_col])
+
+overlap_ids = ids_1 & ids_2
+only_filter1_ids = ids_1 - ids_2
+only_filter2_ids = ids_2 - ids_1
+
+gdf_overlap = park_comments_by_keyword[park_comments_by_keyword[id_col].isin(overlap_ids)].copy()
+gdf_only_filter1 = park_comments_by_keyword[park_comments_by_keyword[id_col].isin(only_filter1_ids)].copy()
+gdf_only_filter2 = park_comments_by_BERTopic[park_comments_by_BERTopic[id_col].isin(only_filter2_ids)].copy()
+
+output_gpkg = "data/tycktill_output/tycktill_filtered.gpkg"
+
+gdf_overlap.to_file(output_gpkg, layer="park_overlap", driver="GPKG", mode="w")
+gdf_only_filter1.to_file(output_gpkg, layer="park_only_keywords", driver="GPKG", mode="w")
+gdf_only_filter2.to_file(output_gpkg, layer="park_only_topics", driver="GPKG", mode="w")
+
