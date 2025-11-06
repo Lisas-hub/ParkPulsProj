@@ -8,14 +8,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import re
 
-
-
-# lägg till pts_in_parks här för just nu saknar test3 similarity och matched_topic_?? columner
-# utöver "park_overlap", "park_only_keywords", "park_only_topics" spara park_keywords, och park_topics (att ha som input i 8. Themes)
-
-# 11.19
-
-
 # =====
 # paths
 
@@ -30,7 +22,6 @@ output_folder_plots = os.path.join("data", "tycktill_output", "plots")
 topic_model = BERTopic.load(model_path)
 all_comments = pd.read_excel(f"{input_folder}/tycktill_with_topics.xlsx")
 probs = np.load(os.path.join(f"{input_folder}/topic_probabilities.npy"), allow_pickle=True)
-
 
 # ==========================================
 # === FILTER 1: by geographical location ===
@@ -71,10 +62,6 @@ pattern = re.compile(
     ) + r')\b',
     flags=re.IGNORECASE
 )
-
-
-
-
 
 # =======================================================
 # === FILTER 2: by specific keywords in clean_Fritext ===
