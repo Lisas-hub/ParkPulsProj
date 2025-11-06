@@ -18,9 +18,10 @@ import numpy as np
 
 input_directory = r"C:\Users\lisajos\QGIS_Projects"                        # <<< set your directory here <<<
 
-output_folder = os.path.join("data", "tycktill_output")
+input_folder = os.path.join("data", "tycktill_output")
+output_folder = os.path.join("data", "tycktill_output", "BERTopic")
 
-model_path = "data/tycktill_output/bertopic_model"
+model_path = "data/tycktill_output/BERTopic/bertopic_model"
 os.makedirs(os.path.dirname(model_path), exist_ok=True)
 
 
@@ -30,11 +31,11 @@ os.makedirs(os.path.dirname(model_path), exist_ok=True)
 
 # load data
 dfs = [
-    pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Beröm.xlsx", parse_dates=["Inkommet datum"]),
-    pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Idé.xlsx", parse_dates=["Inkommet datum"]),
-    pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Klagomål.xlsx", parse_dates=["Inkommet datum"]),
-    pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Felanmälan.xlsx", parse_dates=["Inkommet datum"])
-    #pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_Fråga.xlsx", parse_dates=["Inkommet datum"])
+    pd.read_excel(f"{input_folder}\\tycktill_with_sentiment_Beröm.xlsx", parse_dates=["Inkommet datum"]),
+    pd.read_excel(f"{input_folder}\\tycktill_with_sentiment_Idé.xlsx", parse_dates=["Inkommet datum"]),
+    pd.read_excel(f"{input_folder}\\tycktill_with_sentiment_Klagomål.xlsx", parse_dates=["Inkommet datum"]),
+    pd.read_excel(f"{input_folder}\\tycktill_with_sentiment_Felanmälan.xlsx", parse_dates=["Inkommet datum"])
+    #pd.read_excel(f"{input_folder}\\tycktill_with_sentiment_Fråga.xlsx", parse_dates=["Inkommet datum"])
 ]
 
 all_comments = pd.concat(dfs, ignore_index=True)
@@ -154,7 +155,7 @@ pts = gpd.GeoDataFrame(
     geometry=gpd.points_from_xy(all_comments['Koordinater_x'], all_comments['Koordinater_Y']),
     crs=4326
 ).to_crs("EPSG:3006")
-pts.to_file("data/tycktill_output/tycktill.gpkg", layer="pts_with_topics", driver="GPKG", mode="w")
+pts.to_file(f"{output_folder}/tycktill_with_topics.gpkg", layer="pts_with_topics", driver="GPKG", mode="w")
 
 
 # With all rows:

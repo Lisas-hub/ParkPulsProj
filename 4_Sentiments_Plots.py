@@ -22,11 +22,14 @@ if not kategori_input:
     print("❌ enter a valid kategori ❌")
     exit()
 
-output_folder = os.path.join("data", "tycktill_output")
+input_folder = os.path.join("data", "tycktill_output", "sentiments")
+
+output_folder = os.path.join("data", "tycktill_output", "plots")
+
 
 # ======================
 # load processed dataset
-df = pd.read_excel(f"{output_folder}\\tycktill_with_sentiment_{kategori_input}.xlsx", parse_dates=["Inkommet datum"])
+df = pd.read_excel(f"{input_folder}\\tycktill_with_sentiment_{kategori_input}.xlsx", parse_dates=["Inkommet datum"])
 
 
 # =======================================
@@ -87,7 +90,7 @@ for ax, year in zip(axes, years):
     ax.legend(title="Sentiment")
 
 plt.tight_layout()
-plt.savefig(f"{output_folder}/plots/lineplot_weekday_vs_sentiment_{kategori_input}.png", dpi=300, bbox_inches="tight")
+plt.savefig(f"{output_folder}/lineplot_weekday_vs_sentiment_{kategori_input}.png", dpi=300, bbox_inches="tight")
 plt.show()
 
 
@@ -136,7 +139,7 @@ for ax, year in zip(axes, years):
     ax.legend(title="Sentiment")
 
 plt.tight_layout()
-plt.savefig(f"{output_folder}/plots/lineplot_month_vs_sentiment_{kategori_input}.png", dpi=300, bbox_inches="tight")
+plt.savefig(f"{output_folder}/lineplot_month_vs_sentiment_{kategori_input}.png", dpi=300, bbox_inches="tight")
 plt.show()
 
 # ==============================================
@@ -189,7 +192,7 @@ for ax, year in zip(axes, years):
     ax.legend(title="Sentiment")
 
 plt.tight_layout()
-plt.savefig(f"{output_folder}/plots/stacked_barplot_in_park_vs_sentiment_{kategori_input}.png", dpi=300, bbox_inches="tight")
+plt.savefig(f"{output_folder}/stacked_barplot_in_park_vs_sentiment_{kategori_input}.png", dpi=300, bbox_inches="tight")
 plt.show()
 
 
