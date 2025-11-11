@@ -40,6 +40,23 @@ themes_per_park = load_layer(
     r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg",
     "all_park_related_pts_with_themes"
 ) # columns to use are themes and source_filter with pts_in_park (for location filter), by BERTopic (for similarity filter), by_keyword (for strict filter) AND combinations of multiple
+pts_in_parks_with_topics = load_layer(
+    r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg",
+    "pts_in_parks_with_topics"
+)
+pts_in_parks_by_keywords = load_layer(
+    r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg",
+    "park_comments_by_keyword"
+)
+pts_in_parks_by_BERTopic = load_layer(
+    r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg",
+    "park_comments_by_BERTopic"
+)
+
+# filter for Beröm in topic files
+berom_pts_in_parks = pts_in_parks_with_topics[pts_in_parks_with_topics['Kategori'] == "Beröm"]
+berom_by_keywords = pts_in_parks_by_keywords[pts_in_parks_by_keywords['Kategori'] == "Beröm"]
+berom_by_BERTopic = pts_in_parks_by_BERTopic[pts_in_parks_by_BERTopic['Kategori'] == "Beröm"]
 
 sentiments_per_park = sentiments_per_park.dropna(subset=["sentiment_score_per_ha"])
 
@@ -93,6 +110,7 @@ def compute_theme_cooccurrence(gdf):
     coocc = coocc.value_counts().reset_index(name="count")
     return coocc
 
+
 # ==========
 # page setup
 
@@ -108,11 +126,15 @@ if "selected_layer" not in st.session_state:
     st.session_state.layer_type = None
     st.session_state.selected_plot = None
 
-# ===========
-# general tab
+
+# ==================================
+# ============== TABS ==============
+
+# ==============
+# TAB 1: general
 with tab1:
     general_choice = st.radio(
-        "",
+        "Make a selection:",
         ["What parks inspire the most ideas?"],  # <<< add more layers here
         index=None,
         horizontal=True
@@ -123,8 +145,8 @@ with tab1:
         st.session_state.layer_column = "Idé_rel"
         st.session_state.layer_type = "stats"
 
-# ==============
-# sentiments tab
+# =================
+# TAB 2: sentiments
 with tab2:
     sentiments_choice = st.radio(
         "Make a selection:",
@@ -139,109 +161,45 @@ with tab2:
         st.session_state.layer_type = "sentiments"
 
 
-# ==========
-# topics tab
-#with tab3:
+# =============
+# TAB 3: topics
+with tab3:
+    topics_choice = st.radio(
+        "Make a selection:",
+        ["What are the top topics?", "Do topics vary over time?"],
+        horizontal=True,
+        index=None
+    )
 
 
-# ==============
-# themes tab
+# =============
+# TAB 4: themes
 with tab4:
     plot_choice = st.radio(
         "Make a selection:",
-        [
-            "What themes are most common in parks?",
-            "What themes occur in combination?"
-        ],
+        ["What themes are most common in parks?", "What themes occur in combination?"],
         horizontal=True,
         index=None  # None = nothing pre-selected
     )
 
-    if plot_choice == "What themes are most common in parks?":
-        st.session_state.selected_plot = "faceted_bar"
+# THESE HAVE TO BE AFTER ANY with tabX: BLOCK! Otherwise it does not work
+    if topics_choice == "What are the top topics?":
+        st.session_state.selected_plot = "top_topics"
+    elif topics_choice == "Do topics vary over time?":
+        st.session_state.selected_plot = "topics_over_time"
+    elif plot_choice == "What themes are most common in parks?":
+        st.session_state.selected_plot = "common_themes"
     elif plot_choice == "What themes occur in combination?":
         st.session_state.selected_plot = "mixed_themes"
     else:
         st.session_state.selected_plot = None
 
+
+# ============================================
+# ============== VISUALIZATIONS ==============
+
 # ============
-# display plot
-
-# barchart - theme count per park filter
-if st.session_state.selected_plot == "faceted_bar":
-    st.subheader("Themes in Park-related comments (3 definitions)")
-    st.markdown("Park related TyckTill comments have been defined in 3 different ways: by geographical location, by keywords (strictly) and by keywords (similarity). **Strictly** means that a specified keyword was present in the comment while **Similarity** means a keyword or similar word was present in the comment as defined by or model.")
-    st.text(" ") # creates more of space between text and plot
-
-    themes_counts = prepare_themes_data(themes_per_park)
-
-    themes_order = (
-        themes_counts.groupby("themes")["count"]
-            .sum()
-            .sort_values(ascending=False)
-            .index.tolist()
-    )
-
-    okabe_ito_12 = [
-        "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
-        "#D55E00", "#CC79A7", "#999999", "#66C2A5", "#FC8D62",
-        "#8DA0CB", "#E78AC3", "#BBBBBB"
-    ]
-
-    if "No theme" in themes_order:
-        theme_order = [t for t in themes_order if t != "No theme"] + ["No theme"]
-
-    base = (
-        alt.Chart(themes_counts)
-            .mark_bar()
-            .encode(
-            x=alt.X("themes:N", sort=themes_order, title="Themes"),
-            y=alt.Y("count:Q", title="Count"),
-            color=alt.Color(
-                "themes:N",
-                title="Themes",
-                scale=alt.Scale(range=okabe_ito_12),
-            ),
-            tooltip=["themes", "count"],
-        )
-            .properties(width=300, height=250)
-    )
-
-    chart = base.facet(
-        column=alt.Column(
-            "source_filter:N",
-            title=None,
-            header=alt.Header(labelOrient="top", labelAngle=0)
-        )
-    ).resolve_scale(y="independent")
-
-    st.altair_chart(chart, use_container_width=True)
-
-# combinations of themes
-elif st.session_state.selected_plot == "mixed_themes":
-    st.subheader("Combinations of Themes")
-    st.markdown("Some themes are more frequently detected together in TyckTill comments.")
-    st.text(" ")
-
-    coocc = compute_theme_cooccurrence(themes_per_park)
-
-    chart = (
-        alt.Chart(coocc)
-            .mark_rect()
-            .encode(
-            x=alt.X("theme_a:N", title="Theme A"),
-            y=alt.Y("theme_b:N", title="Theme B"),
-            color=alt.Color("count:Q", scale=alt.Scale(scheme="viridis"), title="Co-occurrence count"),
-            tooltip=["theme_a", "theme_b", "count"]
-        )
-            .properties(width=600, height=600)
-    )
-
-    st.altair_chart(chart, use_container_width=True)
-
-
-# ===========
-# display map
+# display maps
 
 if st.session_state.selected_layer is not None:
     m = folium.Map(location=(59.33, 17.99), zoom_start=10.5, tiles=None)
@@ -325,5 +283,179 @@ if st.session_state.selected_layer is not None:
         ).add_to(m)
 
     st_folium(m, width=1200, height=800)
+
+
+# =============
+# display plots
+
+# barchart - theme count per park filter
+if st.session_state.selected_plot == "common_themes":
+    st.subheader("Themes in Park-related comments (3 definitions)")
+    st.text(" ")
+    st.markdown("*Park related TyckTill comments* have been defined in 3 different ways: by geographical location, by keywords (strictly) and by keywords (similarity). **Strictly** means that a specified keyword was present in the comment while **Similarity** means a keyword or similar word was present in the comment as defined by our model.")
+    st.text(" ")
+    st.markdown("*Themes* are defined by precence of theme keywords in comments.")
+    st.text(" ") # creates more of space between text and plot
+
+    themes_counts = prepare_themes_data(themes_per_park)
+
+    themes_order = (
+        themes_counts.groupby("themes")["count"]
+            .sum()
+            .sort_values(ascending=False)
+            .index.tolist()
+    )
+
+    okabe_ito_12 = [
+        "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
+        "#D55E00", "#CC79A7", "#999999", "#66C2A5", "#FC8D62",
+        "#8DA0CB", "#E78AC3", "#BBBBBB"
+    ]
+
+    if "No theme" in themes_order:
+        themes_order = [t for t in themes_order if t != "No theme"] + ["No theme"]
+
+    base = (
+        alt.Chart(themes_counts)
+            .mark_bar()
+            .encode(
+            x=alt.X("themes:N", sort=themes_order, title="Themes"),
+            y=alt.Y("count:Q", title="Count"),
+            color=alt.Color(
+                "themes:N",
+                title="Themes",
+                scale=alt.Scale(range=okabe_ito_12),
+            ),
+            tooltip=["themes", "count"],
+        )
+            .properties(width=300, height=250)
+    )
+
+    chart = base.facet(
+        column=alt.Column(
+            "source_filter:N",
+            title=None,
+            header=alt.Header(labelOrient="top", labelAngle=0)
+        )
+    ).resolve_scale(y="independent")
+
+    st.altair_chart(chart, use_container_width=True)
+
+# combinations of themes
+elif st.session_state.selected_plot == "mixed_themes":
+    st.subheader("Combinations of Themes")
+    st.markdown("Some themes are more frequently detected together in TyckTill comments.")
+    st.text(" ")
+
+    coocc = compute_theme_cooccurrence(themes_per_park)
+
+    chart = (
+        alt.Chart(coocc)
+            .mark_rect()
+            .encode(
+            x=alt.X("theme_a:N", title="Theme A"),
+            y=alt.Y("theme_b:N", title="Theme B"),
+            color=alt.Color("count:Q", scale=alt.Scale(scheme="viridis"), title="Co-occurrence count"),
+            tooltip=["theme_a", "theme_b", "count"]
+        )
+            .properties(width=600, height=600)
+    )
+
+    st.altair_chart(chart, use_container_width=True)
+
+# topics
+elif st.session_state.selected_plot == "top_topics":
+    st.subheader("Topics in Park-related comments (Beröm)")
+    st.text(" ")
+    st.markdown("beskrivning")
+    st.text(" ")
+
+    def top_topics_chart(df, layer_label):
+        # count per topic
+        counts = (
+            df.groupby(["topic", "topic_keywords"])
+            .size()
+            .reset_index(name="count")
+            .sort_values("count", ascending=False)
+            .head(15)
+        )
+
+        chart = (
+            alt.Chart(counts)
+            .mark_bar()
+            .encode(
+                x=alt.X("count:Q", title="Number of comments"),
+                y=alt.Y("topic_keywords:N", sort="-x", title="Topic keywords"),
+                tooltip=["topic", "topic_keywords", "count"],
+                color=alt.value("#1f77b4")
+            )
+            .properties(title=layer_label, width=300, height=250)
+        )
+        return chart
+
+    chart1 = top_topics_chart(berom_pts_in_parks, "Pts in Parks with Topics")
+    chart2 = top_topics_chart(berom_by_keywords, "By Keywords")
+    chart3 = top_topics_chart(berom_by_BERTopic, "By BERTopic")
+
+    st.altair_chart(chart1 | chart2 | chart3, use_container_width=True)
+
+
+elif st.session_state.selected_plot == "topics_over_time":
+    st.subheader("Topics over time in Park-related comments (Beröm)")
+    st.text(" ")
+    st.markdown("beskrivning")
+    st.text(" ")
+
+    def topics_over_time_chart(df, layer_label):
+        df = df.copy()
+
+        # use month column
+        if "month" not in df.columns:
+            st.warning(f"{layer_label} has no 'month' column — skipping.")
+            return None
+
+        if np.issubdtype(df["month"].dtype, np.number):
+            df["month"] = df["month"].astype(int).clip(1, 12)
+            month_order = list(range(1, 13))
+
+        # aggregate by month and topic
+        topic_counts = (
+            df.groupby(["month", "topic", "topic_keywords"])
+                .size()
+                .reset_index(name="count")
+        )
+
+        # get top 5 topics overall
+        top_topics = (
+            topic_counts.groupby("topic_keywords")["count"].sum()
+                .sort_values(ascending=False)
+                .head(5)
+                .index
+        )
+        topic_counts = topic_counts[topic_counts["topic_keywords"].isin(top_topics)]
+
+        chart = (
+            alt.Chart(topic_counts)
+                .mark_line(point=True)
+                .encode(
+                x=alt.X("month:O", title="Month", sort=month_order),
+                y=alt.Y("count:Q", title="Comment count"),
+                color=alt.Color("topic_keywords:N", title="Topic"),
+                tooltip=["month", "topic_keywords", "count"]
+            )
+                .properties(title=layer_label, width=300, height=250)
+        )
+        return chart
+
+    chart1 = topics_over_time_chart(berom_pts_in_parks, "Pts in Parks with Topics")
+    chart2 = topics_over_time_chart(berom_by_keywords, "By Keywords")
+    chart3 = topics_over_time_chart(berom_by_BERTopic, "By BERTopic")
+
+    if chart1 and chart2 and chart3:
+        st.altair_chart(chart1 | chart2 | chart3, use_container_width=True)
+
 else:
     st.info("Select a layer using the buttons above to display the visualisation.")
+
+# sentiments over time
+

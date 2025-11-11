@@ -6,7 +6,7 @@ import geopandas as gpd
 
 
 # TO DO
-# Search only praise category (in parks) - what are people saying?
+# search only praise category (in parks) - what are people saying?
 
 
 # prepp
