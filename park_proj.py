@@ -24,9 +24,10 @@ socio_economic = st.Page("archive/Socio_economic.py", title="Socio economic")
 socio_economic2 = st.Page("archive/Socio_economic_2.py", title="Socio economic 2")
 parks = st.Page("Parks.py", title="Parks")
 parks2 = st.Page("Parks2.py", title="Parks2")
+
 page_TOPICS = st.Page("page_TOPICS.py", title="Park related topics in TyckTill comments")
 page_SENTIMENTS = st.Page("page_SENTIMENTS.py", title="Sentiments in parks")
 page_TYCKTILL = st.Page("page_TYCKTILL.py", title="TyckTill")
 
-pg = st.navigation([page_TYCKTILL, page_TOPICS, page_SENTIMENTS, parks2, parks])
+pg = st.navigation([page_TYCKTILL, page_TOPICS, parks2, parks])
 pg.run()
