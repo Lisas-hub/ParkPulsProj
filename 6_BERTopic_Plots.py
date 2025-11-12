@@ -19,8 +19,9 @@ output_folder = os.path.join("data", "tycktill_output", "plots")
 # load model and data
 
 topic_model = BERTopic.load(model_path)
-all_comments = pd.read_excel(input_folder, "tycktill_with_topics.xlsx")
+all_comments = pd.read_excel(os.path.join(input_folder, "tycktill_with_topics.xlsx"))
 probs = np.load(os.path.join(input_folder, "topic_probabilities.npy"), allow_pickle=True)
+
 
 # ==============
 # visualizations
@@ -118,5 +119,8 @@ fig.write_html(f"{output_folder}/topic_distribution_doc0.html")
 for i in range(5):
     fig = topic_model.visualize_distribution(probs[i], min_probability=0.001)
     fig.write_html(f"{output_folder}/topic_distribution_doc{i}.html")
+
+
+# === top 5 topics in park polygons ===
 
 

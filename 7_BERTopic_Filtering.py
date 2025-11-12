@@ -38,8 +38,48 @@ pts_in_parks = gpd.sjoin(all_comments_gdf, parks, predicate="within", how="inner
 print(f"Points inside parks: {len(pts_in_parks)} / {len(all_comments)} total")
 
 pts_in_parks.to_file(f"{output_folder}/tycktill_filtered.gpkg", layer="pts_in_parks_with_topics", driver="GPKG", mode="w")
-pts_in_parks.to_file(f"{output_folder}/pts_in_parks_with_topics.xlsx", index=False)
+#pts_in_parks.to_excel(f"{output_folder}/pts_in_parks_with_topics.xlsx", index=False)
 
+# ========================
+# get top5 topics per park (prepp for streamlit that just fitted well in this script)
+
+topic_counts = (
+    pts_in_parks.groupby(["group", "topic", "topic_keywords"])
+    .size()
+    .reset_index(name="count")
+)
+
+top5_topics_per_park = (
+    topic_counts.sort_values(["group", "count"], ascending=[True, False])
+    .groupby("group")
+    .head(5)
+)
+
+def format_topic_list(df):
+    lines = [
+        f"{rank}. {row.topic_keywords} (Topic {row.topic}, n={row['count']})"
+        for rank, (_, row) in enumerate(df.iterrows(), start=1)
+    ]
+    return "\n".join(lines)
+
+top_topics_joined = (
+    top5_topics_per_park
+    .groupby("group")
+        .apply(lambda df: pd.Series({
+        "Top5_Topics": ", ".join(df.sort_values("count", ascending=False)["topic"].astype(str)),
+        "Top5_Table": format_topic_list(df.sort_values("count", ascending=False))
+    }))
+        .reset_index()
+)
+
+parks_with_topics = parks.merge(top_topics_joined, on="group", how="left")
+
+parks_with_topics.to_file(
+    f"{output_folder}/tycktill_filtered.gpkg",
+    layer="parks_with_top5_topics",
+    driver="GPKG",
+    mode="w"
+)
 
 # =========================================
 # === prepp for filtering with keywords ===
