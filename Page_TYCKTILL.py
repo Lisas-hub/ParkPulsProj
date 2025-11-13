@@ -27,13 +27,13 @@ def load_layer(path: str, layer_name: str) -> gpd.GeoDataFrame:
 
 tycktill_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\tycktill.gpkg"
 sentiments_per_park = load_layer(tycktill_GPKG, "sentiments_per_park")
-ideas_per_park = load_layer(tycktill_GPKG, "stats_per_park")
+stats_per_park = load_layer(tycktill_GPKG, "stats_per_park")
 
 tycktill_filtered_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg"
 themes_per_park = load_layer(tycktill_filtered_GPKG, "all_park_related_pts_with_themes")
-pts_in_parks_with_topics = load_layer(tycktill_filtered_GPKG, "pts_in_parks_with_topics")
-pts_in_parks_by_keywords = load_layer(tycktill_filtered_GPKG, "park_comments_by_keyword")
-pts_in_parks_by_BERTopic = load_layer(tycktill_filtered_GPKG, "park_comments_by_BERTopic")
+pts_in_parks_with_topics = load_layer(tycktill_filtered_GPKG, "pts_in_parks_with_topics")   # by location
+pts_in_parks_by_keywords = load_layer(tycktill_filtered_GPKG, "park_comments_by_keyword")   # by keywords (strictly)
+pts_in_parks_by_BERTopic = load_layer(tycktill_filtered_GPKG, "park_comments_by_BERTopic")  # by keywords (similarity)
 parks_with_top5_topics = load_layer(tycktill_filtered_GPKG, "parks_with_top5_topics")
 
 # ====================
@@ -42,7 +42,11 @@ parks_with_top5_topics = load_layer(tycktill_filtered_GPKG, "parks_with_top5_top
 # ====================
 # prepp for sentiments
 
+# sentiment score
 sentiments_per_park = sentiments_per_park.dropna(subset=["sentiment_score_per_ha"])
+
+# sentiments over time
+sentiments_for_praise_ideas = pts_in_parks_with_topics[pts_in_parks_with_topics['Kategori'].isin(["Beröm", "Idé"])]   # OBS! only using by location pts!!
 
 # ================
 # prepp for topics
@@ -109,17 +113,17 @@ def compute_theme_cooccurrence(gdf):
 st.title("Vad tycker besökarna om Stockholms parker?")
 st.text("Här finner du sammanställd data från appen TyckTill! Välj bland alternativen nedan för att se resultat av vår analys.")
 
-tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Sentiments", "Topics", "Themes"])
+tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Sentiments", "Topics", "Themes"])          # *** new tab? UPDATE HERE ***
 
 # ==================================
-# ============== TABS ==============
+# ============== TABS ==============                                               # *** new tab/button? UPDATE HERE ***
 
 # ===============
 # TAB 1: overview
 with tab1:
     overview_choice = st.radio(
         "Make a selection:",
-        ["What parks inspire the most ideas?"],
+        ["What parks inspire the most ideas?", "TEST"],
         index=None,                   # None = no radio button pre-selected
         horizontal=True
     )
@@ -129,7 +133,7 @@ with tab1:
 with tab2:
     sentiments_choice = st.radio(
         "Make a selection:",
-        ["How do TyckTill users feel about parks?"],
+        ["How do TyckTill users feel about parks?", "Sentiments over time (months) in park-related comments", "Sentiments over time (weekdays) in park-related comments"],
         horizontal=True,
         index=None
     )
@@ -139,7 +143,7 @@ with tab2:
 with tab3:
     topics_choice = st.radio(
         "Make a selection:",
-        ["What are the top topics?", "Do topics vary over time?", "TOP5 TOPICS PER PARK"],
+        ["What are the top topics?", "Do topics vary over time?", "Top 5 topics per park"],
         horizontal=True,
         index=None
     )
@@ -153,6 +157,34 @@ with tab4:
         horizontal=True,
         index=None
     )
+
+#########################
+if overview_choice:
+    # If user made a selection in Overview tab
+    sentiments_choice = None
+    topics_choice = None
+    plot_choice = None
+    st.session_state.selected_plot = None   # clear plots if switching to map
+elif sentiments_choice:
+    # If user made a selection in Sentiments tab
+    overview_choice = None
+    topics_choice = None
+    plot_choice = None
+    st.session_state.selected_plot = None   # clear plots
+elif topics_choice:
+    # If user made a selection in Topics tab
+    overview_choice = None
+    sentiments_choice = None
+    plot_choice = None
+    st.session_state.selected_layer = None  # clear maps (so only plots or top5_topics)
+elif plot_choice:
+    # If user made a selection in Themes tab
+    overview_choice = None
+    sentiments_choice = None
+    topics_choice = None
+    st.session_state.selected_layer = None  # clear maps
+#########################
+
 
 # =============================
 # determine selected map / plot
@@ -177,12 +209,21 @@ if "selected_layer" not in st.session_state:
 
 
 # overview
-if overview_choice == "What parks inspire the most ideas?":
-    select_layer(ideas_per_park, "stats", "Idé_rel")
+if overview_choice == "What parks inspire the most ideas?":                        # *** new tab/button? UPDATE HERE ***
+    select_layer(stats_per_park, "ideas", "Idé_rel")
+
+elif overview_choice == "TEST":
+    select_layer(stats_per_park, "praise", "Beröm_rel")
 
 # sentiments
 elif sentiments_choice == "How do TyckTill users feel about parks?":
-    select_layer(sentiments_per_park, "sentiments", "sentiment_score_per_ha")
+    select_layer(sentiments_per_park, "sentiment_score", "sentiment_score_per_ha")
+
+elif sentiments_choice == "Sentiments over time (months) in park-related comments":
+    select_plot("sentiments_over_time_months_praise_idea")
+
+elif sentiments_choice == "Sentiments over time (weekdays) in park-related comments":
+    select_plot("sentiments_over_time_weekdays_praise_idea")
 
 # topics
 elif topics_choice == "What are the top topics?":
@@ -191,8 +232,8 @@ elif topics_choice == "What are the top topics?":
 elif topics_choice == "Do topics vary over time?":
     select_plot("topics_over_time")
 
-elif topics_choice == "TOP5 TOPICS PER PARK":
-    select_layer("top5_topics_per_park")
+elif topics_choice == "Top 5 topics per park":
+    select_layer(parks_with_top5_topics, "top5_topics_per_park", "Top5_Table")
 
 # themes
 elif plot_choice == "What themes are most common in parks?":
@@ -224,6 +265,74 @@ def create_base_map():
         control=True
     ).add_to(m)
     return m
+
+# ideas map
+def add_ideas_layer(m, layer):
+    st.header("Ideas per park (normalised count)")
+    n_classes = 5
+    values = layer[st.session_state.layer_column].values
+    classifier = mapclassify.NaturalBreaks(values, k=n_classes)
+    breaks = classifier.bins
+    colors = ["#f7fbff", "#c6dbef", "#6baed6", "#2171b5", "#08306b"]
+
+    def get_color(value):
+        for i, b in enumerate(breaks):
+            if value <= b:
+                return colors[i]
+        return colors[-1]
+
+    def style_function(feature):
+        value = feature["properties"][st.session_state.layer_column]
+        return {
+            "fillColor": get_color(value),
+            "color": "black",
+            "weight": 0.5,
+            "fillOpacity": 0.7
+        }
+
+    folium.GeoJson(
+        layer,
+        style_function=style_function,
+        tooltip=folium.features.GeoJsonTooltip(
+            fields=[st.session_state.layer_column],
+            aliases=["Ideas per park:"],
+            localize=True
+        )
+    ).add_to(m)
+
+# TEST
+def add_TEST_layer(m,layer):
+    st.header("TEST")
+    n_classes = 5
+    values = layer[st.session_state.layer_column].values
+    classifier = mapclassify.NaturalBreaks(values, k=n_classes)
+    breaks = classifier.bins
+    colors = ["#f7fbff", "#c6dbef", "#6baed6", "#2171b5", "#08306b"]
+
+    def get_color(value):
+        for i, b in enumerate(breaks):
+            if value <= b:
+                return colors[i]
+        return colors[-1]
+
+    def style_function(feature):
+        value = feature["properties"][st.session_state.layer_column]
+        return {
+            "fillColor": get_color(value),
+            "color": "black",
+            "weight": 0.5,
+            "fillOpacity": 0.7
+        }
+
+    folium.GeoJson(
+        layer,
+        style_function=style_function,
+        tooltip=folium.features.GeoJsonTooltip(
+            fields=[st.session_state.layer_column],
+            aliases=["Beröm per park:"],
+            localize=True
+        )
+    ).add_to(m)
 
 # sentiments map
 def add_sentiments_layer(m, layer):
@@ -261,44 +370,17 @@ def add_sentiments_layer(m, layer):
         )
     ).add_to(m)
 
-# ideas map
-def add_ideas_layer(m, layer):
-    st.header("Ideas per park (normalised count)")
-    n_classes = 5
-    values = layer[st.session_state.layer_column].values
-    classifier = mapclassify.NaturalBreaks(values, k=n_classes)
-    breaks = classifier.bins
-    colors = ["#f7fbff", "#c6dbef", "#6baed6", "#2171b5", "#08306b"]
-
-    def get_color(value):
-        for i, b in enumerate(breaks):
-            if value <= b:
-                return colors[i]
-        return colors[-1]
-
-    def style_function(feature):
-        value = feature["properties"][st.session_state.layer_column]
-        return {
-            "fillColor": get_color(value),
-            "color": "black",
-            "weight": 0.5,
-            "fillOpacity": 0.7
-        }
-
-    folium.GeoJson(
-        layer,
-        style_function=style_function,
-        tooltip=folium.features.GeoJsonTooltip(
-            fields=[st.session_state.layer_column],
-            aliases=["Ideas per park:"],
-            localize=True
-        )
-    ).add_to(m)
-
 # top5 topics map with popup
-def add_top5_topics_layer(m, parks_df):
-    for _, row in parks_df.iterrows():
-        popup_val = row.get("Top5_Table", "")
+def add_top5_topics_layer(m, layer):
+    st.header("Top 5 topics per park")
+    st.text("")
+    st.markdown("Click a park to view the most common topics.")
+    st.text("")
+
+    layer_column = st.session_state.layer_column
+
+    for _, row in layer.iterrows():
+        popup_val = row.get(layer_column, "")
 
         if isinstance(popup_val, str) and popup_val.strip():
             rows = [r.strip() for r in popup_val.split("\n") if r.strip()]
@@ -368,6 +450,15 @@ def show_common_themes():
                 "themes:N",
                 title="Themes",
                 scale=alt.Scale(range=okabe_ito_12),
+                sort=themes_order,
+                legend=alt.Legend(
+                    orient="bottom",
+                    columns=7,
+                    labelFontSize=14,
+                    titleFontSize=16,
+                    symbolSize=100,
+                    padding=10
+                )
             ),
             tooltip=["themes", "count"],
         )
@@ -380,7 +471,8 @@ def show_common_themes():
             title=None,
             header=alt.Header(labelOrient="top", labelAngle=0)
         )
-    ).resolve_scale(y="independent")
+    )
+    #).resolve_scale(y="independent")
 
     st.altair_chart(chart, use_container_width=True)
 
@@ -395,7 +487,7 @@ def show_mixed_themes():
         alt.Chart(coocc)
         .mark_rect()
         .encode(
-            x=alt.X("theme_a:N", title="Theme A"),
+            x=alt.X("theme_a:N", title="Theme A", axis=alt.Axis(labelAngle=45)),
             y=alt.Y("theme_b:N", title="Theme B"),
             color=alt.Color("count:Q", scale=alt.Scale(scheme="viridis"), title="Co-occurrence count"),
             tooltip=["theme_a", "theme_b", "count"]
@@ -500,7 +592,134 @@ def show_topics_over_time():
     if chart1 and chart2 and chart3:
         st.altair_chart(chart1 | chart2 | chart3, use_container_width=True)
 
-def display_plot(plot_name):
+def show_sentiments_over_time_months_praise_idea():
+    st.subheader("Sentiments over time (months) in park-related comments")
+    st.markdown("*Park-related* defined by location.")
+    st.markdown("Categories included: Praise & Ideas.")
+    st.text(" ")
+
+    df = sentiments_for_praise_ideas.copy()
+
+    month_order = [6, 7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5]
+    month_labels = ["Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+                    "Jan", "Feb", "Mar", "Apr", "May"]
+
+    # map month numbers to short names
+    month_map = dict(zip(month_order, month_labels))
+    month_to_order = {m: i for i, m in enumerate(month_order)}  # 0–11 order index
+
+    monthly_sentiments = (
+        df.groupby(["year_label", "month", "sentiment_label"])
+            .size()
+            .reset_index(name="count")
+    )
+
+    monthly_sentiments["month_name"] = monthly_sentiments["month"].map(month_map)
+    monthly_sentiments["month_order_index"] = monthly_sentiments["month"].map(month_to_order)
+
+    def add_break_rows(g):
+        g = g.sort_values("month_order_index")
+        last_row = g.iloc[-1]
+        # Add a break row (month_order_index=None breaks the line)
+        break_row = last_row.copy()
+        break_row["month_name"] = None
+        break_row["count"] = None
+        return pd.concat([g, pd.DataFrame([break_row])], ignore_index=True)
+
+    monthly_sentiments = (
+        monthly_sentiments
+        .groupby(["year_label", "sentiment_label"], group_keys=False)
+        .apply(add_break_rows)
+    )
+
+    base = (
+        alt.Chart(monthly_sentiments)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X("month_name:N", title="Month", sort=month_labels, axis=alt.Axis(labelAngle=0), scale=alt.Scale(domain=month_labels)),
+            y=alt.Y("count:Q", title="Number of comments"),
+            color=alt.Color(
+                "sentiment_label:N",
+                scale=alt.Scale(domain=["POSITIVE", "NEUTRAL", "NEGATIVE"],
+                                range=["#009E73", "#999999", "#D55E00"]),
+                title="Sentiment"
+            ),
+            tooltip=["year_label", "month_name", "sentiment_label", "count"]
+        )
+        .properties(width=500, height=300)
+    )
+
+    chart = base.facet(
+        column=alt.Column("year_label:N",
+                          header=alt.Header(labelOrient="top", labelAngle=0))
+    ).resolve_scale(y="independent")
+
+    st.altair_chart(chart, use_container_width=True)
+
+def show_sentiments_over_time_weekdays_praise_idea():
+    st.subheader("Sentiments over time (weekday) in park-related comments")
+    st.markdown("*Park-related* defined by location.")
+    st.markdown("Categories included: Praise & Ideas.")
+    st.text(" ")
+
+    df = sentiments_for_praise_ideas.copy()
+
+    weekday_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    weekday_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    weekday_abbr = dict(zip(weekday_order, weekday_labels))
+
+    weekday_sentiments = (
+        df.groupby(["year_label", "weekday", "sentiment_label"])
+            .size()
+            .reset_index(name="count")
+    )
+
+    weekday_sentiments["weekday_name"] = weekday_sentiments["weekday"].map(weekday_abbr)
+
+    weekday_sentiments["weekday_name"] = pd.Categorical(
+        weekday_sentiments["weekday_name"], categories=weekday_labels, ordered=True
+    )
+
+    weekday_sentiments = weekday_sentiments.sort_values(
+        ["year_label", "sentiment_label", "weekday_name"]
+    )
+
+    base = (
+        alt.Chart(weekday_sentiments)
+            .mark_line(point=True)
+            .encode(
+            x=alt.X(
+                "weekday_name:N",
+                title="Weekday",
+                sort=weekday_labels,
+                axis=alt.Axis(labelAngle=0),
+                scale=alt.Scale(domain=weekday_labels)  # show all days
+            ),
+            y=alt.Y("count:Q", title="Number of comments"),
+            color=alt.Color(
+                "sentiment_label:N",
+                scale=alt.Scale(
+                    domain=["POSITIVE", "NEUTRAL", "NEGATIVE"],
+                    range=["#009E73", "#999999", "#D55E00"]
+                ),
+                title="Sentiment"
+            ),
+            tooltip=["year_label", "weekday_name", "sentiment_label", "count"]
+        )
+            .properties(width=500, height=300)
+    )
+
+    chart = base.facet(
+        column=alt.Column(
+            "year_label:N",
+            header=alt.Header(labelOrient="top", labelAngle=0)
+        )
+    ).resolve_scale(y="independent")
+
+    st.altair_chart(chart, use_container_width=True)
+
+
+def display_plot(plot_name):                                                       # *** new tab/button? UPDATE HERE ***
     if plot_name == "common_themes":
         show_common_themes()
     elif plot_name == "mixed_themes":
@@ -509,10 +728,16 @@ def display_plot(plot_name):
         show_top_topics()
     elif plot_name == "topics_over_time":
         show_topics_over_time()
+    elif plot_name == "sentiments_over_time_months_praise_idea":
+        show_sentiments_over_time_months_praise_idea()
+    elif plot_name == "sentiments_over_time_weekdays_praise_idea":
+        show_sentiments_over_time_weekdays_praise_idea()
 
-# ======
-#
+# =========
+# container
+
 viz_container = st.container()
+#viz_container.empty()
 with viz_container:
 
     if st.session_state.selected_layer is not None:
@@ -521,23 +746,20 @@ with viz_container:
         layer_type = st.session_state.layer_type
         layer = st.session_state.selected_layer
 
-        if layer_type == "sentiments":
+        if layer_type == "sentiment_score":                                        # *** new tab/button? UPDATE HERE ***
             add_sentiments_layer(m, layer)
         elif layer_type == "ideas":
             add_ideas_layer(m, layer)
+        elif layer_type == "praise":
+            add_ideas_layer(m, layer)
         elif layer_type == "top5_topics_per_park":
-            add_top5_topics_layer(m, parks_with_top5_topics)
+            add_top5_topics_layer(m, layer)
 
-        st_folium(m, width=1200, height=800)
+        st_folium(m, width=1200, height=800, key=st.session_state.layer_type)
 
     elif st.session_state.selected_plot is not None:
         display_plot(st.session_state.selected_plot)
 
     else:
         st.info("Select a layer or a plot using the buttons above to display the visualisation.")
-
-
-
-
-# sentiments over time
 
