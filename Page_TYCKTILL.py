@@ -51,10 +51,26 @@ sentiments_for_praise_ideas = pts_in_parks_with_topics[pts_in_parks_with_topics[
 # ================
 # prepp for topics
 
-# filter for Beröm in topic files
-berom_pts_in_parks = pts_in_parks_with_topics[pts_in_parks_with_topics['Kategori'] == "Beröm"]
-berom_by_keywords = pts_in_parks_by_keywords[pts_in_parks_by_keywords['Kategori'] == "Beröm"]
-berom_by_BERTopic = pts_in_parks_by_BERTopic[pts_in_parks_by_BERTopic['Kategori'] == "Beröm"]
+def prepare_topic_keywords(df, top_n_full=10, top_n_short=3):
+    # convert string → list
+    df = df.copy()
+    df["topic_keywords_list"] = df["topic_keywords"].apply(lambda s: s.split(", "))
+
+    df["topic_keywords_full"] = df["topic_keywords_list"].apply(lambda lst: ", ".join(lst[:top_n_full]))
+
+    df["topic_keywords_short"] = df["topic_keywords_list"].apply(lambda lst: ", ".join(lst[:top_n_short]))
+
+    return df
+# apply shortened topic_keywords list
+pts_in_parks_with_topics = prepare_topic_keywords(pts_in_parks_with_topics)
+pts_in_parks_by_keywords = prepare_topic_keywords(pts_in_parks_by_keywords)
+pts_in_parks_by_BERTopic = prepare_topic_keywords(pts_in_parks_by_BERTopic)
+
+# filter for Beröm and Idé in topic files
+praise_idea_pts_in_parks = pts_in_parks_with_topics[pts_in_parks_with_topics['Kategori'].isin(["Beröm", "Idé"])]   # use [pts_in_parks_with_topics['Kategori'] == "Beröm"] for just one category
+praise_idea_by_keywords = pts_in_parks_by_keywords[pts_in_parks_by_keywords['Kategori'].isin(["Beröm", "Idé"])]
+praise_idea_by_BERTopic = pts_in_parks_by_BERTopic[pts_in_parks_by_BERTopic['Kategori'].isin(["Beröm", "Idé"])]
+
 
 # =========================
 # prepp for themes barchart
@@ -123,7 +139,7 @@ tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Sentiments", "Topics", "Themes"])
 with tab1:
     overview_choice = st.radio(
         "Make a selection:",
-        ["What parks inspire the most ideas?", "TEST"],
+        ["What parks get the most praise and idea suggestions?", "What parks get the most error reports and complaints?"],
         index=None,                   # None = no radio button pre-selected
         horizontal=True
     )
@@ -209,11 +225,17 @@ if "selected_layer" not in st.session_state:
 
 
 # overview
-if overview_choice == "What parks inspire the most ideas?":                        # *** new tab/button? UPDATE HERE ***
-    select_layer(stats_per_park, "ideas", "Idé_rel")
+if overview_choice == "What parks get the most praise and idea suggestions?":                        # *** new tab/button? UPDATE HERE ***
+    select_layer(stats_per_park, "pts_per_park_praise_idea", "rel_pts_per_park_praise_idea")
 
-elif overview_choice == "TEST":
-    select_layer(stats_per_park, "praise", "Beröm_rel")
+elif overview_choice == "What parks get the most error reports and complaints?":
+    select_layer(stats_per_park, "pts_per_park_error_complaint", "rel_pts_per_park_errorrep_complaint")
+
+#elif overview_choice == "What parks inspire the most ideas?":
+#    select_layer(stats_per_park, "ideas", "Idé_rel")
+
+#elif overview_choice == "TEST":
+#    select_layer(stats_per_park, "praise", "Beröm_rel")
 
 # sentiments
 elif sentiments_choice == "How do TyckTill users feel about parks?":
@@ -266,7 +288,111 @@ def create_base_map():
     ).add_to(m)
     return m
 
-# ideas map
+# pts in parks map (praise + ideas / error report + complaint)
+def add_pts_per_park_praise_idea_layer(m, layer):
+    st.header("Praise and ideas per park (normalised count)")
+
+    col = st.session_state.layer_column
+
+    # handle NaN rows so jenks thing works later
+    layer["_is_missing"] = layer[col].isna()
+    layer["_value"] = layer[col].fillna(0)  # replace NaN with 0
+
+    n_classes = 5
+    values = layer["_value"].values
+    classifier = mapclassify.NaturalBreaks(values, k=n_classes)
+    breaks = classifier.bins
+
+    colors = ["#f7fbff", "#c6dbef", "#6baed6", "#2171b5", "#08306b"]
+    missing_color = "#d9d9d9"
+
+    def fmt(val, is_missing):
+        if is_missing or val < 0.001:
+            return "No praise or ideas in this park (value < 0,001)"
+        return f"{val:.3f}"
+
+    layer["tooltip_text"] = layer.apply(
+        lambda r: fmt(r["_value"], r["_is_missing"]),
+        axis=1
+    )
+
+    def choose_color(feature):
+        if feature["properties"]["_is_missing"]:
+            return missing_color
+        v = feature["properties"]["_value"]
+        for i, b in enumerate(breaks):
+            if v <= b:
+                return colors[i]
+        return colors[-1]
+
+    folium.GeoJson(
+        layer,
+        style_function=lambda feat: {
+            "fillColor": choose_color(feat),
+            "color": "black",
+            "weight": 0.5,
+            "fillOpacity": 0.7,
+        },
+        tooltip=folium.features.GeoJsonTooltip(
+            fields=["tooltip_text"],
+            aliases=["Praise and ideas per park:"],
+            sticky=True
+        )
+    ).add_to(m)
+
+# pts in parks map (praise + ideas / error report + complaint)
+def add_pts_per_park_error_complaint_layer(m, layer):
+    st.header("Error reports and complaints per park (normalised count)")
+
+    col = st.session_state.layer_column
+
+    # handle NaN rows so jenks thing works later
+    layer["_is_missing"] = layer[col].isna()
+    layer["_value"] = layer[col].fillna(0)  # replace NaN with 0
+
+    n_classes = 5
+    values = layer["_value"].values
+    classifier = mapclassify.NaturalBreaks(values, k=n_classes)
+    breaks = classifier.bins
+
+    colors = ["#f7fbff", "#c6dbef", "#6baed6", "#2171b5", "#08306b"]
+    missing_color = "#d9d9d9"
+
+    def fmt(val, is_missing):
+        if is_missing or val < 0.001:
+            return "No error reports or complaints in this park (value < 0,001)"
+        return f"{val:.3f}"
+
+    layer["tooltip_text"] = layer.apply(
+        lambda r: fmt(r["_value"], r["_is_missing"]),
+        axis=1
+    )
+
+    def choose_color(feature):
+        if feature["properties"]["_is_missing"]:
+            return missing_color
+        v = feature["properties"]["_value"]
+        for i, b in enumerate(breaks):
+            if v <= b:
+                return colors[i]
+        return colors[-1]
+
+    folium.GeoJson(
+        layer,
+        style_function=lambda feat: {
+            "fillColor": choose_color(feat),
+            "color": "black",
+            "weight": 0.5,
+            "fillOpacity": 0.7,
+        },
+        tooltip=folium.features.GeoJsonTooltip(
+            fields=["tooltip_text"],
+            aliases=["Error reports and complaints per park:"],
+            sticky=True
+        )
+    ).add_to(m)
+
+# ideas map    TA BORT
 def add_ideas_layer(m, layer):
     st.header("Ideas per park (normalised count)")
     n_classes = 5
@@ -300,7 +426,7 @@ def add_ideas_layer(m, layer):
         )
     ).add_to(m)
 
-# TEST
+# TEST     TA BORT
 def add_TEST_layer(m,layer):
     st.header("TEST")
     n_classes = 5
@@ -417,7 +543,7 @@ def show_common_themes():
     st.subheader("Themes in Park-related comments (3 definitions)")
     st.text(" ")
     st.markdown(
-        "*Park related TyckTill comments* have been defined in 3 different ways: by geographical location, by keywords (strictly) and by keywords (similarity). **Strictly** means that a specified keyword was present in the comment while **Similarity** means a keyword or similar word was present in the comment as defined by our model.")
+        "*Park related TyckTill comments* have been defined in 3 different ways: by geographical location, by keywords (strictly) and by keywords (similarity). **Strictly** means that a specified keyword was present in the comment while **similarity** means a keyword or similar word was present in the comment as defined by our model.")
     st.text(" ")
     st.markdown("*Themes* are defined by precence of theme keywords in comments.")
     st.text(" ")  # creates more of space between text and plot
@@ -498,96 +624,147 @@ def show_mixed_themes():
     st.altair_chart(chart, use_container_width=True)
 
 def show_top_topics():
-    st.subheader("Top topics in Park-related comments (Beröm)")
+    st.subheader("Top topics in Park-related comments")
     st.text(" ")
-    st.markdown("beskrivning")
+    st.markdown(
+        "*Park related TyckTill comments* have been defined in 3 different ways: by geographical location, by keywords (strictly) and by keywords (similarity). **Strictly** means that a specified keyword was present in the comment while **similarity** means a keyword or similar word was present in the comment as defined by our model.")
     st.text(" ")
+
+    # compute a shared x-axis scale across all 3 datasets
+    def get_global_max(*dfs):
+        max_count = 0
+        for df in dfs:
+            c = (
+                df.groupby("topic")
+                    .size()
+                    .reset_index(name="count")["count"]
+                    .max()
+            )
+            if c > max_count:
+                max_count = c
+        return max_count
+
+    global_max = get_global_max(
+        praise_idea_pts_in_parks,
+        praise_idea_by_keywords,
+        praise_idea_by_BERTopic
+    )
 
     def top_topics_chart(df, layer_label):
         # count per topic
         counts = (
-            df.groupby(["topic", "topic_keywords"])
+            df.groupby(["topic", "topic_keywords", "topic_keywords_full", "topic_keywords_short"])
                 .size()
                 .reset_index(name="count")
                 .sort_values("count", ascending=False)
                 .head(15)
         )
 
-        topic_colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
-                        "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
-                        "#D55E00", "#CC79A7", "#999999", "#66C2A5", "#FC8D62",
-                        "#8DA0CB", "#E78AC3", "#BBBBBB"
-                        ]
-
         chart = (
             alt.Chart(counts)
                 .mark_bar()
                 .encode(
-                x=alt.X("count:Q", title="Number of comments"),
-                y=alt.Y("topic_keywords:N", sort="-x", title="Topic keywords"),
-                tooltip=["topic", "topic_keywords", "count"],
-                color=alt.Color('topic:N', scale=alt.Scale(range=topic_colors))
+                x=alt.X("count:Q", title="Number of comments", scale=alt.Scale(domain=[0, global_max])),
+                y=alt.Y("topic:O", sort="-x", title="Topic number"),
+                tooltip=["topic", "topic_keywords_full", "count"],
+                color=alt.Color('topic_keywords_short:N',
+                                title="Topic keywords",
+                                scale=alt.Scale(scheme='tableau20', type='ordinal', interpolate='rgb'),
+                                legend=alt.Legend(orient="bottom",
+                                                  title="Topic keywords",
+                                                  columns=3,        # ← two columns
+                                                  labelLimit=500,   # ← allows longer labels
+                                                  symbolLimit=200))
             )
                 .properties(title=layer_label, width=300, height=250)
         )
         return chart
 
-    chart1 = top_topics_chart(berom_pts_in_parks, "Pts in Parks with Topics")
-    chart2 = top_topics_chart(berom_by_keywords, "By Keywords")
-    chart3 = top_topics_chart(berom_by_BERTopic, "By BERTopic")
+    chart1 = top_topics_chart(praise_idea_pts_in_parks, "By location")
+    chart2 = top_topics_chart(praise_idea_by_keywords, "By Keywords (strictly)")
+    chart3 = top_topics_chart(praise_idea_by_BERTopic, "By keywords (similarity)")
 
     st.altair_chart(chart1 | chart2 | chart3, use_container_width=True)
 
 def show_topics_over_time():
-    st.subheader("Topics over time in Park-related comments (Beröm)")
+    st.subheader("Top 5 topics over time in Park-related comments")
     st.text(" ")
-    st.markdown("beskrivning")
+    st.markdown(
+        "*Park related TyckTill comments* have been defined in 3 different ways: by geographical location, by keywords (strictly) and by keywords (similarity). **Strictly** means that a specified keyword was present in the comment while **similarity** means a keyword or similar word was present in the comment as defined by our model.")
     st.text(" ")
+
+    # compute shared Y-axis max across datasets
+    def get_global_max(*dfs):
+        m = 0
+        for df in dfs:
+            c = (
+                df.groupby(["month", "topic"])
+                    .size()
+                    .max()
+            )
+            if c > m:
+                m = c
+        return m
+
+    global_max = get_global_max(
+        praise_idea_pts_in_parks,
+        praise_idea_by_keywords,
+        praise_idea_by_BERTopic
+    )
 
     def topics_over_time_chart(df, layer_label):
         df = df.copy()
 
-        # use month column
-        if "month" not in df.columns:
-            st.warning(f"{layer_label} has no 'month' column — skipping.")
-            return None
+        month_labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        df["month_labels"] = df["month"].apply(lambda m: month_labels[m - 1])
 
-        if np.issubdtype(df["month"].dtype, np.number):
-            df["month"] = df["month"].astype(int).clip(1, 12)
-            month_order = list(range(1, 13))
+        month_order = list(range(1, 13))
 
         # aggregate by month and topic
         topic_counts = (
-            df.groupby(["month", "topic", "topic_keywords"])
+            df.groupby(["month", "month_labels", "topic", "topic_keywords_full", "topic_keywords_short"])
                 .size()
                 .reset_index(name="count")
         )
 
         # get top 5 topics overall
         top_topics = (
-            topic_counts.groupby("topic_keywords")["count"].sum()
+            topic_counts.groupby("topic_keywords_full")["count"].sum()
                 .sort_values(ascending=False)
                 .head(5)
                 .index
         )
-        topic_counts = topic_counts[topic_counts["topic_keywords"].isin(top_topics)]
+        topic_counts = topic_counts[topic_counts["topic_keywords_full"].isin(top_topics)]
 
         chart = (
             alt.Chart(topic_counts)
                 .mark_line(point=True)
                 .encode(
-                x=alt.X("month:O", title="Month", sort=month_order),
-                y=alt.Y("count:Q", title="Comment count"),
-                color=alt.Color("topic_keywords:N", title="Topic"),
-                tooltip=["month", "topic_keywords", "count"]
+                x=alt.X("month:O", title="Month", sort=month_order, axis=alt.Axis(labelAngle=0, labelExpr="datum.value - 1 >= 0 ? ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][datum.value - 1] : ''")),
+                y=alt.Y("count:Q", title="Comment count", scale=alt.Scale(domain=[0, global_max])),
+                color=alt.Color(
+                    "topic_keywords_short:N",
+                    title="Topic (shortened)",
+                    scale=alt.Scale(scheme='tableau20'),
+                    legend=alt.Legend(orient="bottom",
+                                      title="Topic keywords",
+                                      columns=3,        # ← two columns
+                                      labelLimit=500,   # ← allows longer labels
+                                      symbolLimit=200)
+                ),
+                tooltip=[
+                    alt.Tooltip("month_labels:N", title="Month"),
+                    alt.Tooltip("topic_keywords_full:N", title="Full keywords"),
+                    alt.Tooltip("count:Q", title="Count")
+                ]
             )
                 .properties(title=layer_label, width=300, height=250)
         )
         return chart
 
-    chart1 = topics_over_time_chart(berom_pts_in_parks, "Pts in Parks with Topics")
-    chart2 = topics_over_time_chart(berom_by_keywords, "By Keywords")
-    chart3 = topics_over_time_chart(berom_by_BERTopic, "By BERTopic")
+    chart1 = topics_over_time_chart(praise_idea_pts_in_parks, "By location")
+    chart2 = topics_over_time_chart(praise_idea_by_keywords, "By keywords (strictly)")
+    chart3 = topics_over_time_chart(praise_idea_by_BERTopic, "By keywords (similarity)")
 
     if chart1 and chart2 and chart3:
         st.altair_chart(chart1 | chart2 | chart3, use_container_width=True)
@@ -748,10 +925,14 @@ with viz_container:
 
         if layer_type == "sentiment_score":                                        # *** new tab/button? UPDATE HERE ***
             add_sentiments_layer(m, layer)
-        elif layer_type == "ideas":
-            add_ideas_layer(m, layer)
-        elif layer_type == "praise":
-            add_ideas_layer(m, layer)
+        elif layer_type == "pts_per_park_praise_idea":
+            add_pts_per_park_praise_idea_layer(m, layer)
+        elif layer_type == "pts_per_park_error_complaint":
+            add_pts_per_park_error_complaint_layer(m, layer)
+        #elif layer_type == "ideas":
+        #    add_ideas_layer(m, layer)
+        #elif layer_type == "praise":
+        #    add_TEST_layer(m, layer)
         elif layer_type == "top5_topics_per_park":
             add_top5_topics_layer(m, layer)
 

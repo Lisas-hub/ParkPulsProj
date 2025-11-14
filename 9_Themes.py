@@ -5,9 +5,6 @@ import pandas as pd
 import geopandas as gpd
 
 
-# TO DO
-# search only praise category (in parks) - what are people saying?
-
 
 # prepp
 input_folder = "data/tycktill_output/BERTopic_filtered"
@@ -42,18 +39,18 @@ grouped = (
 print(f"Combined and deduplicated: {len(grouped)} unique comments")
 
 themes = {
-    "safety": ["säkerhet", "trygg", "otrygg", "farlig", "rädd", "olyck"], # olyckor plockades inte upp så fixa med varsioner av samma ord
+    "safety": ["säkerhet", "trygg", "otrygg", "farlig", "rädd", "olyck"],
     "accessibility": ["rullstol", "tillgänglig", "rörelsehindrad", "rullator", "permobil"],
     "cleanliness": ["skräp", "sop", "ren", "smutsigt", "papperskorg", "skräpkorg", "nedskräpning", "soptunn", "byggsäck", "råttor"],
     "vandalism/damages": ["klott", "skadegörelse", "vandalism", "glas", "glassplitt", "glasbit"],                                      # lägg till brand/eld?
-    "maintenance": ["trasig", "reparera", "slit", "underhåll", "fixa", "laga", "misskött", "saner", "åtgärd"], # trasigt plockades inte upp
+    "maintenance": ["trasig", "reparera", "slit", "underhåll", "fixa", "laga", "misskött", "saner", "åtgärd"],
     "noise": ["ljud", "buller", "högljutt", "högljudd", "tyst", "hög musik", "oljud"],
     "nature/biodiversity": ["natur", "invasiv", "biodiersitet", "djur", "blomm", "parkslide"],
     "illumination": ["belysning", "mörk", "lyktstolp", "gatulamp", "lamp", "lys", "belysingsstolpe"],
     "socialising": ["umgås", "vänner", "familj"],
     "drugs/alcohol": ["kanyl", "drog", "missbruk", "alkohol", "droghandel", "marijuana", "joint"],
     "illegal parking": ["felparkering", "felparker", "stående", "övergiv", "parkeringsböt"],
-    "praise": ["tack", "underbar", "fantastisk"]                                                           # ta bort? folk skriver ju tack även i slutet på meddelanden
+    "praise": ["tack", "underbar", "fantastisk"]                      # lägg till beröm (nämns i en topic keyword)               # ta bort tack? folk skriver ju tack även i slutet på meddelanden
 }
 
 swedish_endings = (r"(t|a|an|en|et|ar|er|or|na|n|s|as|at|ad|ade|ats|arna|erna|orna|arnas|ernas|ornas|ing|ingar|ande|ande|ning|ningar)?")
