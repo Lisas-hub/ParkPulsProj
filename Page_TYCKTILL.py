@@ -462,7 +462,7 @@ def add_TEST_layer(m,layer):
 
 # sentiments map
 def add_sentiments_layer(m, layer):
-    st.subheader("Sentiment score per ha and park")
+    st.subheader("Sentiment score per ha")
     st.markdown("Sentiment score was calculated by assigning values to comments by sentiment (positive=1, neutral=0, negative=-1) and then calculating total score per ha.")
     st.text("")
 
