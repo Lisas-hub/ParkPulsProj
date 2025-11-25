@@ -16,16 +16,42 @@ layers = {
     "by_keyword": "park_comments_by_keyword",
     "by_BERTopic": "park_comments_by_BERTopic"
 }
-
 dfs = {}
+
+sentiment_tables = {}
+
 for name, layer in layers.items():
-    #print(f"Loading layer: {layer}")
+    gdf = gpd.read_file(f"{input_folder}/tycktill_filtered.gpkg", layer=layer)
+    gdf = gdf.to_crs(4326)
+    gdf["source_filter"] = name
+    dfs[name] = gdf
+
+    print(f"{name}: {len(gdf)} rows")
+
+    # Count sentiment per layer
+    sentiment_tables[name] = gdf["sentiment_label"].value_counts().rename(name)
+
+sentiment_df = pd.concat(sentiment_tables.values(), axis=1).fillna(0).astype(int)
+
+print("\n=== Sentiment per layer ===")
+print(sentiment_df)
+
+print("=== ROW COUNTS PER LAYER BEFORE COMBINING ===")
+for name, layer in layers.items():
     gdf = gpd.read_file(f"{input_folder}/tycktill_filtered.gpkg", layer=layer)
     gdf = gdf.to_crs(4326)                                                             # change to crs 3006 ??
     gdf["source_filter"] = name
     dfs[name] = gdf
 
+    print(f"{name}: {len(gdf)} rows")
+
 combined = pd.concat(dfs.values(), ignore_index=True)
+
+print("\n=== AFTER CONCATENATION ===")
+print(f"Total rows (raw combined): {len(combined)}")
+
+print("\nRows per single-layer source_filter BEFORE grouping by Ärendenummer:")
+print(combined["source_filter"].value_counts())
 
 grouped = (
     combined.groupby("Ärendenummer")
@@ -36,7 +62,11 @@ grouped = (
     .reset_index()
 )
 
-print(f"Combined and deduplicated: {len(grouped)} unique comments") # Combined and deduplicated: 114675 unique comments
+print("\n=== AFTER GROUPING/DEDUPLICATION ===")
+print(f"Total unique Ärendenummer: {len(grouped)}")
+
+print("\nRows per source_filter combination AFTER grouping:")
+print(grouped["source_filter"].value_counts())
 
 themes = {
     "safety": ["säkerhet", "trygg", "otrygg", "farlig", "rädd", "olyck", "risk", "otäck"],
@@ -121,7 +151,45 @@ grouped[["themes", "theme_sources"]] = grouped.apply(
     axis=1
 )
 
-#save
+# === count theme occurences ===
+themes_to_check = ["safety", "illumination", "praise"]
+
+for theme in themes_to_check:
+    # filter rows where the theme occurs
+    mask = grouped["themes"].notna() & grouped["themes"].str.contains(rf"\b{theme}\b", case=False)
+    subset = grouped[mask]
+
+    print(f"\n=== Theme: {theme} ===")
+    print(f"Rows with '{theme}' in themes: {len(subset)}")
+
+    if len(subset) == 0:
+        print("No rows for this theme.\n")
+        continue
+
+    # split and explode source_filter
+    exploded = (
+        subset
+            .assign(source_filter=subset["source_filter"].str.split("; "))
+            .explode("source_filter")
+    )
+
+    # pivot table
+    table = (
+        exploded
+            .pivot_table(
+            index="sentiment_label",
+            columns="source_filter",
+            aggfunc="size",
+            fill_value=0
+        )
+            .reindex(columns=["by_BERTopic", "by_keyword", "pts_in_parks"], fill_value=0)
+            .astype(int)
+    )
+
+    print(table)
+
+
+# === save ===
 gdf_combined = gpd.GeoDataFrame(
     grouped,
     geometry=gpd.points_from_xy(grouped["Koordinater_x"], grouped["Koordinater_Y"]),
@@ -138,6 +206,54 @@ print(f" - {output_file_gpkg}")
 theme_counts = grouped["themes"].dropna().str.split("; ").explode().value_counts()
 print("\nTheme counts:\n", theme_counts)
 
+
+
+
+
+# pts_in_parks: 78347 rows
+# by_keyword: 26089 rows
+# by_BERTopic: 56879 rows
+#
+# === Sentiment per layer ===
+#                  pts_in_parks  by_keyword  by_BERTopic
+# sentiment_label
+# NEUTRAL                 51396       15260        40674
+# NEGATIVE                26400       10536        15566
+# POSITIVE                  551         293          639
+
+# === ROW COUNTS PER LAYER BEFORE COMBINING ===
+# pts_in_parks: 78347 rows
+# by_keyword: 26089 rows
+# by_BERTopic: 56879 rows
+#
+# === AFTER CONCATENATION ===
+# Total rows (raw combined): 161315
+#
+# Rows per single-layer source_filter BEFORE grouping by Ärendenummer:
+# source_filter
+# pts_in_parks    78347
+# by_BERTopic     56879
+# by_keyword      26089
+# Name: count, dtype: int64
+#
+# === AFTER GROUPING/DEDUPLICATION ===
+# Total unique Ärendenummer: 114675
+#
+# Rows per source_filter combination AFTER grouping:
+# source_filter
+# pts_in_parks                             43920
+# by_BERTopic                              27586
+# by_BERTopic; pts_in_parks                17092
+# by_BERTopic; by_keyword; pts_in_parks     9053
+# by_keyword; pts_in_parks                  8254
+# by_keyword                                5628
+# by_BERTopic; by_keyword                   3142
+# Name: count, dtype: int64
+#
+# Saved combined dataset with themes:
+#  - data/tycktill_output/BERTopic_filtered\all_park_related_pts_with_themes.xlsx
+#  - data/tycktill_output/BERTopic_filtered\tycktill_filtered.gpkg
+#
 # Theme counts:
 #  themes
 # cleanliness                   27041

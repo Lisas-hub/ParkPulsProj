@@ -10,14 +10,14 @@ from rasterio.transform import from_origin
 from rasterio.features import rasterize
 from rasterio.enums import MergeAlg
 from collections import defaultdict, Counter
-
+import matplotlib.pyplot as plt
 
 input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
 
 # =====================================
 # set up for saving in the right folder
 
-output_folder = os.path.join("data", "tycktill_output")
+output_folder = os.path.join("data", "tycktill_output", "sentiments")
 output_folder_plots = os.path.join("data", "tycktill_output", "plots")
 
 
@@ -50,10 +50,10 @@ municipality_mask = rasterize(
 
 # load point layers per cateory
 categories = {
-    "Klagomål": gpd.read_file("data/tycktill_output/tycktill_Klagomål.gpkg"),
-    "Beröm": gpd.read_file("data/tycktill_output/tycktill_Beröm.gpkg"),
-    "Idé": gpd.read_file("data/tycktill_output/tycktill_Idé.gpkg"),
-    "Felanmälan": gpd.read_file("data/tycktill_output/tycktill_Felanmälan.gpkg"),
+    "Klagomål": gpd.read_file("data/tycktill_output/sentiments/tycktill_Klagomål.gpkg"),
+    "Beröm": gpd.read_file("data/tycktill_output/sentiments/tycktill_Beröm.gpkg"),
+    "Idé": gpd.read_file("data/tycktill_output/sentiments/tycktill_Idé.gpkg"),
+    "Felanmälan": gpd.read_file("data/tycktill_output/sentiments/tycktill_Felanmälan.gpkg"),
     #"Fråga": gpd.read_file("data/tycktill_output/tycktill_Fråga.gpkg"),
 }
 
@@ -209,6 +209,67 @@ with rasterio.open(
     nodata=nodata_value
 ) as dst:
     dst.write(masked_score.astype('int16'), 1)
+
+
+
+###############################################
+# === kernel density map for praise + ideas ===
+
+from sklearn.neighbors import KernelDensity
+from shapely.geometry import Point
+from matplotlib.colors import ListedColormap
+from scipy.ndimage import gaussian_filter
+
+# merge your two datasets
+praise = categories["Beröm"].to_crs(target_crs)
+ideas = categories["Idé"].to_crs(target_crs)
+
+# combine
+praise_ideas = pd.concat([praise, ideas], ignore_index=True)
+
+coords = np.vstack([praise_ideas.geometry.x.values,
+                    praise_ideas.geometry.y.values]).T
+
+# KDE model
+bandwidth = 200  # adjust for smoothing, in your CRS units (meters for EPSG:3857/3006)
+kde = KernelDensity(bandwidth=bandwidth, kernel='gaussian')
+kde.fit(coords)
+
+# evaluate KDE on grid
+xs = np.linspace(minx, maxx, width)
+ys = np.linspace(miny, maxy, height)
+xx, yy = np.meshgrid(xs, ys)
+grid = np.vstack([xx.ravel(), yy.ravel()]).T
+
+dens = np.exp(kde.score_samples(grid)).reshape((height, width))
+
+# optional tiny smooth → improves appearance only
+dens = gaussian_filter(dens, sigma=1)
+
+# mask to municipality (0 = inside, nodata = outside)
+dens_masked = np.where(municipality_mask == 0, dens, np.nan)
+
+# save
+output_tif = os.path.join(output_folder_plots, "kde_praise_ideas.tif")
+
+with rasterio.open(
+    output_tif,
+    'w',
+    driver='GTiff',
+    height=height,
+    width=width,
+    count=1,
+    dtype='float32',
+    crs=municipality.crs,
+    transform=transform,
+    nodata=np.nan
+) as dst:
+    dst.write(dens_masked.astype('float32'), 1)
+
+
+#####################
+
+
 
 # ====================================================================
 # === sentiment positive/negative ratio + sentiment score PER PARK ===

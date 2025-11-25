@@ -9,6 +9,8 @@ import pandas as pd
 import mapclassify   # OM PROBLM MED MAPCLASSIFY - kör streamlit run genom att här i pycharm gå till terminal > klicka på dropdown > välj command prompt. Testa sen om den hittar mapclassify genom att skriva python -c "import mapclassify; print(mapclassify.__version__)". Om det funkar kör vanliga streamlit run.
 import altair as alt
 from itertools import combinations
+import rasterio
+from rasterio.features import rasterize
 
 # TO DO
 
@@ -36,8 +38,38 @@ pts_in_parks_by_keywords = load_layer(tycktill_filtered_GPKG, "park_comments_by_
 pts_in_parks_by_BERTopic = load_layer(tycktill_filtered_GPKG, "park_comments_by_BERTopic")  # by keywords (similarity)
 parks_with_top5_topics = load_layer(tycktill_filtered_GPKG, "parks_with_top5_topics")
 
+DeSO = load_layer(r"C:\Users\lisajos\QGIS_Projects\Input\SCB\DeSO_2025.gpkg")
+population_table = pd.read_excel(r"C:\Users\lisajos\QGIS_Projects\Input\SCB\SCB_population_by_gender_and_DESO_for_2024.xlsx")
+
+with rasterio.open(r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\plots\kde_praise_ideas.tif") as src:
+    heatmap = src.read(1)
+    transform = src.transform
+    width = src.width
+    height = src.height
+    crs = src.crs
+
 # ====================
 # === prepp layers ===
+
+# ==================
+# prepp for overview
+
+all_park_praise_ideas = themes_per_park[themes_per_park['Kategori'].isin(["Beröm", "Idé"])]
+all_park_error_complaint = themes_per_park[themes_per_park['Kategori'].isin(["Felanmälan", "Klagomål"])]
+
+# prepp for population by DeSO x park-related comments (raster)              # **** flytta till separat script ****
+DeSO_pop = DeSO.merge(population_table, on="desokod", how="left")
+
+# rasterize DeSO_pop
+population_raster = rasterize(
+    [(geom, pop) for geom, pop in zip(DeSO_pop.geometry, DeSO_pop.Population)],
+    out_shape=(height, width),
+    transform=transform,
+    fill=0,
+    dtype="float32"
+)
+
+
 
 # ====================
 # prepp for sentiments
@@ -70,7 +102,6 @@ pts_in_parks_by_BERTopic = prepare_topic_keywords(pts_in_parks_by_BERTopic)
 praise_idea_pts_in_parks = pts_in_parks_with_topics[pts_in_parks_with_topics['Kategori'].isin(["Beröm", "Idé"])]   # use [pts_in_parks_with_topics['Kategori'] == "Beröm"] for just one category
 praise_idea_by_keywords = pts_in_parks_by_keywords[pts_in_parks_by_keywords['Kategori'].isin(["Beröm", "Idé"])]
 praise_idea_by_BERTopic = pts_in_parks_by_BERTopic[pts_in_parks_by_BERTopic['Kategori'].isin(["Beröm", "Idé"])]
-
 
 # =========================
 # prepp for themes barchart
@@ -139,7 +170,7 @@ tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Sentiments", "Topics", "Themes"])
 with tab1:
     overview_choice = st.radio(
         "Make a selection:",
-        ["What parks get the most praise and idea suggestions?", "What parks get the most error reports and complaints?"],
+        ["What parks get the most praise and idea suggestions?", "What parks get the most error reports and complaints?", "DAY/NIGHT x KATEGORI"],
         index=None,                   # None = no radio button pre-selected
         horizontal=True
     )
@@ -230,6 +261,9 @@ if overview_choice == "What parks get the most praise and idea suggestions?":   
 
 elif overview_choice == "What parks get the most error reports and complaints?":
     select_layer(stats_per_park, "pts_per_park_error_complaint", "rel_pts_per_park_errorrep_complaint")
+
+elif overview_choice == "DAY/NIGHT x KATEGORI":
+    select_plot("DAY/NIGHT")
 
 #elif overview_choice == "What parks inspire the most ideas?":
 #    select_layer(stats_per_park, "ideas", "Idé_rel")
@@ -539,6 +573,72 @@ def add_top5_topics_layer(m, layer):
 # =====
 # plots
 
+def show_DAY_NIGHT():
+    st.subheader("Park-related TyckTill entries over time (24 hours)")
+    st.markdown("Beskrivning")
+    st.text("")
+
+    all_hours = pd.DataFrame({"hour": list(range(24))})
+
+    # praise/ideas
+    praise_idea = (
+        all_park_praise_ideas.groupby("hour")
+            .size()
+            .reset_index(name="count")
+    )
+    praise_idea = all_hours.merge(praise_idea, on="hour", how="left").fillna({"count": 0})
+    praise_idea["hour_str"] = praise_idea["hour"].astype(str)
+
+    # errors/complaints
+    error_complaint = (
+        all_park_error_complaint.groupby("hour")
+            .size()
+            .reset_index(name="count")
+    )
+    error_complaint = all_hours.merge(error_complaint, on="hour", how="left").fillna({"count": 0})
+    error_complaint["hour_str"] = error_complaint["hour"].astype(str)
+
+    colors = {
+        "Praise/Idea": "#009E73",
+        "Error/Complaint": "#D55E00"
+    }
+
+    chart_praise = (
+        alt.Chart(praise_idea)
+            .mark_line(color=colors["Praise/Idea"])
+            .encode(
+            x=alt.X(
+                "hour_str:N",
+                sort=[str(i) for i in range(24)],
+                axis=alt.Axis(values=[str(i) for i in range(24)], labelAngle=0),
+                title="Hour of day"
+            ),
+            y=alt.Y("count:Q", title="Count", scale=alt.Scale(domain=[0, 200])),
+            tooltip=["hour", "count"]
+        )
+            .properties(width=350, height=300, title="Praise & Ideas")
+    )
+
+    chart_error = (
+        alt.Chart(error_complaint)
+            .mark_line(color=colors["Error/Complaint"])
+            .encode(
+            x=alt.X(
+                "hour_str:N",
+                sort=[str(i) for i in range(24)],
+                axis=alt.Axis(values=[str(i) for i in range(24)], labelAngle=0),
+                title="Hour of day"
+            ),
+            y=alt.Y("count:Q", title="Count"),
+            tooltip=["hour", "count"]
+        )
+            .properties(width=350, height=300, title="Errors & Complaints")
+    )
+
+    final_chart = alt.hconcat(chart_praise, chart_error)
+
+    st.altair_chart(final_chart, use_container_width=True)
+
 def show_common_themes():
     st.subheader("Themes in Park-related comments (3 definitions)")
     st.text(" ")
@@ -745,7 +845,7 @@ def show_topics_over_time():
                 color=alt.Color(
                     "topic_keywords_short:N",
                     title="Topic (shortened)",
-                    scale=alt.Scale(scheme='tableau20'),
+                    scale=alt.Scale(scheme='category20'), # alt tableau20
                     legend=alt.Legend(orient="bottom",
                                       title="Topic keywords",
                                       columns=3,        # ← two columns
@@ -826,9 +926,7 @@ def show_sentiments_over_time_months_praise_idea():
         .properties(width=500, height=300)
     )
 
-    chart = base.facet(
-        column=alt.Column("year_label:N",
-                          header=alt.Header(labelOrient="top", labelAngle=0))
+    chart = base.facet(column=alt.Column("year_label:N",header=alt.Header(labelOrient="top", labelAngle=0))
     ).resolve_scale(y="independent")
 
     st.altair_chart(chart, use_container_width=True)
@@ -897,7 +995,9 @@ def show_sentiments_over_time_weekdays_praise_idea():
 
 
 def display_plot(plot_name):                                                       # *** new tab/button? UPDATE HERE ***
-    if plot_name == "common_themes":
+    if plot_name == "DAY/NIGHT":
+        show_DAY_NIGHT()
+    elif plot_name == "common_themes":
         show_common_themes()
     elif plot_name == "mixed_themes":
         show_mixed_themes()
