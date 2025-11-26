@@ -28,6 +28,7 @@ parks2 = st.Page("Parks2.py", title="Parks2")
 page_TOPICS = st.Page("page_TOPICS.py", title="Park related topics in TyckTill comments")
 page_SENTIMENTS = st.Page("page_SENTIMENTS.py", title="Sentiments in parks")
 page_TYCKTILL = st.Page("page_TYCKTILL.py", title="TyckTill")
+page_TYCKTILL2 = st.Page("page_TYCKTILL2.py", title="TyckTill2")
 
-pg = st.navigation([page_TYCKTILL, page_TOPICS, parks2, parks])
+pg = st.navigation([page_TYCKTILL2, page_TYCKTILL, page_TOPICS, parks2, parks])
 pg.run()

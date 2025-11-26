@@ -36,6 +36,9 @@ error = gpd.read_file(error_path).to_crs(target_crs)
 complaint  = gpd.read_file(complaint_path).to_crs(target_crs)
 error_complaint_points = gpd.GeoDataFrame(pd.concat([error, complaint], ignore_index=True), crs=target_crs)
 
+all_points = gpd.GeoDataFrame(pd.concat([praise, ideas, error, complaint], ignore_index=True), crs=target_crs)
+
+
 if municipality.crs.to_epsg() != target_crs:
     municipality = municipality.to_crs(target_crs)
 
@@ -172,6 +175,7 @@ def process_topic(points_gdf, out_prefix):
 
 process_topic(praise_idea_points, "praise_ideas_comments")
 process_topic(error_complaint_points, "error_complaints_comments")
+process_topic(all_points, "all_comments")
 
 
 
