@@ -378,7 +378,6 @@ def add_pts_per_park_praise_idea_layer(m, layer):
         )
     ).add_to(m)
 
-# pts in parks map (praise + ideas / error report + complaint)
 def add_pts_per_park_error_complaint_layer(m, layer):
     st.header("Error reports and complaints per park (normalised count)")
 

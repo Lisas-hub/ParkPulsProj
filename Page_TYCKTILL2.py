@@ -24,7 +24,6 @@ def load_layer(path: str, layer_name: str) -> gpd.GeoDataFrame:
     gdf = gpd.read_file(path, layer=layer_name)
     return gdf.to_crs(epsg=4326)
 
-
 @st.cache_data(show_spinner="Loading layers…")
 def load_all_data():
     data = {}
@@ -120,17 +119,14 @@ def create_base_map():
     ).add_to(m)
     return m
 
-def add_pts_per_park_praise_idea_layer(m, layer):        # *** check code ***
-    st.header("Praise and ideas per park (normalized count)")
-    col = st.session_state.get("layer_column", "_value")  # fallback
+def add_pts_per_park_layer(m, layer, label_text):
+    col = st.session_state.layer_column
 
-    # handle NaN rows
+    layer = layer.copy()
     layer["_is_missing"] = layer[col].isna()
     layer["_value"] = layer[col].fillna(0)
 
-    n_classes = 5
-    values = layer["_value"].values
-    classifier = mapclassify.NaturalBreaks(values, k=n_classes)
+    classifier = mapclassify.NaturalBreaks(layer["_value"], k=5)
     breaks = classifier.bins
 
     colors = ["#f7fbff", "#c6dbef", "#6baed6", "#2171b5", "#08306b"]
@@ -138,10 +134,12 @@ def add_pts_per_park_praise_idea_layer(m, layer):        # *** check code ***
 
     def fmt(val, is_missing):
         if is_missing or val < 0.001:
-            return "No praise or ideas in this park (value < 0,001)"
+            return f"No {label_text.lower()} in this park (value < 0.001)"
         return f"{val:.3f}"
 
-    layer["tooltip_text"] = layer.apply(lambda r: fmt(r["_value"], r["_is_missing"]), axis=1)
+    layer["tooltip_text"] = [
+        fmt(v, miss) for v, miss in zip(layer["_value"], layer["_is_missing"])
+    ]
 
     def choose_color(feature):
         if feature["properties"]["_is_missing"]:
@@ -160,12 +158,32 @@ def add_pts_per_park_praise_idea_layer(m, layer):        # *** check code ***
             "weight": 0.5,
             "fillOpacity": 0.7,
         },
-        tooltip=folium.features.GeoJsonTooltip(
+        tooltip=folium.GeoJsonTooltip(
             fields=["tooltip_text"],
-            aliases=["Praise and ideas per park:"],
+            aliases=[label_text + ":"],
             sticky=True
         )
     ).add_to(m)
+
+def display_map(layer_type, layer, column=None):
+    m = create_base_map()
+
+    if layer_type == "pts_per_park":
+        add_pts_per_park_layer(
+            m,
+            layer,
+            label_text=st.session_state.label_text
+        )
+    # elif layer_type == "pts_per_park_error_complaint":
+    #     add_pts_per_park_error_complaint_layer(m, layer)
+    # elif layer_type == "sentiment_score":
+    #     add_sentiments_layer(m, layer)
+    # add other map types here as needed
+
+    st_folium(m, width=1200, height=800, key=layer_type)
+
+
+
 
 
 
@@ -317,12 +335,20 @@ tab_overview, tab_sentiments, tab_topics, tab_themes = st.tabs(
 with tab_overview:
     choice = st.radio(
         "Choose an overview plot/map:",
-        ["Praise & Ideas", "Errors & Complaints", "Day/Night × Category"],
-        index=None
+        ["TyckTill comments per park", "Day/Night × Category"],
+        index=0
     )
 
     st.session_state.selection["tab"] = "overview"
     st.session_state.selection["option"] = choice
+
+    if choice == "TyckTill comments per park":
+        pill = st.pills(
+            "Category group:",
+            ["Beröm + Idé", "Felanmälan + Klagomål"],
+            default="Beröm + Idé"
+        )
+        st.session_state.selection["suboption"] = pill
 
 with tab_sentiments:
     choice = st.radio(
@@ -332,7 +358,7 @@ with tab_sentiments:
             "Sentiments over months",
             "Sentiments over weekdays"
         ],
-        index=None
+        index=0
     )
 
     st.session_state.selection["tab"] = "sentiments"
@@ -346,7 +372,7 @@ with tab_topics:
             "Topics over time",
             "Top 5 topics per park"
         ],
-        index=None
+        index=0
     )
 
     st.session_state.selection["tab"] = "topics"
@@ -363,16 +389,24 @@ with tab_topics:
     else:
         st.session_state.selection["suboption"] = None
 
+# *** add with tab_themes: ??? ***
 
 # ======================================================================================================================
 
 selection = st.session_state.selection
 
 if selection["tab"] == "overview":
-    if selection["option"] == "Praise & Ideas":
-        show_overview_praise_map()
-    elif selection["option"] == "Errors & Complaints":
-        show_overview_error_map()
+    if selection["option"] == "TyckTill comments per park":
+        if selection["suboption"] == "Beröm + Idé":
+            st.session_state.layer_type = "pts_per_park"
+            st.session_state.selected_layer = raw_data["stats_per_park"]  # or the correct per-park data
+            st.session_state.layer_column = "rel_pts_per_park_praise_idea"
+            st.session_state.label_text = "Praise and ideas per park"
+        elif selection["suboption"] == "Felanmälan + Klagomål":
+            st.session_state.layer_type = "pts_per_park"
+            st.session_state.selected_layer = raw_data["stats_per_park"]
+            st.session_state.layer_column = "rel_pts_per_park_errorrep_complaint"
+            st.session_state.label_text = "Error reports and complaints per park"
     elif selection["option"] == "Day/Night × Category":
         show_day_night_plot()
 
@@ -402,4 +436,17 @@ elif selection["tab"] == "topics":
 
 elif selection["tab"] == "themes":
     ...
+
+
+
+if (
+    "selected_layer" in st.session_state
+    and st.session_state.selected_layer is not None
+):
+    display_map(
+        layer_type=st.session_state.layer_type,
+        layer=st.session_state.selected_layer,
+        column=st.session_state.layer_column
+
+    )
 

@@ -6,9 +6,47 @@ import geopandas as gpd
 input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
 
 df = pd.read_excel(f"{input_directory}\\TyckTill\\NEW\\Tycktill_2023-06-01_2025-06-30.xlsx")
+stadsdelsområden = gpd.read_file(f"{input_directory}\\Output\\Stadsdelsomraden_Stadskartan.gpkg").to_crs("EPSG:3006")
+output_path_stats = r"C:\Users\lisajos\PycharmProjects\park_proj\data"
 
 print("\n--- Before cleaning ---")
 print(f"Initially {len(df)} total rows.")
+
+# count rows missing coordinates
+missing_coord_mask = (
+    df["Koordinater_x"].isna() |
+    df["Koordinater_Y"].isna() |
+    (df["Koordinater_x"] == 0) |
+    (df["Koordinater_Y"] == 0)
+)
+num_missing_coords = missing_coord_mask.sum()
+print(f"Rows with missing or zero coordinates: {num_missing_coords}")
+
+# create dataframe for rows with coords
+df_coords = df.loc[~missing_coord_mask].copy()
+
+gdf_points = gpd.GeoDataFrame(
+    df_coords,
+    geometry=gpd.points_from_xy(df_coords["Koordinater_x"], df_coords["Koordinater_Y"]),
+    crs=4326
+).to_crs("EPSG:3006")
+
+joined = gpd.sjoin(
+    gdf_points,
+    stadsdelsområden,
+    how="left",
+    predicate="within"
+)
+
+print("\n--- Raw rows per stadsdelsområde (before ANY cleaning) ---")
+area_counts = joined["Omrade"].value_counts(dropna=False)
+print(area_counts)
+
+print("\nRows that fall OUTSIDE all polygons:", area_counts.get(np.nan, 0))
+
+# save excel
+area_counts_df = area_counts.rename_axis("Omrade").reset_index(name="Raw_Count")
+area_counts_df.to_excel(f"{output_path_stats}\Raw_Tycktill_pts_per_Stadsdelsomrade.xlsx", index=False)
 
 # ==================================
 # === PRE PROCESSING OF KATEGORI ===
@@ -220,6 +258,25 @@ print(kategori_summary)
 
 # --- Before cleaning ---
 # Initially 414481 total rows.
+# Rows with missing or zero coordinates: 90153
+#
+# --- Raw rows per stadsdelsområde (before ANY cleaning) ---
+# Omrade
+# Norra innerstaden       49975
+# Södermalm               49071
+# Hägersten-Älvsjö        43356
+# Bromma                  37151
+# Enskede-Årsta-Vantör    36679
+# Hässelby-Vällingby      22046
+# Farsta                  21815
+# Kungsholmen             21371
+# Järva                   21090
+# Skarpnäck               13945
+# Skärholmen               7594
+# NaN                       235
+# Name: count, dtype: int64
+#
+# Rows that fall OUTSIDE all polygons: 235
 #
 # --- Cleaning Date and Time ---
 # first and last entry within valid the time frame:
@@ -244,7 +301,7 @@ print(kategori_summary)
 # 1  Arbetsorder ska skickas        10             33      43
 # 2                    Beröm       301           1620    1921
 # 3               Felanmälan     75940         198612  274552
-# 4             Fordonsflytt         2             27      29   # there were almost 80 000 in Fordonsflytt but almost none have coordinates
+# 4             Fordonsflytt         2             27      29    # there were almost 80 000 in Fordonsflytt but almost none have coordinates
 # 5                    Fråga      1158           6712    7870
 # 6                      Idé       829           4976    5805
 # 7                 Klagomål      1404           6823    8227
