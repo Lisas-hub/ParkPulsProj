@@ -118,42 +118,112 @@ print(f"Removed {duplicates_before - duplicates_after} duplicate rows based on c
 # =================================
 # === PRE PROCESSING OF FRITEXT ===
 
+import re
+
 freetext_before = len(df)
+
+# ==========================
+# remove rows empty of text)
 
 # remove empty or whitespace only rows
 df = df[df["Fritext"].notna() & df["Fritext"].str.strip().ne("")]
 
 # remove rows with numbers or symbols (incl emojis) and no text, in other words remove all rows without at least one letter
-import re
 df = df[df["Fritext"].apply(lambda x: re.search(r"[a-zA-ZåäöÅÄÖ]", str(x)) is not None)]
 
-# make all text lowercase
-#df["clean_Fritext"] = df["Fritext"].str.lower                                                     # removed this too to help issue with BERTopic and -1
+# =============
+# symol cleanup
 
-# clean up text that includes certain symbols or emojis by removing them but keeping the text
-#df["clean_Fritext"] = df["clean_Fritext"].str.replace(r"[^a-zA-ZåäöÅÄÖ0-9\s]", "", regex=True)    # used this initially, but it might be to aggressive for TOPICmodel
-df["clean_Fritext"] = df["Fritext"].str.replace(r"[^\w\s.,!?åäöÅÄÖ]", "", regex=True)        # so keeping normal symbols but removing emojis might be better
+# remove letters that are not in the swedish alphabet + rare symbols and emojis
+ALLOWED = r"[^a-zA-ZåäöÅÄÖ0-9\s.,!?:/\-\–@#_]"
+df["clean_Fritext"] = df["Fritext"].str.replace(ALLOWED, "", regex=True)
 
-# remove standalone 'k' as a word
-df["clean_Fritext"] = df["clean_Fritext"].str.replace(r"\bk\b", "", regex=True)
+# ==================================================
+# cleanup ärendenummer (IDs), contact info and links
 
-# remove dn trädgård och dn trädgårdl
-unwanted_phrases = [
-    r"\bdn\s+trädgård(l)?\b",                    # add to list if necessary
+entity_patterns = {
+    # IDs: alphanumeric/underscore, ≥ 6 chars, contains letters + digits
+    r"\b(?=\w*[A-Za-zÅÄÖåäö])(?=\w*\d)[A-Za-zÅÄÖåäö0-9_]{6,}\b": "<ID_NUMBER>",
+
+    # XXXX XXXX XXXXX: LTF number (seems to be a number on road signs)
+    r"\b\d{4}\s\d{4}\s\d{5}\b": "<NUMBER_BLOCK>",
+
+    # URLs
+    r"https?://\S+|\bwww\.\S+": "<URL>",
+
+    # Emails
+    r"\b[\w\.-]+@[\w\.-]+\.\w+\b": "<EMAIL>",
+
+    # Phone numbers (Swedish & generic long numbers)
+    r"\b(\+?46[\s-]?\d{7,12}|\d{7,12})\b": "<PHONE_NUMBER>",
+}
+
+for pattern, placeholder in entity_patterns.items():
+    df["clean_Fritext"] = df["clean_Fritext"].str.replace(
+        pattern, placeholder, flags=re.IGNORECASE, regex=True
+    )
+
+# ==========================================
+# cleanup trailing sign-offs (mvh Anna, etc)
+
+SIGNOFF_PATTERNS = [
+    r"mvh", r"mv h", r"m v h",
+    r"hälsningar", r"vänliga hälsningar", r"med vänlig hälsning",
+    r"hälsn", r"hilsen", r"häls\.",
+    r"tack på förhand",
+    r"tack(?=\s+\w+$)"   # matches "Tack Maria"
 ]
-for phrase in unwanted_phrases:
-    df["clean_Fritext"] = df["clean_Fritext"].str.replace(phrase, "", flags=re.IGNORECASE, regex=True)
 
-df["clean_Fritext"] = df["clean_Fritext"].str.replace(r"\s{2,}", " ", regex=True).str.strip()   # remove any extra whitespace
+signoff_regex = r"(" + "|".join(SIGNOFF_PATTERNS) + r")"
 
-# remove standalone numbers and IDs where there is a mix of numbers and letters (e.g. abc123)
-df["clean_Fritext"] = df["clean_Fritext"].apply(
-    lambda x: " ".join([
-        word for word in x.split()
-        #if not re.fullmatch(r"(?=.*[a-zA-ZåäöÅÄÖ])(?=.*\d)[a-zA-ZåäöÅÄÖ0-9]+|\d+", word)         # removed this too to help issue with BERTopic and -1
-        if not re.fullmatch(r"\d+", word)                                                         # keeping only numbers without any letters mixed in
-    ])
+df["clean_Fritext"] = df["clean_Fritext"].str.replace(
+    signoff_regex + r".*$",
+    "",
+    flags=re.IGNORECASE,
+    regex=True
 )
+
+# ========================================================================================================
+# cleanup strings like kfnfdajns that people type to fill out the box when they don't have anything to say
+
+def is_keyboard_mash(word):
+    word = word.lower()
+    if len(word) < 7 or not re.fullmatch(r"[a-zåäö]+", word):
+        return False
+    vowels = len(re.findall(r"[aouieyåäö]", word))
+    return vowels / len(word) < 0.2
+
+df["clean_Fritext"] = df["clean_Fritext"].apply(
+    lambda text: " ".join(w for w in text.split() if not is_keyboard_mash(w))
+)
+
+# ===================
+# custom replacements
+
+custom_replacements = {
+    r"\bdn trädgård & markskötsel( ab)?\b": "<ENTREPRENEUR_MAINTENANCE>",
+    r"\bk\b": "klotter",
+    r"\bavarn PV1020\b": "<ENTREPRENEUR_SECURITY>",
+    r"\bDetta epostmeddelande kommer från en extern avsändare. Klicka inte på länkar och öppna inte bilagor om du inte känner igen avsändaren och vet att innehållet är säkert.\b":
+        "<EMAIL_WARNING_EXTERNAL_SENDER>",
+}
+
+for pattern, placeholder in custom_replacements.items():
+    df["clean_Fritext"] = df["clean_Fritext"].str.replace(
+        pattern,
+        placeholder,
+        flags=re.IGNORECASE,
+        regex=True
+    )
+
+# =============
+# final cleanup
+
+# remove any extra whitespace
+df["clean_Fritext"] = (df["clean_Fritext"].str.replace(r"\s{2,}", " ", regex=True).str.strip())
+
+# remove standalone numbers
+df = df[~df["clean_Fritext"].str.fullmatch(r"\d+")]
 
 # remove any now empty rows
 df = df[df["clean_Fritext"].str.strip().ne("")]
@@ -290,19 +360,19 @@ print(kategori_summary)
 # Removed 11005 duplicate rows based on coordinates and Fritext.
 #
 # --- Cleaning Fritext ---
-# Removed 219 rows without valid text in 'Fritext', 298767 total rows remaining.
+# Removed 220 rows without valid text in 'Fritext', 298766 total rows remaining.
 #
 # --- Filtering by municipality ---
-# Removed 235 rows with coordinates outside the municipality boundary, 298532 total rows remaining.
+# Removed 235 rows with coordinates outside the municipality boundary, 298531 total rows remaining.
 #
 # --- Entry count by Kategori ---
 #                   Kategori  In parks  Outside parks   Total
 # 0                  Ansökan         0              3       3
 # 1  Arbetsorder ska skickas        10             33      43
-# 2                    Beröm       301           1620    1921
-# 3               Felanmälan     75940         198612  274552
+# 2                    Beröm       301           1619    1920
+# 3               Felanmälan     75940         198613  274553
 # 4             Fordonsflytt         2             27      29    # there were almost 80 000 in Fordonsflytt but almost none have coordinates
-# 5                    Fråga      1158           6712    7870
+# 5                    Fråga      1158           6711    7869
 # 6                      Idé       829           4976    5805
 # 7                 Klagomål      1404           6823    8227
 # 8         Ordningsstörning         7             11      18
