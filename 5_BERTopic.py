@@ -11,6 +11,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 #nltk.download('stopwords')
 from nltk.corpus import stopwords
 import numpy as np
+from collections import Counter
 
 
 # =====
@@ -18,7 +19,7 @@ import numpy as np
 
 input_directory = r"C:\Users\lisajos\QGIS_Projects"                        # <<< set your directory here <<<
 
-input_folder = os.path.join("data", "tycktill_output")
+input_folder = os.path.join("data", "tycktill_output", "sentiments")
 output_folder = os.path.join("data", "tycktill_output", "BERTopic")
 
 model_path = "data/tycktill_output/BERTopic/bertopic_model"
@@ -44,7 +45,7 @@ all_comments = pd.concat(dfs, ignore_index=True)
 print("\n--- Rows before filtering ---")
 print(f"Loaded {len(all_comments):,} rows before filtering.")
 
-# filter too-short/empty rows
+# remove any comments with less than 3 charecters
 mask = all_comments["clean_Fritext"].astype(str).str.strip().str.len() >= 3
 all_comments = all_comments[mask].copy()
 
@@ -133,7 +134,54 @@ all_comments['topic_prob'] = assigned_probs
 def get_top_words(topic_num, top_n=10):
     words = topic_model.get_topic(topic_num)
     return ', '.join([w for w, _ in words[:top_n]]) if words else ''
-all_comments["topic_keywords"] = all_comments["topic"].apply(get_top_words)
+
+#all_comments["topic_keywords"] = all_comments["topic"].apply(get_top_words)
+
+
+# count word frequencies per topic
+topic_word_counts = {}
+for topic_num in set(topics):
+    if topic_num == -1:
+        continue
+    topic_docs = [texts[i] for i, t in enumerate(topics) if t == topic_num]
+    word_counts = Counter(" ".join(topic_docs).split())
+    topic_word_counts[topic_num] = word_counts
+
+# filter keywords by minimum frequency so that if very infrequent, it does not get included in topic keywords
+MIN_WORD_TOPIC_FREQ = 3   # change to 2 or 1 if you want more/less filtering
+
+def get_filtered_top_words(topic_num, top_n=10):
+    words = topic_model.get_topic(topic_num)
+    if not words:
+        return ""
+    filtered = [(w, v) for (w, v) in words if topic_word_counts[topic_num][w] >= MIN_WORD_TOPIC_FREQ]
+    return ", ".join([w for w, _ in filtered[:top_n]])
+
+
+
+# get keyword importance values and make a new keywords+importance column
+def get_keywords_with_weights(topic_num):
+    words = topic_model.get_topic(topic_num)
+    if not words:
+        return ""
+    return "; ".join([f"{w}: {round(score,4)}" for w, score in words])
+
+all_comments["topic_keywords"] = all_comments["topic"].apply(get_filtered_top_words)
+all_comments["topic_keywords_weighted"] = all_comments["topic"].apply(get_keywords_with_weights)
+
+# get topic summary excel
+topic_summary = (
+    all_comments
+    .groupby("topic")
+    .agg(comment_count=("topic", "size"))
+    .reset_index()
+)
+
+topic_summary["topic_keywords"] = topic_summary["topic"].apply(get_filtered_top_words)
+topic_summary["topic_keywords_weighted"] = topic_summary["topic"].apply(get_keywords_with_weights)
+
+topic_summary_out = f"{output_folder}/topic_summary.xlsx"
+topic_summary.to_excel(topic_summary_out, index=False)
 
 
 # ======================
@@ -158,7 +206,7 @@ pts = gpd.GeoDataFrame(
 pts.to_file(f"{output_folder}/tycktill_with_topics.gpkg", layer="pts_with_topics", driver="GPKG", mode="w")
 
 
-# With all rows:
+# With all rows:   *** OLD ***
 #
 # --- Rows before filtering ---
 # Loaded 290,505 rows before filtering.

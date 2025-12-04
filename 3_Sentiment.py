@@ -49,7 +49,7 @@ df_geo["in_park"] = df_geo.index.isin(subset_within_parks.index)
 # subset by parks and a limited number of rows
 
 # subset dataset to begin with before committing to processing all 300000+ rows
-kategori_filter = "Klagomål"
+kategori_filter = "Remiss skickad"
 #in_park_filter = True
 # ^^RERUN? Update here!^^
 

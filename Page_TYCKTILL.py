@@ -31,7 +31,8 @@ tycktill_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_outpu
 sentiments_per_park = load_layer(tycktill_GPKG, "sentiments_per_park")
 stats_per_park = load_layer(tycktill_GPKG, "stats_per_park")
 
-tycktill_filtered_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg"
+tycktill_filtered_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered_OLD\tycktill_filtered.gpkg"
+                                                                                 # ^^^ OBS! ändra till ny BERTopic mapp ^^^
 themes_per_park = load_layer(tycktill_filtered_GPKG, "all_park_related_pts_with_themes")
 pts_in_parks_with_topics = load_layer(tycktill_filtered_GPKG, "pts_in_parks_with_topics")   # by location
 pts_in_parks_by_keywords = load_layer(tycktill_filtered_GPKG, "park_comments_by_keyword")   # by keywords (strictly)

@@ -14,8 +14,8 @@ import rasterio
 st.set_page_config(layout="wide")
 
 tycktill_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\tycktill.gpkg"
-tycktill_filtered_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg"
-
+tycktill_filtered_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered_OLD\tycktill_filtered.gpkg"
+                                                                                # ^^^ OBS! ändra till ny BERTopic mapp ^^^
 # ===================
 # === load layers ===
 
@@ -122,25 +122,11 @@ def add_top5_topics_layer(m, gdf, column):
         ).add_to(m)
 
 
-def display_map(layer_type, gdf, column, label_text):
-    """
-    A single function that decides which map to draw
-    based on layer_type.
-    """
-#    m = create_base_map()
-
-    # You can add more map types here
-#    if layer_type == "per_park":
-#        add_polygon_layer(m, gdf, column, label_text)
-#    elif layer_type == "prepped_normalized":
-#        add_polygon_layer(m, gdf, column, label_text)
-
-#    st_folium(m, width=900, height=600, key=layer_type)
-
-
-
 # ===============
 # === FIGURES ===
+
+# ==================
+# Variable over time
 
 MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -153,11 +139,19 @@ def add_month_label(df):
     df["month_label"] = df["month"].apply(lambda m: MONTH_LABELS[m-1])
     return df
 
-# ==================
-# Variable over time
+WEEKDAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+WEEKDAY_ORDER = list(range(7))   # 0–6
 
-# sentiments or topics prep function
-def prepare_for_chart(df, mode, group_top_n=5):
+def prepare_for_chart(df, mode, temporal_scale, group_top_n=5):
+    if temporal_scale == "Months":
+        return prepare_for_chart_by_month(df, mode, group_top_n)
+    elif temporal_scale == "Weekdays":
+        return prepare_for_chart_by_weekday(df, mode, group_top_n)
+    elif temporal_scale == "24 Hours":
+        return pd.DataFrame()
+
+def prepare_for_chart_by_month(df, mode, group_top_n=5):
+
     """
     mode = 'sentiment' or 'topics'
 
@@ -174,10 +168,6 @@ def prepare_for_chart(df, mode, group_top_n=5):
 
     # --- Always add month_label ---
     df = add_month_label(df).copy()
-
-    # ==============================================================
-    # SENTIMENTS MODE
-    # ==============================================================
 
     if mode == "sentiment":
 
@@ -208,16 +198,11 @@ def prepare_for_chart(df, mode, group_top_n=5):
 
         return agg
 
-    # ==============================================================
-    # TOPICS MODE
-    # ==============================================================
-
     if mode == "topics":
 
         if "topic" not in df.columns:
             return pd.DataFrame()
 
-        # Step 1: find top N topics globally
         topic_counts = (
             df.groupby("topic")
               .size()
@@ -260,10 +245,153 @@ def prepare_for_chart(df, mode, group_top_n=5):
 
     return pd.DataFrame()
 
-# ------------------------------------------------------
-# 2) Build one chart (one panel)
-# ------------------------------------------------------
-def chart_single_panel(df, title, months_order):
+def prepare_for_chart_by_weekday(df, mode, group_top_n=5):
+    """
+    mode = 'sentiment' or 'topics'
+    Returns: weekday (0-6), weekday_label, group_label, count, year_label (if exists)
+    """
+    if df.empty:
+        return pd.DataFrame()
+
+    df = df.copy()
+
+    # If weekday column is string like "Mon", "Tue" etc.
+    df["weekday_label"] = df["weekday"].astype(str)
+    # Also convert strings to numeric order for plotting
+    df["weekday"] = df["weekday_label"].map({day: i for i, day in enumerate(WEEKDAY_LABELS)})
+
+    # ---------------- SENTIMENT ----------------
+    if mode == "sentiment":
+        if "sentiment_label" not in df.columns:
+            return pd.DataFrame()
+
+        df["group_label"] = df["sentiment_label"]
+
+        agg = (
+            df.groupby(["weekday", "weekday_label", "group_label"])
+              .size()
+              .reset_index(name="count")
+        )
+
+        if "year_label" in df.columns:
+            year_map = df[["weekday", "weekday_label", "group_label", "year_label"]].drop_duplicates()
+            agg = agg.merge(year_map, on=["weekday", "weekday_label", "group_label"], how="left")
+
+        return agg
+
+    if mode == "topics":
+        if "topic" not in df.columns:
+            return pd.DataFrame()
+
+        # Top-N topics first
+        topic_counts = (
+            df.groupby("topic").size().reset_index(name="total_count")
+              .sort_values("total_count", ascending=False)
+        )
+        top_topics = topic_counts.head(group_top_n)["topic"].tolist()
+
+        df_small = df[df["topic"].isin(top_topics)].copy()
+        if df_small.empty:
+            return pd.DataFrame()
+
+        # Ensure weekday columns exist in df_small
+        df_small["weekday"] = df_small["weekday"]
+        df_small["weekday_label"] = df_small["weekday_label"]
+
+        df_small["group_label"] = df_small["topic_keywords_short"]
+
+        agg = (
+            df_small.groupby(["weekday", "weekday_label", "group_label"])
+                    .size()
+                    .reset_index(name="count")
+        )
+
+        if "year_label" in df_small.columns:
+            year_map = df_small[["weekday", "weekday_label", "group_label", "year_label"]].drop_duplicates()
+            agg = agg.merge(year_map, on=["weekday", "weekday_label", "group_label"], how="left")
+
+        return agg
+
+    return pd.DataFrame()
+
+def prepare_for_chart_by_hour(df, mode, group_top_n=5):
+    """
+    mode = 'sentiment' or 'topics'
+    Returns: hour (0–23), group_label, count, year_label (if exists)
+    """
+    if df.empty:
+        return pd.DataFrame()
+
+    df = df.copy()
+
+    # Ensure hour exists and is int
+    if "hour" not in df.columns:
+        return pd.DataFrame()
+    df["hour"] = df["hour"].astype(int)
+
+    # -------------- SENTIMENT --------------
+    if mode == "sentiment":
+        if "sentiment_label" not in df.columns:
+            return pd.DataFrame()
+
+        df["group_label"] = df["sentiment_label"]
+
+        agg = (
+            df.groupby(["hour", "group_label"])
+              .size()
+              .reset_index(name="count")
+        )
+
+        if "year_label" in df.columns:
+            year_map = df[["hour", "group_label", "year_label"]].drop_duplicates()
+            agg = agg.merge(year_map, on=["hour", "group_label"], how="left")
+
+        return agg
+
+    # -------------- TOPICS --------------
+    if mode == "topics":
+        if "topic" not in df.columns:
+            return pd.DataFrame()
+
+        # Find top N topics globally
+        topic_counts = (
+            df.groupby("topic")
+              .size()
+              .reset_index(name="total_count")
+              .sort_values("total_count", ascending=False)
+        )
+        top_topics = topic_counts.head(group_top_n)["topic"].tolist()
+
+        df_small = df[df["topic"].isin(top_topics)].copy()
+
+        if df_small.empty:
+            return pd.DataFrame()
+
+        df_small["group_label"] = df_small["topic_keywords_short"]
+
+        agg = (
+            df_small.groupby(["hour", "group_label"])
+                    .size()
+                    .reset_index(name="count")
+        )
+
+        if "year_label" in df_small.columns:
+            year_map = (
+                df_small[["hour", "group_label", "year_label"]]
+                .drop_duplicates()
+            )
+            agg = agg.merge(
+                year_map,
+                on=["hour", "group_label"],
+                how="left"
+            )
+
+        return agg
+
+    return pd.DataFrame()
+
+
+def chart_month_panel(df, title, months_order):
     if df.empty:
         return None
 
@@ -284,10 +412,79 @@ def chart_single_panel(df, title, months_order):
     )
     return chart
 
+def chart_weekday_panel(df, title):
+    if df.empty:
+        return None
 
-# ------------------------------------------------------
-# 3) Combine charts horizontally
-# ------------------------------------------------------
+    is_sentiment = set(df["group_label"].unique()).issubset({"POSITIVE", "NEUTRAL", "NEGATIVE"})
+
+    if is_sentiment:
+        color_scale = alt.Scale(
+            domain=["POSITIVE", "NEUTRAL", "NEGATIVE"],
+            range=["#2ca02c", "#7f7f7f", "#d62728"]
+        )
+        legend = alt.Legend(orient="right", direction="vertical")
+    else:
+        color_scale = alt.Scale(scheme="tableau20")
+        legend = alt.Legend(orient="bottom", direction="vertical", labelLimit=500)
+
+    chart = (
+        alt.Chart(df)
+            .mark_line(point=True, strokeWidth=2)
+            .encode(
+            x=alt.X(
+                "weekday:O",
+                sort=WEEKDAY_ORDER,
+                title="Weekday",
+                axis=alt.Axis(
+                    labelExpr="['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][datum.value]"
+                ),
+            ),
+            y=alt.Y("count:Q", title="Number of comments"),
+            color=alt.Color("group_label:N", scale=color_scale, title="", legend=legend),
+            tooltip=["weekday_label", "group_label", "count"],
+        )
+            .properties(title=title, width=300, height=250)
+    )
+    return chart
+
+def chart_hour_panel(df, title):
+    if df.empty:
+        return None
+
+    is_sentiment = set(df["group_label"].unique()).issubset(
+        {"POSITIVE", "NEUTRAL", "NEGATIVE"}
+    )
+
+    if is_sentiment:
+        color_scale = alt.Scale(
+            domain=["POSITIVE", "NEUTRAL", "NEGATIVE"],
+            range=["#2ca02c", "#7f7f7f", "#d62728"]
+        )
+        legend = alt.Legend(orient="right", direction="vertical")
+    else:
+        color_scale = alt.Scale(scheme="tableau20")
+        legend = alt.Legend(orient="bottom", direction="vertical", labelLimit=600)
+
+    chart = (
+        alt.Chart(df)
+        .mark_line(point=True, strokeWidth=2)
+        .encode(
+            x=alt.X(
+                "hour:O",
+                sort=list(range(24)),
+                title="Hour of day (0–23)"
+            ),
+            y=alt.Y("count:Q", title="Number of comments"),
+            color=alt.Color("group_label:N", scale=color_scale, title="", legend=legend),
+            tooltip=["hour", "group_label", "count"]
+        )
+        .properties(title=title, width=300, height=250)
+    )
+    return chart
+
+
+# combine charts horizontally
 def chart_multi_panel(dfs, titles, ordered_months, mode=None):
 
     if not dfs or all(len(df) == 0 for df in dfs):
@@ -306,16 +503,8 @@ def chart_multi_panel(dfs, titles, ordered_months, mode=None):
 
         df = df.copy()
 
-        # ---------------------------------------------------------
-        # Detect mode
-        # ---------------------------------------------------------
-        is_sentiment = set(df["group_label"].unique()).issubset(
-            {"POSITIVE", "NEUTRAL", "NEGATIVE"}
-        )
+        is_sentiment = set(df["group_label"].unique()).issubset({"POSITIVE", "NEUTRAL", "NEGATIVE"})
 
-        # ---------------------------------------------------------
-        # Palette + legend position
-        # ---------------------------------------------------------
         if is_sentiment:
             color_scale = alt.Scale(
                 domain=["POSITIVE", "NEUTRAL", "NEGATIVE"],
@@ -328,14 +517,10 @@ def chart_multi_panel(dfs, titles, ordered_months, mode=None):
             color_scale = alt.Scale(scheme="tableau20")
             legend = alt.Legend(orient="bottom", direction="vertical", labelLimit=500)
 
-        # ---------------------------------------------------------
-        # Month ordering
-        # ---------------------------------------------------------
+        # month ordering
         df["month_order"] = df["month_label"].map(month_order_map)
 
-        # ---------------------------------------------------------
-        # FIX: Break the line between years (May → June)
-        # ---------------------------------------------------------
+        # FIX - break the line between years (May → June)
         if len(dfs) == 2 and "year_label" in df.columns:
             def add_break(g):
                 g = g.sort_values("month_order")
@@ -399,35 +584,26 @@ def chart_multi_panel(dfs, titles, ordered_months, mode=None):
 st.title("Vad tycker besökarna om Stockholms parker?")
 st.text("Här finner du sammanställd data från appen TyckTill! Välj bland alternativen nedan för att se resultat av vår analys.")
 
-tab_overview, tab_sentiments, tab_topics, tab_mixed = st.tabs(["Overview", "Sentiments", "Topics", "Mixed"])
+tab_overview, tab_sentiments, tab_topics, tab_themes, tab_temp_test = st.tabs(["Overview", "Sentiments", "Topics", "Themes", "TEMP TEST"])
 
 # ===============
 # TAB 1: overview
 
 with tab_overview:
 
-    overview_choice = st.radio(
+    overview_question = st.radio(
         "Choose a map to show:",
-        ["Raw layer 1", "Prepped normalized"],
+        ["Overview question 1", "Overview question 2"],
         index=None
     )
 
-    #if overview_choice == "Raw layer 1":
-    #    # USER MUST SET THESE:
-    #    selected_layer = raw["raw_layer1"]        # your dataset
-    #    layer_type = "per_park"                   # logic switch
-    #    column = "column1"                        # CHANGE to your real column
-    #    label = "Label for tooltip"               # your label
+    st.divider()
 
-    #    display_map(layer_type, selected_layer, column, label)
+    if overview_question == "Overview question 1":
+        st.info("Add map showing what parks get the most Tyck till entries, have Praise + Ideas and Error + Complaints selection")
 
-    #elif overview_choice == "Prepped normalized":
-    #    selected_layer = prepped["normalized_map"]
-    #    layer_type = "prepped_normalized"
-    #    column = "value_normalized"
-    #    label = "Normalized value"
-
-    #    display_map(layer_type, selected_layer, column, label)
+    elif overview_question == "Overview question 2":
+        st.info("Add time + map? (spatio-temporal)")
 
 # =================
 # TAB 2: sentiments
@@ -437,24 +613,46 @@ with tab_sentiments:
     sentiment_question = st.radio(
         "Choose a question",
         ["Do sentiments vary over time?",
-         "Other sentiment question"],
+         "Sentiment question 2"],
         key="sentiment_selection_1"
     )
 
-    if sentiment_question in [
-        "Do sentiments vary over time?",
-        "Other sentiment question"
-    ]:
-        # pill buttons for category group
-        category_group = st.pills(
-            "Choose category group:",
-            ["Praise + Ideas", "Error + Complaints"],
-            selection_mode="single",
-            default="Praise + Ideas",
-            key="sentiment_selection_2"
-        )
+    st.divider()
 
-        # select the correct dataset based on group
+    if sentiment_question == "Do sentiments vary over time?":
+
+        chart = None
+
+        col1, col2, col3 = st.columns([1, 1, 1])
+
+        with col1:
+            category_group = st.pills(
+                "Tyck till category:",
+                ["Praise + Ideas", "Error + Complaints"],
+                selection_mode="single",
+                default="Praise + Ideas"
+            )
+
+        with col2:
+            view_choice = st.pills(
+                "View:",
+                ["Compare 2 years", "Compare 3 park filters"],
+                selection_mode="single",
+                default="Compare 2 years"
+            )
+
+        with col3:
+            temporal_scale = st.pills(
+                "Temporal scale:",
+                ["Months", "Weekdays", "24 Hours"],
+                selection_mode="single",
+                default="Months"
+            )
+
+        filter_vals = ["Beröm", "Idé"] if category_group == "Praise + Ideas" else ["Felanmälan", "Klagomål"]
+        df_base = raw["all_park_related_pts_with_themes"]
+        df_base = df_base[df_base["Kategori"].isin(filter_vals)]
+
         if category_group == "Praise + Ideas":
             df_loc = prepped["praise_idea_loc"]
             df_key = prepped["praise_idea_key"]
@@ -464,56 +662,116 @@ with tab_sentiments:
             df_key = prepped["error_complaint_key"]
             df_sim = prepped["error_complaint_sim"]
 
-    if sentiment_question == "Do sentiments vary over time?":
-
-        mode = st.radio(
-            "Choose view:",
-            ["Two-year comparison", "Three park related filters comparison"],
-            key="sentiment_selection_3"
-        )
-
         st.subheader("Sentiments over time")
 
-        filter_vals = ["Beröm", "Idé"] if category_group == "Praise + Ideas" else ["Felanmälan", "Klagomål"]
+        if temporal_scale == "Months":
+            prepared = prepare_for_chart_by_month(df_base, "sentiment")
 
-        df_base = raw["all_park_related_pts_with_themes"]
-        df_base = df_base[df_base["Kategori"].isin(filter_vals)]
+            if view_choice == "Compare 2 years":
+                years = sorted(prepared["year_label"].unique())
+                dfs = [prepared[prepared["year_label"] == y] for y in years]
+                titles = [str(y) for y in years]
+                month_order = MONTH_LABELS_JUN_TO_MAY
+                chart = chart_multi_panel(dfs, titles, month_order)
 
-        # SENTIMENT MODE
-        prepared = prepare_for_chart(df_base, mode="sentiment")
+            else:  # three-filter view
+                dfs = [
+                    prepare_for_chart_by_month(df_loc, "sentiment"),
+                    prepare_for_chart_by_month(df_key, "sentiment"),
+                    prepare_for_chart_by_month(df_sim, "sentiment"),
+                ]
+                titles = ["By location", "By keywords (strict)", "By keywords (similarity)"]
+                chart = chart_multi_panel(dfs, titles, MONTH_LABELS)
 
-        if mode == "Two-year comparison":
-            years = sorted(prepared["year_label"].unique())
-            dfs = [prepared[prepared["year_label"] == y] for y in years]
-            titles = [f"{y}" for y in years]
-            # Two-year comparison → June–May
-            month_order = MONTH_LABELS_JUN_TO_MAY
-            chart = chart_multi_panel(dfs, titles, month_order, mode="sentiment")
+        elif temporal_scale == "Weekdays":
+            # ---------------------------
+            # Compare 2 years
+            # ---------------------------
+            if view_choice == "Compare 2 years":
+                prepared = prepare_for_chart_by_weekday(df_base, "sentiment")
+                if "year_label" in prepared.columns:
+                    years = sorted(prepared["year_label"].unique())
+                    dfs = [prepared[prepared["year_label"] == y] for y in years]
+                    titles = [str(y) for y in years]
+                else:
+                    # If no year info, just show all together
+                    dfs = [prepared]
+                    titles = ["All data"]
 
+                charts = []
+                for df_year, title in zip(dfs, titles):
+                    if df_year.empty:
+                        continue
+                    chart = chart_weekday_panel(df_year, title)
+                    charts.append(chart)
 
-        else:  # Three park related filters comparison
+                chart = alt.hconcat(*charts).resolve_scale(color="shared", y="shared") if charts else None
 
-            # Prepare each source
+            # ------------------------------
+            # COMPARE 3 PARK-RELATED FILTERS
+            # ------------------------------
+            else:
+                # Prepare each source
+                dfs = [
+                    prepare_for_chart_by_weekday(df_loc, "sentiment"),
+                    prepare_for_chart_by_weekday(df_key, "sentiment"),
+                    prepare_for_chart_by_weekday(df_sim, "sentiment"),
+                ]
+                titles = ["By location", "By keywords (strict)", "By keywords (similarity)"]
 
-            dfs = [
-                prepare_for_chart(prepped["praise_idea_loc"], "sentiment") if category_group == "Praise + Ideas"
-                else prepare_for_chart(prepped["error_complaint_loc"], "sentiment"),
+                charts = []
+                for df_sub, title in zip(dfs, titles):
+                    if df_sub.empty:
+                        continue
+                    chart = chart_weekday_panel(df_sub, title)
+                    charts.append(chart)
 
-                prepare_for_chart(prepped["praise_idea_key"], "sentiment") if category_group == "Praise + Ideas"
-                else prepare_for_chart(prepped["error_complaint_key"], "sentiment"),
+                chart = alt.hconcat(*charts).resolve_scale(color="shared", y="shared") if charts else None
 
-                prepare_for_chart(prepped["praise_idea_sim"], "sentiment") if category_group == "Praise + Ideas"
-                else prepare_for_chart(prepped["error_complaint_sim"], "sentiment"),
-            ]
-            titles = ["By location", "By keywords (strict)", "By keywords (similarity)"]
+        # chart by hours
+        else:
+            chart = None
 
-            # Three park related filters comparison → Jan–Dec
-            month_order = MONTH_LABELS
-            chart = chart_multi_panel(dfs, titles, month_order, mode="topics")
+            prepared = prepare_for_chart_by_hour(df_base, "sentiment")
+
+            if view_choice == "Compare 2 years":
+                if "year_label" in prepared.columns:
+                    years = sorted(prepared["year_label"].unique())
+                    dfs = [prepared[prepared["year_label"] == y] for y in years]
+                    titles = [str(y) for y in years]
+                else:
+                    dfs = [prepared]
+                    titles = ["All data"]
+
+                charts = []
+                for df_sub, title in zip(dfs, titles):
+                    c = chart_hour_panel(df_sub, title)
+                    if c:
+                        charts.append(c)
+
+                chart = alt.hconcat(*charts).resolve_scale(color="shared", y="shared") if charts else None
+
+            else:  # compare 3 filters
+                dfs = [
+                    prepare_for_chart_by_hour(df_loc, "sentiment"),
+                    prepare_for_chart_by_hour(df_key, "sentiment"),
+                    prepare_for_chart_by_hour(df_sim, "sentiment"),
+                ]
+                titles = ["By location", "By keywords (strict)", "By keywords (similarity)"]
+
+                charts = []
+                for df_sub, title in zip(dfs, titles):
+                    c = chart_hour_panel(df_sub, title)
+                    if c:
+                        charts.append(c)
+
+                chart = alt.hconcat(*charts).resolve_scale(color="shared", y="shared") if charts else None
 
         if chart:
             st.altair_chart(chart, use_container_width=True)
 
+    elif sentiment_question == "Sentiment question 2":
+        st.info("Add sentiments per park and ha map")
 
 # ==============
 # TAB 3: topics
@@ -528,19 +786,39 @@ with tab_topics:
         key="topics_view_mode"
     )
 
-    if topic_question in [
-        "Do topics vary over time?",
-        "What are the top topics?"
-    ]:
-        # pill buttons for category group
-        category_group = st.pills(
-            "Choose category group:",
-            ["Praise + Ideas", "Error + Complaints"],
-            selection_mode="single",
-            default="Praise + Ideas"
-        )
+    if topic_question == "Do topics vary over time?":
 
-        # select the correct dataset based on group
+        chart = None
+
+        col1, col2, col3 = st.columns([1, 1, 1])
+
+        with col1:
+            category_group = st.pills(
+                "Tyck till category:",
+                ["Praise + Ideas", "Error + Complaints"],
+                default="Praise + Ideas",
+                selection_mode="single",
+                key="topics_category"
+            )
+
+        with col2:
+            view_choice = st.pills(
+                "View:",
+                ["Compare 2 years", "Compare 3 park filters"],
+                default="Compare 2 years",
+                selection_mode="single",
+                key="topics_view"
+            )
+
+        with col3:
+            temporal_scale = st.pills(
+                "Temporal scale:",
+                ["Months", "Weekdays", "24 Hours"],
+                default="Months",
+                selection_mode="single",
+                key="topics_temporal"
+            )
+
         if category_group == "Praise + Ideas":
             df_loc = prepped["praise_idea_loc"]
             df_key = prepped["praise_idea_key"]
@@ -550,36 +828,162 @@ with tab_topics:
             df_key = prepped["error_complaint_key"]
             df_sim = prepped["error_complaint_sim"]
 
-    # ==================================
-    # CHART: "Do topics vary over time?"
+        st.subheader("Topics over time")
 
-    if topic_question == "Do topics vary over time?":
+        if temporal_scale == "Months":
 
-        mode = st.radio(
-            "Choose view:",
-            ["Two-year comparison", "Three park-related filters comparison"]
-        )
+            prepared_loc = prepare_for_chart_by_month(df_loc, "topics")
+            prepared_key = prepare_for_chart_by_month(df_key, "topics")
+            prepared_sim = prepare_for_chart_by_month(df_sim, "topics")
 
-        if mode == "Two-year comparison":
-            df = prepare_for_chart(df_loc, "topics")
-            dfs = [df[df["year_label"] == y] for y in sorted(df["year_label"].unique())]
-            titles = [f"Year {y}" for y in sorted(df["year_label"].unique())]
-            month_order = MONTH_LABELS_JUN_TO_MAY
+            if view_choice == "Compare 2 years":
+                years = sorted(prepared_loc["year_label"].unique())
+                dfs = [prepared_loc[prepared_loc["year_label"] == y] for y in years]
+                titles = [str(y) for y in years]
+                chart = chart_multi_panel(dfs, titles, MONTH_LABELS_JUN_TO_MAY, mode="topics")
+
+            else:  # 3 dataset comparison
+                dfs = [prepared_loc, prepared_key, prepared_sim]
+                titles = ["By location", "By keywords (strict)", "By keywords (similarity)"]
+                chart = chart_multi_panel(dfs, titles, MONTH_LABELS, mode="topics")
+
+        elif temporal_scale == "Weekdays":
+
+            # Helper function using the NEW logic
+            def prepare_weekday(df, top_n=5):
+                df = df.copy()
+
+                # --- Ensure weekday exists ---
+                if "weekday" not in df.columns:
+                    if "created_at" in df.columns:
+                        df["weekday"] = df["created_at"].dt.weekday
+                    else:
+                        return pd.DataFrame()
+
+                # --- Ensure year_label exists ---
+                if "year_label" not in df.columns:
+                    if "created_at" in df.columns:
+                        df["year_label"] = df["created_at"].dt.year.astype(str)
+                    else:
+                        # If there's no datetime, fallback to single group
+                        df["year_label"] = "All years"
+
+                # --- Pick topic column ---
+                topic_col = "topic_keywords_short" if "topic_keywords_short" in df.columns else "topic"
+
+                # --- Group counts ---
+                wc = df.groupby(["weekday", topic_col, "year_label"]).size().reset_index(name="count")
+
+                # get top5 topics over weekdays
+                top_topics = (
+                    wc.groupby(["year_label", topic_col])["count"]
+                        .sum()
+                        .reset_index()
+                )
+                top_topics["rank"] = top_topics.groupby("year_label")["count"].rank(method="first", ascending=False)
+                top_topics = top_topics[top_topics["rank"] <= top_n]
+
+                wc = wc.merge(
+                    top_topics[["year_label", topic_col]],
+                    on=["year_label", topic_col],
+                    how="inner"
+                )
+
+                WEEKDAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+                wc["weekday_label"] = wc["weekday"].apply(
+                    lambda x: WEEKDAY_LABELS[int(x)] if isinstance(x, (int, float)) else x
+                )
+
+                # --- Sort weekdays ---
+                wc["weekday_label"] = pd.Categorical(
+                    wc["weekday_label"], categories=WEEKDAY_LABELS, ordered=True
+                )
+
+                return wc
+
+            # Plotting function
+            def chart_weekday_topics(df, title):
+                if df.empty:
+                    return None
+                topic_col = "topic_keywords_short" if "topic_keywords_short" in df.columns else "topic"
+
+                WEEKDAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+                return (
+                    alt.Chart(df)
+                        .mark_line(point=True)
+                        .encode(
+                        x=alt.X("weekday_label:N", title="Weekday", sort=WEEKDAY_LABELS),
+                        y=alt.Y("count:Q", title="Number of comments"),
+                        color=alt.Color(f"{topic_col}:N",
+                                        title="Topic",
+                                        legend=alt.Legend(
+                                            orient="bottom",
+                                            title="Topic keywords",
+                                            columns=3,
+                                            labelLimit=500,
+                                            symbolLimit=200
+                                        ),
+                        ),
+                        tooltip=["weekday_label", topic_col, "count"]
+                    )
+                        .properties(title=title, width=300, height=250)
+                )
+
+
+            # ------------- Compare 2 years ----------------
+            if view_choice == "Compare 2 years":
+
+                # Combine so that top-N topics are consistent across years
+                df_all = pd.concat([df_loc, df_key, df_sim])
+                prepared = prepare_weekday(df_all, top_n=5)
+
+                if "year_label" in df_all.columns:
+                    years = sorted(df_all["year_label"].unique())
+                    dfs = [prepared[prepared["year_label"] == y] for y in years]
+                    titles = [str(y) for y in years]
+                else:
+                    dfs = [prepared]
+                    titles = ["All data"]
+
+                charts = []
+                for df_sub, title in zip(dfs, titles):
+                    ch = chart_weekday_topics(df_sub, title)
+                    if ch is not None:
+                        charts.append(ch)
+
+                if charts:
+                    st.altair_chart(alt.hconcat(*charts).resolve_scale(color="shared", y="shared"),
+                                    use_container_width=True)
+
+            # ------------- Compare 3 datasets ----------------
+            else:
+                dfs = [prepare_weekday(df_loc, top_n=5),
+                       prepare_weekday(df_key, top_n=5),
+                       prepare_weekday(df_sim, top_n=5)]
+                titles = ["By location", "By keywords (strict)", "By keywords (similarity)"]
+
+                charts = []
+                for df_sub, title in zip(dfs, titles):
+                    ch = chart_weekday_topics(df_sub, title)
+                    if ch is not None:
+                        charts.append(ch)
+
+                if charts:
+                    st.altair_chart(alt.hconcat(*charts).resolve_scale(color="shared", y="shared"),
+                                    use_container_width=True)
 
         else:
-            dfs = [
-                prepare_for_chart(df_loc, "topics"),
-                prepare_for_chart(df_key, "topics"),
-                prepare_for_chart(df_sim, "topics"),
-            ]
-            titles = ["By location", "By keywords (strict)", "By keywords (similarity)"]
-            month_order = MONTH_LABELS  # Three-sources uses Jan–Dec
+            st.info("24-hour view coming soon.") # *** maybe don't add? might look ugly just like topics over weekdays per park filter ***
+            chart = None
 
-        chart = chart_multi_panel(dfs, titles, month_order)
         if chart:
             st.altair_chart(chart, use_container_width=True)
 
     elif topic_question == "What are the top topics?":
+        chart = None
+
         # --- Shared X-axis (max bar length) ---
         def get_global_max(*dfs):
             max_count = 0
@@ -662,3 +1066,37 @@ with tab_topics:
         add_top5_topics_layer(m, gdf, column)
 
         st_folium(m, width=900, height=600)
+
+# ==============
+# TAB 4: themes
+
+with tab_themes:
+
+    themes_question = st.radio(
+        "Choose a question:",
+        ["Themes question 1",
+         "Themes question 2"],
+        key="themes_view_mode"
+    )
+
+    if themes_question == "Themes question 1":
+        st.info("Add most common themes bar chart")
+
+    elif themes_question == "Themes question 2":
+        st.info("Add co-occurence matrix")
+
+
+
+
+
+###############
+# TEMP TEST TAB
+
+with tab_temp_test:
+    st.title("Test: Topics over Weekdays")
+
+    df = raw["all_park_related_pts_with_themes"].copy()
+
+
+
+
