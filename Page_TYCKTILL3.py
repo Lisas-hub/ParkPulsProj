@@ -29,8 +29,8 @@ def load_all_data():
     data = {}
     data["stats_per_park"] = load_layer(tycktill_GPKG, "stats_per_park")
     data["all_park_related_pts_with_themes"] = load_layer(tycktill_filtered_GPKG, "all_park_related_pts_with_themes")
-    data["pts_with_topics_by_location"] = load_layer(tycktill_filtered_GPKG, "pts_in_parks_with_topics")   # by location
-    data["pts_with_topics_by_keywords_strictly"] = load_layer(tycktill_filtered_GPKG, "park_comments_by_keyword")   # by keywords (strictly)
+    data["pts_with_topics_by_location"] = load_layer(tycktill_filtered_GPKG, "pts_in_parks_with_topics")              # by location
+    data["pts_with_topics_by_keywords_strictly"] = load_layer(tycktill_filtered_GPKG, "park_comments_by_keyword")     # by keywords (strictly)
     data["pts_with_topics_by_keywords_similarity"] = load_layer(tycktill_filtered_GPKG, "park_comments_by_BERTopic")  # by keywords (similarity)
     data["parks_with_top5_topics"] = load_layer(tycktill_filtered_GPKG, "parks_with_top5_topics")
     return data
@@ -46,7 +46,7 @@ def prepare_data(raw):
     def prepare_keywords(df):
         df = df.copy()
         df["topic_keywords_list"] = df["topic_keywords"].str.split(", ")                          # convert the comma-separated string to a list
-        df["topic_keywords_full"] = df["topic_keywords_list"].apply(lambda x: ", ".join(x[:10]))  # full list = first 10 keywords
+        df["topic_keywords_full"] = df["topic_keywords_list"].apply(lambda x: ", ".join(x[:10]))  # full list = all 10 keywords
         df["topic_keywords_short"] = df["topic_keywords_list"].apply(lambda x: ", ".join(x[:3]))  # short list = first 3 keywords
         return df
 
@@ -69,6 +69,7 @@ def prepare_data(raw):
 
 
     # *** more prepp ***
+
 
     return prepped
 
@@ -150,6 +151,7 @@ def prepare_for_chart(df, mode, temporal_scale, group_top_n=5):
     elif temporal_scale == "24 Hours":
         return pd.DataFrame()
 
+
 def prepare_for_chart_by_month(df, mode, group_top_n=5):
 
     """
@@ -166,7 +168,6 @@ def prepare_for_chart_by_month(df, mode, group_top_n=5):
     if df.empty:
         return pd.DataFrame()
 
-    # --- Always add month_label ---
     df = add_month_label(df).copy()
 
     if mode == "sentiment":
@@ -174,17 +175,15 @@ def prepare_for_chart_by_month(df, mode, group_top_n=5):
         if "sentiment_label" not in df.columns:
             return pd.DataFrame()
 
-        # group_label = sentiment_label
         df["group_label"] = df["sentiment_label"]
 
-        # aggregate counts
         agg = (
             df.groupby(["month", "month_label", "group_label"])
               .size()
               .reset_index(name="count")
         )
 
-        # attach year_label using exact source rows
+        # attach year_label
         if "year_label" in df.columns:
             year_map = (
                 df[["month", "month_label", "group_label", "year_label"]]
@@ -222,14 +221,13 @@ def prepare_for_chart_by_month(df, mode, group_top_n=5):
         # group_label = topic_keywords_short
         df_small["group_label"] = df_small["topic_keywords_short"]
 
-        # aggregate
         agg = (
             df_small.groupby(["month", "month_label", "group_label"])
                     .size()
                     .reset_index(name="count")
         )
 
-        # attach year_label properly
+        # attach year_label
         if "year_label" in df_small.columns:
             year_map = (
                 df_small[["month", "month_label", "group_label", "year_label"]]
@@ -255,12 +253,10 @@ def prepare_for_chart_by_weekday(df, mode, group_top_n=5):
 
     df = df.copy()
 
-    # If weekday column is string like "Mon", "Tue" etc.
     df["weekday_label"] = df["weekday"].astype(str)
-    # Also convert strings to numeric order for plotting
+    # convert strings to numeric order for plotting
     df["weekday"] = df["weekday_label"].map({day: i for i, day in enumerate(WEEKDAY_LABELS)})
 
-    # ---------------- SENTIMENT ----------------
     if mode == "sentiment":
         if "sentiment_label" not in df.columns:
             return pd.DataFrame()
@@ -283,7 +279,7 @@ def prepare_for_chart_by_weekday(df, mode, group_top_n=5):
         if "topic" not in df.columns:
             return pd.DataFrame()
 
-        # Top-N topics first
+        # top-N topics first
         topic_counts = (
             df.groupby("topic").size().reset_index(name="total_count")
               .sort_values("total_count", ascending=False)
@@ -329,7 +325,6 @@ def prepare_for_chart_by_hour(df, mode, group_top_n=5):
         return pd.DataFrame()
     df["hour"] = df["hour"].astype(int)
 
-    # -------------- SENTIMENT --------------
     if mode == "sentiment":
         if "sentiment_label" not in df.columns:
             return pd.DataFrame()
@@ -348,7 +343,6 @@ def prepare_for_chart_by_hour(df, mode, group_top_n=5):
 
         return agg
 
-    # -------------- TOPICS --------------
     if mode == "topics":
         if "topic" not in df.columns:
             return pd.DataFrame()
@@ -492,7 +486,7 @@ def chart_multi_panel(dfs, titles, ordered_months, mode=None):
 
     panels = []
 
-    # Which month labels to show on axis
+    # which month labels to show on axis
     month_labels = ordered_months
     month_order_map = {m: i for i, m in enumerate(ordered_months)}
 
@@ -520,13 +514,13 @@ def chart_multi_panel(dfs, titles, ordered_months, mode=None):
         # month ordering
         df["month_order"] = df["month_label"].map(month_order_map)
 
-        # FIX - break the line between years (May → June)
+        # force break of the line between years May-June
         if len(dfs) == 2 and "year_label" in df.columns:
             def add_break(g):
                 g = g.sort_values("month_order")
                 last = g.iloc[-1]
 
-                # Insert a null row → breaks Altair line path
+                # insert a null row breaks altair line path
                 b = last.copy()
                 b["month_order"] = None
                 b["count"] = None
@@ -538,14 +532,8 @@ def chart_multi_panel(dfs, titles, ordered_months, mode=None):
                     .apply(add_break)
             )
 
-        # ---------------------------------------------------------
-        # Axis field (no need for complicated year index now)
-        # ---------------------------------------------------------
         x_field = "month_order:O"
 
-        # ---------------------------------------------------------
-        # Chart
-        # ---------------------------------------------------------
         chart = (
             alt.Chart(df)
                 .mark_line(point=True, strokeWidth=2)
@@ -558,7 +546,7 @@ def chart_multi_panel(dfs, titles, ordered_months, mode=None):
                         labelExpr=f"""['{"','".join(month_labels)}'][datum.value]"""
                     ),
                     scale=alt.Scale(
-                        domain=[i for i in range(len(month_labels))]  # only valid month indexes
+                        domain=[i for i in range(len(month_labels))]
                     )
                 ),
                 y=alt.Y("count:Q", title="Number of comments"),
@@ -596,7 +584,6 @@ with tab_overview:
         ["Overview question 1", "Overview question 2"],
         index=None
     )
-
     st.divider()
 
     if overview_question == "Overview question 1":
@@ -616,11 +603,9 @@ with tab_sentiments:
          "Sentiment question 2"],
         key="sentiment_selection_1"
     )
-
     st.divider()
 
     if sentiment_question == "Do sentiments vary over time?":
-
         chart = None
 
         col1, col2, col3 = st.columns([1, 1, 1])
@@ -674,7 +659,7 @@ with tab_sentiments:
                 month_order = MONTH_LABELS_JUN_TO_MAY
                 chart = chart_multi_panel(dfs, titles, month_order)
 
-            else:  # three-filter view
+            else:  # 3 filters view
                 dfs = [
                     prepare_for_chart_by_month(df_loc, "sentiment"),
                     prepare_for_chart_by_month(df_key, "sentiment"),
@@ -684,19 +669,13 @@ with tab_sentiments:
                 chart = chart_multi_panel(dfs, titles, MONTH_LABELS)
 
         elif temporal_scale == "Weekdays":
-            # ---------------------------
-            # Compare 2 years
-            # ---------------------------
+
             if view_choice == "Compare 2 years":
                 prepared = prepare_for_chart_by_weekday(df_base, "sentiment")
                 if "year_label" in prepared.columns:
                     years = sorted(prepared["year_label"].unique())
                     dfs = [prepared[prepared["year_label"] == y] for y in years]
                     titles = [str(y) for y in years]
-                else:
-                    # If no year info, just show all together
-                    dfs = [prepared]
-                    titles = ["All data"]
 
                 charts = []
                 for df_year, title in zip(dfs, titles):
@@ -782,9 +761,10 @@ with tab_topics:
         "Choose a question:",
         ["Do topics vary over time?",
          "What are the top topics?",
-         "Map: Top 5 topics per park"],     # *** add more later ***
+         "Map: Top 5 topics per park"],
         key="topics_view_mode"
     )
+    st.divider()
 
     if topic_question == "Do topics vary over time?":
 
@@ -975,7 +955,7 @@ with tab_topics:
                                     use_container_width=True)
 
         else:
-            st.info("24-hour view coming soon.") # *** maybe don't add? might look ugly just like topics over weekdays per park filter ***
+            st.info("24-hour view to be added") # *** maybe don't add? might look ugly just like topics over weekdays per park filter ***
             chart = None
 
         if chart:
@@ -984,7 +964,7 @@ with tab_topics:
     elif topic_question == "What are the top topics?":
         chart = None
 
-        # --- Shared X-axis (max bar length) ---
+        # shared X-axis (max bar length)
         def get_global_max(*dfs):
             max_count = 0
             for df in dfs:
@@ -1000,7 +980,7 @@ with tab_topics:
             return max_count
 
         global_max = get_global_max(df_loc, df_key, df_sim)
-        # --- Chart builder ---
+
         def top_topics_chart(df, label):
             if df.empty: return None
 
@@ -1045,11 +1025,12 @@ with tab_topics:
                 )
                     .properties(title=label, width=300, height=250)
             )
-        # Create the three charts
+
+        # create the three charts
         chart1 = top_topics_chart(df_loc, "By location")
         chart2 = top_topics_chart(df_key, "By keywords (strict)")
         chart3 = top_topics_chart(df_sim, "By keywords (similarity)")
-        # Display them side by side
+        # display them side by side
         charts = [c for c in [chart1, chart2, chart3] if c is not None]
         if charts:
             st.altair_chart(charts[0] | charts[1] | charts[2], use_container_width=True)
