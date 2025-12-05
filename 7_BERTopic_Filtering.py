@@ -3,8 +3,6 @@ import os
 import pandas as pd
 import geopandas as gpd
 from bertopic import BERTopic
-import seaborn as sns
-import matplotlib.pyplot as plt
 import numpy as np
 import re
 
@@ -14,6 +12,7 @@ import re
 model_path = "data/tycktill_output/BERTopic/bertopic_model"
 input_folder = os.path.join("data", "tycktill_output", "BERTopic")
 output_folder = os.path.join("data", "tycktill_output", "BERTopic_filtered")
+os.makedirs(output_folder, exist_ok=True)
 output_folder_plots = os.path.join("data", "tycktill_output", "plots")
 
 # ===================
@@ -37,14 +36,19 @@ all_comments_gdf = gpd.GeoDataFrame(
 pts_in_parks = gpd.sjoin(all_comments_gdf, parks, predicate="within", how="inner")
 print(f"Points inside parks: {len(pts_in_parks)} / {len(all_comments)} total")
 
-pts_in_parks.to_file(f"{output_folder}/tycktill_filtered.gpkg", layer="pts_in_parks_with_topics", driver="GPKG", mode="w")
-#pts_in_parks.to_excel(f"{output_folder}/pts_in_parks_with_topics.xlsx", index=False)
+pts_in_parks.to_file(
+    os.path.join(output_folder, "tycktill_filtered.gpkg"),
+    layer="pts_in_parks_with_topics",
+    driver="GPKG",
+    mode="w"
+)
+pts_in_parks.to_excel(f"{output_folder}/pts_in_parks_with_topics.xlsx", index=False)
 
 # ========================
 # get top5 topics per park (prepp for streamlit that just fitted well in this script)
 
 topic_counts = (
-    pts_in_parks.groupby(["group", "topic", "topic_keywords"])
+    pts_in_parks.groupby(["group", "topic", "topic_keywords", "topic_keywords_weighted"])
     .size()
     .reset_index(name="count")
 )
@@ -171,9 +175,9 @@ print(f"Saved {len(park_comments_by_BERTopic)} comments from park-similar topics
 
 
 
-# Points inside parks: 78347 / 290005 total
-# Saved 26089 comments containing park keywords.
-# Saved 56879 comments from park-similar topics.
+# Points inside parks: 78454 / 290448 total
+# Saved 25574 comments containing park keywords.
+# Saved 58809 comments from park-similar topics.
 
 
 

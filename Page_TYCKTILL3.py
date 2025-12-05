@@ -1,21 +1,47 @@
 
+import os
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
 import geopandas as gpd
-import branca.colormap as cm
-import numpy as np
 import pandas as pd
 import mapclassify   # OM PROBLM MED MAPCLASSIFY - kör streamlit run genom att här i pycharm gå till terminal > klicka på dropdown > välj command prompt. Testa sen om den hittar mapclassify genom att skriva python -c "import mapclassify; print(mapclassify.__version__)". Om det funkar kör vanliga streamlit run.
 import altair as alt
 from itertools import combinations
 import rasterio
+import numpy as np
+
+from matplotlib import pyplot as plt
+import folium
+import branca.colormap as cm
+from folium.raster_layers import ImageOverlay
+from matplotlib import cm as mpl_cm
+from streamlit_folium import folium_static
+from rasterio.transform import array_bounds
+from rasterio.warp import calculate_default_transform, reproject, Resampling
+
+from folium.plugins import HeatMap
+from streamlit_folium import folium_static
+
 
 st.set_page_config(layout="wide")
 
 tycktill_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\tycktill.gpkg"
 tycktill_filtered_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered_OLD\tycktill_filtered.gpkg"
-                                                                                # ^^^ OBS! ändra till ny BERTopic mapp ^^^
+
+plots_folder_path = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\plots"                                                                                                      # ^^^ OBS!
+
+raster_paths = {
+    "Praise+Ideas": {
+        "Day": os.path.join(plots_folder_path, "kde_praise_ideas_comments_day.tif"),       # *** change to _per_1000_residents.tif later ***
+        "Night": os.path.join(plots_folder_path, "kde_praise_ideas_comments_night.tif")
+    },
+    "Error+Complaints": {
+        "Day": os.path.join(plots_folder_path, "kde_error_complaints_comments_day.tif"),
+        "Night": os.path.join(plots_folder_path, "kde_error_complaints_comments_night.tif")
+    }
+}
+
 # ===================
 # === load layers ===
 
@@ -35,6 +61,47 @@ def load_all_data():
     data["parks_with_top5_topics"] = load_layer(tycktill_filtered_GPKG, "parks_with_top5_topics")
     return data
 raw = load_all_data()
+
+@st.cache_data(show_spinner="Loading raster...")
+def load_raster(path: str):
+    with rasterio.open(path) as src:
+        data = src.read(1)  # single band
+        transform = src.transform
+        crs = src.crs
+    return {"array": data, "transform": transform, "crs": crs}
+
+
+def load_and_reproject_raster(path, dst_crs="EPSG:4326"):
+    with rasterio.open(path) as src:
+        transform, width, height = calculate_default_transform(
+            src.crs, dst_crs, src.width, src.height, *src.bounds
+        )
+        dst_array = np.empty((height, width), dtype=src.read(1).dtype)
+
+        reproject(
+            source=src.read(1),
+            destination=dst_array,
+            src_transform=src.transform,
+            src_crs=src.crs,
+            dst_transform=transform,
+            dst_crs=dst_crs,
+            resampling=Resampling.bilinear
+        )
+    return {"array": dst_array, "transform": transform, "crs": dst_crs}
+
+
+@st.cache_data(show_spinner="Loading rasters…")
+def load_all_rasters():
+    rasters = {}
+    rasters["kde_praise_ideas_day"]   = load_and_reproject_raster(raster_paths["Praise+Ideas"]["Day"])
+    rasters["kde_praise_ideas_night"] = load_and_reproject_raster(raster_paths["Praise+Ideas"]["Night"])
+    rasters["kde_error_complaints_day"]   = load_and_reproject_raster(raster_paths["Error+Complaints"]["Day"])
+    rasters["kde_error_complaints_night"] = load_and_reproject_raster(raster_paths["Error+Complaints"]["Night"])
+    return rasters
+rasters = load_all_rasters()
+
+st.sidebar.button("Clear Cache", on_click=st.cache_data.clear)
+
 
 def prepare_data(raw):
 
@@ -67,9 +134,18 @@ def prepare_data(raw):
         "error_complaint_sim": topics_sim[topics_sim["Kategori"].isin(["Felanmälan", "Klagomål"])],
     })
 
+    # prepp for heatmaps
+    # add day/night boolean columns
+    all_pts = raw["all_park_related_pts_with_themes"].copy()
 
-    # *** more prepp ***
+    all_pts["is_day"] = all_pts["hour"].between(6, 18, inclusive="both")
+    all_pts["is_night"] = ~all_pts["is_day"]  # everything else
 
+    prepped["all_pts"] = all_pts
+
+    # kategrori subsets
+    prepped["heat_praise_idea"] = all_pts[all_pts["Kategori"].isin(["Beröm", "Idé"])]
+    prepped["heat_error_complaint"] = all_pts[all_pts["Kategori"].isin(["Felanmälan", "Klagomål"])]
 
     return prepped
 
@@ -121,6 +197,84 @@ def add_top5_topics_layer(m, gdf, column):
                 "fillOpacity": 0.45,
             }
         ).add_to(m)
+
+
+# remove this map? or make prettier
+def overlay_raster_on_map(base_map, raster_array, transform, vmax=None, colormap='magma', upscale_factor=2):   # ⬅️ Increase to 3 or 4 for smoother rendered maps
+    """
+    Overlays a raster on a Folium map using bilinear upscaling to avoid blockiness.
+
+    - NoData (-9999) is transparent
+    - Values = 0 are transparent
+    - Raster is upscaled for smooth display
+    """
+
+    # --- 1. Mask nodata and zeros ---
+    masked = raster_array.astype(float)
+    masked[(masked == -9999) | (masked == 0)] = np.nan
+
+    # --- 2. Determine max for normalization ---
+    if vmax is None:
+        vmax = np.nanmax(masked)
+
+    norm = masked / vmax
+
+    # --- 3. Upscale for smoother visualization ---
+    if upscale_factor > 1:
+        from scipy.ndimage import zoom
+        norm = zoom(norm, upscale_factor, order=1)  # bilinear resampling
+
+    # --- 4. Convert to RGBA ---
+    cmap = mpl_cm.get_cmap(colormap)
+    rgba_img = cmap(norm)
+    rgba_img = (rgba_img * 255).astype(np.uint8)
+
+    # Transparent where NaN
+    alpha = np.where(np.isnan(norm), 0, 255).astype(np.uint8)
+    rgba_img[..., 3] = alpha
+
+    # --- 5. Recompute bounds (they do NOT change with upscaling!) ---
+    minx = transform[2]
+    maxy = transform[5]
+    pixel_size_x = transform[0]
+    pixel_size_y = -transform[4]
+
+    height, width = raster_array.shape
+    maxx = minx + width * pixel_size_x
+    miny = maxy - height * pixel_size_y
+
+    bounds = [[miny, minx], [maxy, maxx]]
+
+    # --- 6. Add to map ---
+    img_overlay = ImageOverlay(
+        image=rgba_img,
+        bounds=bounds,
+        opacity=1,
+        interactive=True,
+        origin='upper'
+    )
+
+    img_overlay.add_to(base_map)
+    return base_map
+
+
+def add_heatmap(m, gdf, radius=15, blur=10, max_zoom=13):
+    # Extract [lat, lon] from geometry
+    heat_points = [
+        [geom.y, geom.x]
+        for geom in gdf.geometry
+        if geom is not None
+    ]
+
+    HeatMap(
+        heat_points,
+        radius=radius,
+        blur=blur,
+        max_zoom=max_zoom,
+        min_opacity=0.4,
+    ).add_to(m)
+
+    return m
 
 
 # ===============
@@ -581,16 +735,81 @@ with tab_overview:
 
     overview_question = st.radio(
         "Choose a map to show:",
-        ["Overview question 1", "Overview question 2"],
+        ["Overview question 1", "Tyck till entries map"],
+        key="overview_selection_1",
         index=None
     )
     st.divider()
 
     if overview_question == "Overview question 1":
-        st.info("Add map showing what parks get the most Tyck till entries, have Praise + Ideas and Error + Complaints selection")
 
-    elif overview_question == "Overview question 2":
-        st.info("Add time + map? (spatio-temporal)")
+        category = st.pills("Tyck till category:",
+                            ["Praise + Ideas",
+                             "Error + Complaints"],
+                            default="Praise + Ideas"
+                            )
+
+        if category == "Praise + Ideas":
+            day_raster = rasters["kde_praise_ideas_day"]["array"]
+            night_raster = rasters["kde_praise_ideas_night"]["array"]
+            day_transform = rasters["kde_praise_ideas_day"]["transform"]
+            night_transform = rasters["kde_praise_ideas_night"]["transform"]
+        else:
+            day_raster = rasters["kde_error_complaints_day"]["array"]
+            night_raster = rasters["kde_error_complaints_night"]["array"]
+            day_transform = rasters["kde_error_complaints_day"]["transform"]
+            night_transform = rasters["kde_error_complaints_night"]["transform"]
+
+        vmax = max(np.nanmax(day_raster), np.nanmax(night_raster))
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            m_day = create_base_map()
+            overlay_raster_on_map(m_day, day_raster, day_transform, vmax=vmax, colormap='magma')
+            folium_static(m_day, width=600, height=500)  # use streamlit_folium
+
+        with col2:
+            m_night = create_base_map()
+            overlay_raster_on_map(m_night, night_raster, night_transform, vmax=vmax, colormap='magma')
+            folium_static(m_night, width=600, height=500)
+
+
+    elif overview_question == "Tyck till entries map":
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            category = st.pills("Tyck till category:",
+                                ["Praise + Ideas",
+                                 "Error + Complaints"],
+                                selection_mode="single",
+                                key="overview_selection_2",
+                                default="Praise + Ideas"
+                                )
+        with col2:
+            time_filter = st.pills("Time of day:",
+                                   ["Day 06.00-18.00",
+                                    "Night 18.00-06.00"],
+                                   selection_mode="single",
+                                   key="overview_selection_3",
+                                   default="Day 06.00-18.00"
+                                   )
+
+        if category == "Praise + Ideas":
+            pts = prepped["heat_praise_idea"]
+        else:
+            pts = prepped["heat_error_complaint"]
+
+            # Time filter
+        if time_filter == "Day":
+            pts = pts[pts["is_day"]]
+        else:
+            pts = pts[pts["is_night"]]
+
+        m = create_base_map()
+        add_heatmap(m, pts)
+        folium_static(m, width=1100, height=650)
 
 # =================
 # TAB 2: sentiments
@@ -615,6 +834,7 @@ with tab_sentiments:
                 "Tyck till category:",
                 ["Praise + Ideas", "Error + Complaints"],
                 selection_mode="single",
+                key="sentiment_selection_2",
                 default="Praise + Ideas"
             )
 
@@ -623,6 +843,7 @@ with tab_sentiments:
                 "View:",
                 ["Compare 2 years", "Compare 3 park filters"],
                 selection_mode="single",
+                key="sentiment_selection_3",
                 default="Compare 2 years"
             )
 
@@ -631,6 +852,7 @@ with tab_sentiments:
                 "Temporal scale:",
                 ["Months", "Weekdays", "24 Hours"],
                 selection_mode="single",
+                key="sentiment_selection_4",
                 default="Months"
             )
 

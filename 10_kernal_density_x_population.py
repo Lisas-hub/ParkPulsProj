@@ -45,7 +45,7 @@ if municipality.crs.to_epsg() != target_crs:
 # ==================
 # create raster grid
 
-pixel_size = 50  # finer grid = better KDE
+pixel_size = 25  # finer grid = better KDE
 minx, miny, maxx, maxy = municipality.total_bounds
 width  = int((maxx - minx) / pixel_size)
 height = int((maxy - miny) / pixel_size)
@@ -149,6 +149,11 @@ def per_1000_raster(kde_raster, population_raster_masked, nodata=-9999):
     ratio = (kde_raster / safe_pop) * 1000
     return np.where(np.isnan(ratio), nodata, ratio).astype("float32")
 
+def split_day_night_gdf(points_gdf):
+    day = points_gdf[(points_gdf["hour"] >= 6) & (points_gdf["hour"] < 18)]
+    night = points_gdf[(points_gdf["hour"] < 6) | (points_gdf["hour"] >= 18)]
+    return day, night
+
 def process_topic(points_gdf, out_prefix):
 
     # rasterize points
@@ -173,9 +178,46 @@ def process_topic(points_gdf, out_prefix):
 
     print(f"✔ Finished {out_prefix}")
 
+def process_topic_day_night(points_gdf, out_prefix):
+    day_gdf, night_gdf = split_day_night_gdf(points_gdf)
+
+    # Day
+    raw_day = rasterize_points(day_gdf, height, width, transform)
+    kde_day = kde_smooth(raw_day, sigma)
+    kde_day_masked = mask_to_municipality(kde_day, municipality_mask_clean)
+    save_raster(rf"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\plots\kde_{out_prefix}_day.tif",
+                kde_day_masked.astype("float32"), height, width, transform, f"EPSG:{target_crs}")
+    ratio_day = per_1000_raster(kde_day_masked, population_raster_masked)
+    save_raster(
+        rf"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\plots\{out_prefix}_day_per_1000_residents.tif",
+        ratio_day, height, width, transform, f"EPSG:{target_crs}")
+
+    # Night
+    raw_night = rasterize_points(night_gdf, height, width, transform)
+    kde_night = kde_smooth(raw_night, sigma)
+    kde_night_masked = mask_to_municipality(kde_night, municipality_mask_clean)
+    save_raster(
+        rf"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\plots\kde_{out_prefix}_night.tif",
+        kde_night_masked.astype("float32"), height, width, transform, f"EPSG:{target_crs}")
+    ratio_night = per_1000_raster(kde_night_masked, population_raster_masked)
+    save_raster(
+        rf"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\plots\{out_prefix}_night_per_1000_residents.tif",
+        ratio_night, height, width, transform, f"EPSG:{target_crs}")
+
+    print(f"✔ Finished {out_prefix} Day/Night")
+
+
 process_topic(praise_idea_points, "praise_ideas_comments")
 process_topic(error_complaint_points, "error_complaints_comments")
 process_topic(all_points, "all_comments")
 
 
+# with day/night
+process_topic_day_night(praise_idea_points, "praise_ideas_comments")
+process_topic_day_night(error_complaint_points, "error_complaints_comments")
+process_topic_day_night(all_points, "all_comments")
 
+##############
+pixel_size_x_actual = (maxx - minx) / width
+pixel_size_y_actual = (maxy - miny) / height
+print(pixel_size_x_actual, pixel_size_y_actual)
