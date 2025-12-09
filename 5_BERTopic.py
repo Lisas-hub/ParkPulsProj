@@ -162,6 +162,7 @@ def get_keywords_with_weights(topic_num):
     return "; ".join([f"{w}: {round(score,4)}" for w, score in words])
 
 #all_comments["topic_keywords"] = all_comments["topic"].apply(get_filtered_top_words)
+all_comments["topic_keywords"] = all_comments["topic"].apply(get_top_words)
 all_comments["topic_keywords_weighted"] = all_comments["topic"].apply(get_keywords_with_weights)
 
 # get topic summary excel
@@ -173,6 +174,7 @@ topic_summary = (
 )
 
 #topic_summary["topic_keywords"] = topic_summary["topic"].apply(get_filtered_top_words)
+topic_summary["topic_keywords"] = topic_summary["topic"].apply(get_top_words)
 topic_summary["topic_keywords_weighted"] = topic_summary["topic"].apply(get_keywords_with_weights)
 
 topic_summary_out = f"{output_folder}/topic_summary.xlsx"

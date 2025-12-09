@@ -23,11 +23,12 @@ from rasterio.warp import calculate_default_transform, reproject, Resampling
 from folium.plugins import HeatMap
 from streamlit_folium import folium_static
 
+import itertools
 
 st.set_page_config(layout="wide")
 
 tycktill_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\tycktill.gpkg"
-tycktill_filtered_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered_OLD\tycktill_filtered.gpkg"
+tycktill_filtered_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg"
 
 plots_folder_path = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\plots"                                                                                                      # ^^^ OBS!
 
@@ -102,6 +103,27 @@ rasters = load_all_rasters()
 
 st.sidebar.button("Clear Cache", on_click=st.cache_data.clear)
 
+def normalize_weekday(df):
+    df = df.copy()
+
+    # convert full weekday names → weekday numbers 0–6
+    full_to_num = {
+        "Monday": 0, "Mon": 0,
+        "Tuesday": 1, "Tue": 1,
+        "Wednesday": 2, "Wed": 2,
+        "Thursday": 3, "Thu": 3,
+        "Friday": 4, "Fri": 4,
+        "Saturday": 5, "Sat": 5,
+        "Sunday": 6, "Sun": 6,
+    }
+    df["weekday_num"] = df["weekday"].map(full_to_num)
+
+    # Create consistent short labels
+    labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    df["weekday_label"] = df["weekday_num"].map(lambda x: labels[x] if pd.notnull(x) else None)
+
+    return df
+
 
 def prepare_data(raw):
 
@@ -113,14 +135,19 @@ def prepare_data(raw):
     def prepare_keywords(df):
         df = df.copy()
         df["topic_keywords_list"] = df["topic_keywords"].str.split(", ")                          # convert the comma-separated string to a list
-        df["topic_keywords_full"] = df["topic_keywords_list"].apply(lambda x: ", ".join(x[:10]))  # full list = all 10 keywords
-        df["topic_keywords_short"] = df["topic_keywords_list"].apply(lambda x: ", ".join(x[:3]))  # short list = first 3 keywords
+        df["topic_keywords_full"] = df["topic_keywords_list"].str[:10].apply(lambda x: ", ".join(x))  # full list = all 10 keywords
+        df["topic_keywords_short"] = df["topic_keywords_list"].str[:3].apply(lambda x: ", ".join(x))  # short list = first 3 keywords
         return df
 
     # apply list variants to all three filters
     topics_loc = prepare_keywords(raw["pts_with_topics_by_location"])
     topics_key = prepare_keywords(raw["pts_with_topics_by_keywords_strictly"])
     topics_sim = prepare_keywords(raw["pts_with_topics_by_keywords_similarity"])
+
+    # apply weekday fix (from Monday, Tuesday, ... to 0, 1, ...)
+    topics_loc = normalize_weekday(topics_loc)
+    topics_key = normalize_weekday(topics_key)
+    topics_sim = normalize_weekday(topics_sim)
 
     # create two groups based on Kategori
     prepped.update({
@@ -138,7 +165,7 @@ def prepare_data(raw):
     # add day/night boolean columns
     all_pts = raw["all_park_related_pts_with_themes"].copy()
 
-    all_pts["is_day"] = all_pts["hour"].between(6, 18, inclusive="both")
+    all_pts["is_day"] = all_pts["hour"].between(6, 18)
     all_pts["is_night"] = ~all_pts["is_day"]  # everything else
 
     prepped["all_pts"] = all_pts
@@ -150,6 +177,7 @@ def prepare_data(raw):
     return prepped
 
 prepped = prepare_data(raw)
+
 
 # ============
 # === MAPS ===
@@ -197,7 +225,6 @@ def add_top5_topics_layer(m, gdf, column):
                 "fillOpacity": 0.45,
             }
         ).add_to(m)
-
 
 # remove this map? or make prettier
 def overlay_raster_on_map(base_map, raster_array, transform, vmax=None, colormap='magma', upscale_factor=2):   # ⬅️ Increase to 3 or 4 for smoother rendered maps
@@ -257,7 +284,6 @@ def overlay_raster_on_map(base_map, raster_array, transform, vmax=None, colormap
     img_overlay.add_to(base_map)
     return base_map
 
-
 def add_heatmap(m, gdf, radius=15, blur=10, max_zoom=13):
     # Extract [lat, lon] from geometry
     heat_points = [
@@ -294,8 +320,8 @@ def add_month_label(df):
     df["month_label"] = df["month"].apply(lambda m: MONTH_LABELS[m-1])
     return df
 
-WEEKDAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-WEEKDAY_ORDER = list(range(7))   # 0–6
+#WEEKDAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+WEEKDAY_ORDER = list(range(7))  # 0–6
 
 def prepare_for_chart(df, mode, temporal_scale, group_top_n=5):
     if temporal_scale == "Months":
@@ -400,17 +426,41 @@ def prepare_for_chart_by_month(df, mode, group_top_n=5):
 def prepare_for_chart_by_weekday(df, mode, group_top_n=5):
     """
     mode = 'sentiment' or 'topics'
-    Returns: weekday (0-6), weekday_label, group_label, count, year_label (if exists)
+    Returns: weekday (0-6), weekday_label, group_label, count, year_label (optional)
     """
     if df.empty:
         return pd.DataFrame()
 
     df = df.copy()
 
-    df["weekday_label"] = df["weekday"].astype(str)
-    # convert strings to numeric order for plotting
-    df["weekday"] = df["weekday_label"].map({day: i for i, day in enumerate(WEEKDAY_LABELS)})
+    # --- Ensure weekday exists and is numeric 0–6 ---
+    if "weekday_num" in df.columns:
+        df["weekday"] = df["weekday_num"].astype(int)
+    else:
+        if "weekday" in df.columns:
+            df["weekday"] = df["weekday"].map({
+                "Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, "Fri": 4, "Sat": 5, "Sun": 6,
+                "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6
+            }).astype(int)
+        elif "created_at" in df.columns:
+            df["weekday"] = df["created_at"].dt.weekday
+        else:
+            raise ValueError("No weekday info available")
 
+    # --- Use weekday_label from normalized data ---
+    if "weekday_label" not in df.columns:
+        df["weekday_label"] = df["weekday"].map(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
+
+    # --- Ensure year_label exists ---
+    if "year_label" not in df.columns:
+        if "created_at" in df.columns:
+            df["year_label"] = df["created_at"].dt.year.astype(str)
+        else:
+            df["year_label"] = "All years"
+
+    # ========================
+    #   SENTIMENT MODE
+    # ========================
     if mode == "sentiment":
         if "sentiment_label" not in df.columns:
             return pd.DataFrame()
@@ -418,47 +468,46 @@ def prepare_for_chart_by_weekday(df, mode, group_top_n=5):
         df["group_label"] = df["sentiment_label"]
 
         agg = (
-            df.groupby(["weekday", "weekday_label", "group_label"])
+            df.groupby(["weekday", "weekday_label", "group_label", "year_label"])
               .size()
               .reset_index(name="count")
         )
-
-        if "year_label" in df.columns:
-            year_map = df[["weekday", "weekday_label", "group_label", "year_label"]].drop_duplicates()
-            agg = agg.merge(year_map, on=["weekday", "weekday_label", "group_label"], how="left")
-
         return agg
 
+    # ========================
+    #   TOPIC MODE
+    # ========================
     if mode == "topics":
-        if "topic" not in df.columns:
-            return pd.DataFrame()
 
-        # top-N topics first
-        topic_counts = (
-            df.groupby("topic").size().reset_index(name="total_count")
-              .sort_values("total_count", ascending=False)
+        topic_col = (
+            "topic_keywords_short"
+            if "topic_keywords_short" in df.columns
+            else "topic"
         )
-        top_topics = topic_counts.head(group_top_n)["topic"].tolist()
-
-        df_small = df[df["topic"].isin(top_topics)].copy()
-        if df_small.empty:
+        if topic_col not in df.columns:
             return pd.DataFrame()
 
-        # Ensure weekday columns exist in df_small
-        df_small["weekday"] = df_small["weekday"]
-        df_small["weekday_label"] = df_small["weekday_label"]
+        # top-N per year:
+        top_topics = (
+            df.groupby(["year_label", topic_col])
+              .size()
+              .reset_index(name="total")
+        )
 
-        df_small["group_label"] = df_small["topic_keywords_short"]
+        top_topics["rank"] = (
+            top_topics.groupby("year_label")["total"].rank(method="first", ascending=False)
+        )
+        top_topics = top_topics[top_topics["rank"] <= group_top_n]
+
+        df = df.merge(top_topics[[topic_col, "year_label"]], on=["year_label", topic_col], how="inner")
+
+        df["group_label"] = df[topic_col]
 
         agg = (
-            df_small.groupby(["weekday", "weekday_label", "group_label"])
-                    .size()
-                    .reset_index(name="count")
+            df.groupby(["weekday", "weekday_label", "group_label", "year_label"])
+              .size()
+              .reset_index(name="count")
         )
-
-        if "year_label" in df_small.columns:
-            year_map = df_small[["weekday", "weekday_label", "group_label", "year_label"]].drop_duplicates()
-            agg = agg.merge(year_map, on=["weekday", "weekday_label", "group_label"], how="left")
 
         return agg
 
@@ -581,12 +630,9 @@ def chart_weekday_panel(df, title):
             .mark_line(point=True, strokeWidth=2)
             .encode(
             x=alt.X(
-                "weekday:O",
-                sort=WEEKDAY_ORDER,
-                title="Weekday",
-                axis=alt.Axis(
-                    labelExpr="['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][datum.value]"
-                ),
+                "weekday_label:N",
+                sort=["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+                title="Weekday"
             ),
             y=alt.Y("count:Q", title="Number of comments"),
             color=alt.Color("group_label:N", scale=color_scale, title="", legend=legend),
@@ -697,7 +743,7 @@ def chart_multi_panel(dfs, titles, ordered_months, mode=None):
                     axis=alt.Axis(
                         title="Month",
                         labels=True,
-                        labelExpr=f"""['{"','".join(month_labels)}'][datum.value]"""
+                        labelExpr=f"""['{"','".join(month_labels)}'][datum.value]"""    # Change?
                     ),
                     scale=alt.Scale(
                         domain=[i for i in range(len(month_labels))]
@@ -912,6 +958,7 @@ with tab_sentiments:
             # COMPARE 3 PARK-RELATED FILTERS
             # ------------------------------
             else:
+
                 # Prepare each source
                 dfs = [
                     prepare_for_chart_by_weekday(df_loc, "sentiment"),
@@ -1051,8 +1098,8 @@ with tab_topics:
 
         elif temporal_scale == "Weekdays":
 
-            # Helper function using the NEW logic
             def prepare_weekday(df, top_n=5):
+
                 df = df.copy()
 
                 # --- Ensure weekday exists ---
@@ -1067,16 +1114,15 @@ with tab_topics:
                     if "created_at" in df.columns:
                         df["year_label"] = df["created_at"].dt.year.astype(str)
                     else:
-                        # If there's no datetime, fallback to single group
                         df["year_label"] = "All years"
 
-                # --- Pick topic column ---
+                # --- Topic column ---
                 topic_col = "topic_keywords_short" if "topic_keywords_short" in df.columns else "topic"
 
                 # --- Group counts ---
                 wc = df.groupby(["weekday", topic_col, "year_label"]).size().reset_index(name="count")
 
-                # get top5 topics over weekdays
+                # --- Top N topics ---
                 top_topics = (
                     wc.groupby(["year_label", topic_col])["count"]
                         .sum()
@@ -1085,24 +1131,28 @@ with tab_topics:
                 top_topics["rank"] = top_topics.groupby("year_label")["count"].rank(method="first", ascending=False)
                 top_topics = top_topics[top_topics["rank"] <= top_n]
 
-                wc = wc.merge(
-                    top_topics[["year_label", topic_col]],
-                    on=["year_label", topic_col],
-                    how="inner"
-                )
+                wc = wc.merge(top_topics[["year_label", topic_col]], on=["year_label", topic_col], how="inner")
 
+                # --- Fill missing weekdays for each topic ---
                 WEEKDAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
-                wc["weekday_label"] = wc["weekday"].apply(
-                    lambda x: WEEKDAY_LABELS[int(x)] if isinstance(x, (int, float)) else x
+                all_combinations = pd.DataFrame(
+                    list(itertools.product(WEEKDAY_LABELS, wc[topic_col].unique(), wc["year_label"].unique())),
+                    columns=["weekday_label", topic_col, "year_label"]
                 )
+
+                wc["weekday_label"] = wc["weekday"].apply(
+                    lambda x: WEEKDAY_LABELS[int(x)] if isinstance(x, (int, float)) else x)
+                wc_filled = all_combinations.merge(wc, on=["weekday_label", topic_col, "year_label"], how="left")
+                wc_filled["count"] = wc_filled["count"].fillna(0)
 
                 # --- Sort weekdays ---
-                wc["weekday_label"] = pd.Categorical(
-                    wc["weekday_label"], categories=WEEKDAY_LABELS, ordered=True
+                wc_filled["weekday_label"] = pd.Categorical(
+                    wc_filled["weekday_label"], categories=WEEKDAY_LABELS, ordered=True
                 )
 
-                return wc
+                return wc_filled
+
 
             # Plotting function
             def chart_weekday_topics(df, title):

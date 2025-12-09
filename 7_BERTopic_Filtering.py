@@ -174,7 +174,7 @@ print(f"Saved {len(park_comments_by_BERTopic)} comments from park-similar topics
 
 
 
-
+# OLD:
 # Points inside parks: 78454 / 290448 total
 # Saved 25574 comments containing park keywords.
 # Saved 58809 comments from park-similar topics.

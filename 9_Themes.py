@@ -208,8 +208,95 @@ print("\nTheme counts:\n", theme_counts)
 
 
 
+# pts_in_parks: 78454 rows
+# by_keyword: 26118 rows
+# by_BERTopic: 60011 rows
+#
+# === Sentiment per layer ===
+#                  pts_in_parks  by_keyword  by_BERTopic
+# sentiment_label
+# NEUTRAL                 51603       15306        42887
+# NEGATIVE                26316       10544        16544
+# POSITIVE                  535         268          580
+# === ROW COUNTS PER LAYER BEFORE COMBINING ===
+# pts_in_parks: 78454 rows
+# by_keyword: 26118 rows
+# by_BERTopic: 60011 rows
+#
+# === AFTER CONCATENATION ===
+# Total rows (raw combined): 164583
+#
+# Rows per single-layer source_filter BEFORE grouping by Ärendenummer:
+# source_filter
+# pts_in_parks    78454
+# by_BERTopic     60011
+# by_keyword      26118
+# Name: count, dtype: int64
+#
+# === AFTER GROUPING/DEDUPLICATION ===
+# Total unique Ärendenummer: 118115
+#
+# Rows per source_filter combination AFTER grouping:
+# source_filter
+# pts_in_parks                             43764
+# by_BERTopic                              31204
+# by_BERTopic; pts_in_parks                17037
+# by_BERTopic; by_keyword; pts_in_parks     8824
+# by_keyword; pts_in_parks                  8801
+# by_keyword                                5551
+# by_BERTopic; by_keyword                   2934
+# Name: count, dtype: int64
+#
+# === Theme: safety ===
+# Rows with 'safety' in themes: 5222
+# source_filter    by_BERTopic  by_keyword  pts_in_parks
+# sentiment_label
+# NEGATIVE                1301        1393          2532
+# NEUTRAL                  504         523          1197
+# POSITIVE                  12           8            14
+#
+# === Theme: illumination ===
+# Rows with 'illumination' in themes: 9638
+# source_filter    by_BERTopic  by_keyword  pts_in_parks
+# sentiment_label
+# NEGATIVE                 889        1059          2872
+# NEUTRAL                 1195        1498          5244
+# POSITIVE                  29          28            45
+#
+# === Theme: praise ===
+# Rows with 'praise' in themes: 383
+# source_filter    by_BERTopic  by_keyword  pts_in_parks
+# sentiment_label
+# NEGATIVE                  40          45            64
+# NEUTRAL                   35          44            69
+# POSITIVE                  90          74           107
+#
+# Saved combined dataset with themes:
+#  - data/tycktill_output/BERTopic_filtered\all_park_related_pts_with_themes.xlsx
+#  - data/tycktill_output/BERTopic_filtered\tycktill_filtered.gpkg
+#
+# Theme counts:
+#  themes
+# maintenance                   28577
+# cleanliness                   25824
+# vandalism/damages             25803
+# nature/biodiversity           15014
+# illumination                   9638
+# traffic/transport planning     6851
+# safety                         5222
+# illegal parking                5076
+# snow clearing                  4444
+# noise                           865
+# accessibility                   620
+# drugs/alcohol                   598
+# praise                          383
+# socialising                     199
+# Name: count, dtype: int64
+#
+# Process finished with exit code 0
 
 
+# OLD:
 # pts_in_parks: 78454 rows
 # by_keyword: 25574 rows
 # by_BERTopic: 58809 rows
