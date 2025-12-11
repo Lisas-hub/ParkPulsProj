@@ -173,6 +173,10 @@ park_comments_by_BERTopic_gdf.to_file(f"{output_folder}/tycktill_filtered.gpkg",
 print(f"Saved {len(park_comments_by_BERTopic)} comments from park-similar topics.")
 
 
+# Points inside parks: 78454 / 290448 total
+# Saved 26302 comments containing park keywords.
+# Saved 60877 comments from park-similar topics.
+
 
 # OLD:
 # Points inside parks: 78454 / 290448 total
@@ -180,11 +184,8 @@ print(f"Saved {len(park_comments_by_BERTopic)} comments from park-similar topics
 # Saved 58809 comments from park-similar topics.
 
 
-
-
-###########################
-
-
+##########################################
+# old
 # === comparing output of both filters ===
 
 id_col = "Ärendenummer"

@@ -1,0 +1,663 @@
+
+import streamlit as st
+import geopandas as gpd
+import pandas as pd
+import numpy as np
+import altair as alt
+import os
+
+st.set_page_config(layout="wide")
+
+tycktill_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\tycktill.gpkg"
+tycktill_filtered_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg"
+
+plots_folder_path = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\plots"
+
+raster_paths = {
+    "Praise+Ideas": {
+        "Day": os.path.join(plots_folder_path, "kde_praise_ideas_comments_day.tif"),       # *** change to _per_1000_residents.tif later ***
+        "Night": os.path.join(plots_folder_path, "kde_praise_ideas_comments_night.tif")
+    },
+    "Error+Complaints": {
+        "Day": os.path.join(plots_folder_path, "kde_error_complaints_comments_day.tif"),
+        "Night": os.path.join(plots_folder_path, "kde_error_complaints_comments_night.tif")
+    }
+}
+
+# ============================================================
+# === LOAD VECTOR DATA =======================================
+# ============================================================
+
+@st.cache_data(show_spinner="Loading spatial data...")
+def vector_layer(path: str, layer_name: str) -> gpd.GeoDataFrame:
+    """Load a GPKG layer and reproject to WGS84."""
+    gdf = gpd.read_file(path, layer=layer_name)
+    return gdf.to_crs(epsg=4326)
+
+
+@st.cache_data(show_spinner="Loading layers…")
+def load_all_VECTOR_data():
+    data = {}
+    data["stats_per_park"] = vector_layer(tycktill_GPKG, "stats_per_park")
+    data["all_park_related_pts_with_themes"] = vector_layer(
+        tycktill_filtered_GPKG, "all_park_related_pts_with_themes"
+    )
+
+    # topic sources
+    data["pts_with_topics_by_location"] = vector_layer(
+        tycktill_filtered_GPKG, "pts_in_parks_with_topics"
+    )
+    data["pts_with_topics_by_keywords_strictly"] = vector_layer(
+        tycktill_filtered_GPKG, "park_comments_by_keyword"
+    )
+    data["pts_with_topics_by_keywords_similarity"] = vector_layer(
+        tycktill_filtered_GPKG, "park_comments_by_BERTopic"
+    )
+
+    data["parks_with_top5_topics"] = vector_layer(
+        tycktill_filtered_GPKG, "parks_with_top5_topics"
+    )
+    return data
+
+
+raw_vectors = load_all_VECTOR_data()
+
+
+# ============================================================
+# === DATA PREPARATION UTILITIES =============================
+# ============================================================
+
+def normalize_weekday(df):
+    """Convert weekday labels to numeric + consistent Mon–Sun labels."""
+    df = df.copy()
+    full_to_num = {
+        "Monday": 0, "Mon": 0,
+        "Tuesday": 1, "Tue": 1,
+        "Wednesday": 2, "Wed": 2,
+        "Thursday": 3, "Thu": 3,
+        "Friday": 4, "Fri": 4,
+        "Saturday": 5, "Sat": 5,
+        "Sunday": 6, "Sun": 6,
+    }
+    df["weekday_num"] = df["weekday"].map(full_to_num)
+    labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    df["weekday_label"] = df["weekday_num"].map(
+        lambda x: labels[x] if pd.notnull(x) else None
+    )
+    return df
+
+
+def extract_topic_keyword_lists(df):
+    """Split topic_keywords string into lists + short/full versions."""
+    df = df.copy()
+    df["topic_keywords_list"] = df["topic_keywords"].str.split(", ")
+    df["topic_keywords_full"] = df["topic_keywords_list"].str[:10].apply(", ".join)
+    df["topic_keywords_short"] = df["topic_keywords_list"].str[:3].apply(", ".join)
+    return df
+
+
+def add_day_night_columns(df):
+    df = df.copy()
+    df["is_day"] = df["hour"].between(6, 18)
+    df["is_night"] = ~df["is_day"]
+    return df
+
+
+def split_by_sentiment(df):
+    """Split into two subsets used by both sentiments & topics."""
+    return {
+        "praise_idea": df[df["Kategori"].isin(["Beröm", "Idé"])],
+        "error_complaint": df[df["Kategori"].isin(["Felanmälan", "Klagomål"])]
+    }
+
+
+def fix_sentiment_column_type(df):
+    if "sentiment_label" in df.columns:
+        df = df.copy()
+        df["sentiment_label"] = df["sentiment_label"].astype(str)
+        df["sentiment_label"] = pd.Categorical(
+            df["sentiment_label"],
+            categories=["POSITIVE", "NEUTRAL", "NEGATIVE"],
+            ordered=False
+        )
+    return df
+
+
+def fix_topic_column_type(df):
+    if "topic_keywords_short" in df.columns:
+        df = df.copy()
+        df["topic_keywords_short"] = df["topic_keywords_short"].astype(str)
+    return df
+
+
+def prepare_topic_df(df):
+    df = extract_topic_keyword_lists(df)
+    df = normalize_weekday(df)
+    return df
+
+
+# ============================================================
+# === PREPARED VECTOR DATA ===================================
+# ============================================================
+
+def prepare_vectors(raw_vectors):
+    """Returns a dict:
+        - praise_idea_loc, praise_idea_key, praise_idea_sim
+        - error_complaint_loc, ...
+        - all_pts
+        - heat_praise_idea, heat_error_complaint
+    """
+    prepped_vectors = {}
+
+    topics_map = {
+        "pts_with_topics_by_location": "loc",
+        "pts_with_topics_by_keywords_strictly": "key",
+        "pts_with_topics_by_keywords_similarity": "sim"
+    }
+
+    # --- topic datasets for loc/key/sim ---
+    for raw_name, suffix in topics_map.items():
+        df = prepare_topic_df(raw_vectors[raw_name])
+        df = fix_sentiment_column_type(df)
+        df = fix_topic_column_type(df)
+
+        split = split_by_sentiment(df)
+        prepped_vectors[f"praise_idea_{suffix}"] = split["praise_idea"]
+        prepped_vectors[f"error_complaint_{suffix}"] = split["error_complaint"]
+
+    # --- all_pts used for year comparisons ---
+    all_pts = add_day_night_columns(raw_vectors["all_park_related_pts_with_themes"])
+    all_pts = prepare_topic_df(all_pts)
+    all_pts = fix_sentiment_column_type(all_pts)
+    all_pts = fix_topic_column_type(all_pts)
+    prepped_vectors["all_pts"] = all_pts
+
+    # sentiment splits for heatmaps (unused but kept)
+    heat = split_by_sentiment(all_pts)
+    prepped_vectors["heat_praise_idea"] = heat["praise_idea"]
+    prepped_vectors["heat_error_complaint"] = heat["error_complaint"]
+
+    return prepped_vectors
+
+
+prepped_vectors = prepare_vectors(raw_vectors)
+
+
+# ============================================================
+# === CONSTANTS ==============================================
+# ============================================================
+
+MONTH_ORDER_JAN_DEC = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+MONTH_ORDER_JUN_MAY = ["Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar","Apr","May"]
+
+SENTIMENT_COLORS = alt.Scale(
+    domain=["POSITIVE", "NEUTRAL", "NEGATIVE"],
+    range=["#2ca02c", "#7f7f7f", "#d62728"]
+)
+
+CATEGORY_MAP = {
+    "Praise + Ideas": "praise_idea",
+    "Error + Complaints": "error_complaint"
+}
+
+TOPIC_COLOR_SCHEME = "tableau20"
+
+
+# ============================================================
+# === TEMPORAL AGGREGATION HELPERS ===========================
+# ============================================================
+
+def get_top_n_topics(df, n=5):
+    """Return top N most frequent topics."""
+    return df['topic_keywords_short'].value_counts().head(n).index.tolist()
+
+
+def prepare_monthly(df, line_field, top_topics=None, month_order=None):
+    df = df.copy()
+    month_map = {1:"Jan",2:"Feb",3:"Mar",4:"Apr",5:"May",6:"Jun",
+                 7:"Jul",8:"Aug",9:"Sep",10:"Oct",11:"Nov",12:"Dec"}
+    df["month_name"] = df["month"].map(month_map)
+
+    # Restrict to top_topics if provided
+    if top_topics is not None:
+        df = df[df[line_field].isin(top_topics)]
+
+    # Use provided month_order or default Jan→Dec
+    if month_order is None:
+        month_order = MONTH_ORDER_JAN_DEC
+
+    # zero-filling: make sure all months exist per topic
+    all_index = pd.MultiIndex.from_product(
+        [month_order, df[line_field].unique()],
+        names=["month_name", line_field]
+    )
+
+    out = (
+        df.groupby(["month_name", line_field])
+          .size()
+          .reindex(all_index, fill_value=0)
+          .reset_index(name="count")
+    )
+    out = out.rename(columns={"month_name": "x"})
+
+    # Ensure categorical with proper ordering
+    out["x"] = pd.Categorical(out["x"], categories=month_order, ordered=True)
+
+    return out
+
+
+def prepare_weekday(df, line_field):
+    df = df.copy()
+    weekdays = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+
+    all_index = pd.MultiIndex.from_product(
+        [weekdays, df[line_field].unique()],
+        names=["weekday_label", line_field]
+    )
+    out = (
+        df.groupby(["weekday_label",line_field])
+          .size()
+          .reindex(all_index, fill_value=0)
+          .reset_index(name="count")
+    )
+    out["x"] = out["weekday_label"]
+    return out
+
+
+def prepare_hourly(df, line_field):
+    df = df.copy()
+    all_index = pd.MultiIndex.from_product(
+        [range(24), df[line_field].unique()],
+        names=["hour", line_field]
+    )
+    out = (
+        df.groupby(["hour",line_field])
+          .size()
+          .reindex(all_index, fill_value=0)
+          .reset_index(name="count")
+    )
+    out["x"] = out["hour"]
+    return out
+
+
+def prepare_for_temporal_scale(df, temporal_scale, kind, month_order=None, top_topics=None):
+    df = df.copy()
+    line_field = "sentiment_label" if kind=="sentiment" else "topic_keywords_short"
+
+    if temporal_scale == "Months":
+        out = prepare_monthly(df, line_field=line_field, top_topics=top_topics, month_order=month_order)
+        return out
+
+    if temporal_scale == "Weekdays":
+        out = prepare_weekday(df, line_field=line_field)
+        weekdays = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+        out["x"] = pd.Categorical(out["x"], categories=weekdays, ordered=True)
+        return out
+
+    if temporal_scale == "24 Hours":
+        out = prepare_hourly(df, line_field=line_field)
+        out["x"] = pd.Categorical(out["x"], categories=range(24), ordered=True)
+        return out
+
+    raise ValueError("Invalid temporal scale")
+
+
+# ============================================================
+# === UNIFIED COLOR DOMAIN MANAGER ===========================
+# ============================================================
+
+def get_shared_color_scale(kind, datasets, n=5):
+    """Returns:
+        color_scale, global_line_domain
+    """
+    if kind == "sentiment":
+        return SENTIMENT_COLORS, SENTIMENT_COLORS.domain
+
+    # topics: build global domain across all datasets
+    all_topics = []
+    for df in datasets:
+        all_topics.extend(get_top_n_topics(df, n=n))
+
+    global_domain = sorted(set(all_topics))
+    return alt.Scale(domain=global_domain, scheme=TOPIC_COLOR_SCHEME), global_domain
+
+
+# ============================================================
+# === UNIFIED PLOTTER FOR ANY ONE SUBSET ====================
+# ============================================================
+
+def build_single_chart(df, title, kind, temporal_scale, month_order, color_scale, top_topics=None):
+    df_prep = prepare_for_temporal_scale(df, temporal_scale, kind, month_order, top_topics=top_topics)
+
+    line_field = "sentiment_label" if kind=="sentiment" else "topic_keywords_short"
+
+    chart = (
+        alt.Chart(df_prep, title=title)
+           .mark_line(point=True)
+           .encode(
+               x=alt.X("x:N", sort=list(df_prep["x"].cat.categories)),
+               y="count:Q",
+               color=alt.Color(line_field, scale=color_scale),
+               tooltip=[line_field, "count", "x"]
+           )
+           .properties(height=250)
+    )
+    return chart
+
+
+
+# ============================================================
+# === HIGH-LEVEL PLOT MAKERS (VIEW LOGIC) ====================
+# ============================================================
+
+def make_plot_compare_2_years(prepped_vectors, kind, category, temporal_scale):
+    """Returns 2 charts, one for each year."""
+    df = prepped_vectors["all_pts"]
+    cat_key = CATEGORY_MAP[category]
+    df = df[df["Kategori"].isin(["Beröm","Idé"])] if cat_key=="praise_idea" else df[df["Kategori"].isin(["Felanmälan","Klagomål"])]
+
+    # separate per year
+    years = sorted(df["year_label"].unique())
+    datasets = [df[df["year_label"]==y] for y in years]
+
+    # shared topic colors (sentiments fixed)
+    color_scale, _ = get_shared_color_scale(kind, datasets)
+
+    month_order = MONTH_ORDER_JUN_MAY  # selected by you
+    charts = []
+    for y, df_year in zip(years, datasets):
+        charts.append(
+            build_single_chart(df_year, f"Year {y}", kind, temporal_scale, month_order, color_scale)
+        )
+    return charts
+
+
+def make_plot_compare_3_filters(datasets_dict, kind, temporal_scale, view, top_n=5):
+    """
+    datasets_dict: dict of datasets to compare (e.g., {"Location filter": df_loc, ...})
+    kind: "topic" or "sentiment"
+    temporal_scale: "Months", "Weekdays", "24 Hours"
+    view: currently "Compare 3 park filters"
+    top_n: number of top topics per dataset to keep
+    """
+    line_field = "sentiment_label" if kind == "sentiment" else "topic_keywords_short"
+
+    if kind == "topic":
+        # --- Step 1: top topics per dataset ---
+        dataset_top_topics = {
+            name: get_top_n_topics(df, n=top_n) for name, df in datasets_dict.items()
+        }
+        # --- Step 2: union for global legend ---
+        global_top_topics = sorted(set().union(*dataset_top_topics.values()))
+        color_scale = alt.Scale(domain=global_top_topics, scheme="tableau20")
+    else:
+        color_scale = SENTIMENT_COLORS
+
+    plots = []
+
+    # --- Step 3: plot each dataset ---
+    for title, df in datasets_dict.items():
+        df_plot = df.copy()
+
+        # Keep only dataset-specific top topics
+        if kind == "topic":
+            df_plot = df_plot[df_plot[line_field].isin(dataset_top_topics[title])]
+
+        # Prepare for temporal scale
+        month_order = MONTH_ORDER_JAN_DEC  # Compare 3 park filters always uses JAN-DEC
+        df_prep = prepare_for_temporal_scale(
+            df_plot,
+            temporal_scale,
+            kind,
+            month_order,
+            top_topics=dataset_top_topics[title] if kind == "topic" else None
+        )
+
+        # Ensure categorical ordering for months, weekdays, or hours
+        if temporal_scale == "Months":
+            month_order = MONTH_ORDER_JAN_DEC if view == "Compare 3 park filters" else MONTH_ORDER_JUN_MAY
+            df_prep["x"] = pd.Categorical(df_prep["x"], categories=month_order, ordered=True)
+        elif temporal_scale == "Weekdays":
+            df_prep["x"] = pd.Categorical(df_prep["x"], categories=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"], ordered=True)
+        elif temporal_scale == "24 Hours":
+            df_prep["x"] = pd.Categorical(df_prep["x"], categories=range(24), ordered=True)
+
+        chart = (
+            alt.Chart(df_prep, title=title)
+            .mark_line(point=True)
+            .encode(
+                x=alt.X("x:N", sort=list(df_prep["x"].cat.categories)),
+                y="count:Q",
+                color=alt.Color(line_field, scale=color_scale),
+                tooltip=["filter:N", line_field, "count", "x"] if "filter" in df_prep.columns else [line_field, "count", "x"]
+            )
+            .properties(height=250)
+        )
+
+        plots.append(chart)
+
+    return plots
+
+# *** fix error with Compare 3 park filters (here and/or in def make_plot_compare_3_filters, etc...) ***
+def make_plot(kind, category, view, temporal_scale, prepped_vectors, top_n=5):
+    """
+        kind: "sentiment" or "topic"
+        category: "Praise + Ideas" or "Error + Complaints"
+        view: "Compare 2 years" or "Compare 3 park filters"
+        temporal_scale: "Months", "Weekdays", "24 Hours"
+        prepped_vectors: dictionary of preprocessed dataframes
+        top_n: number of top topics per dataset (for topic plots)
+        """
+    cat_key = CATEGORY_MAP[category]
+
+    # ========================
+    # Compare 3 park filters
+    # ========================
+    if view == "Compare 3 park filters":
+        datasets_dict = {
+            "Location filter (loc)": prepped_vectors[f"{cat_key}_loc"],
+            "Keyword filter (key)": prepped_vectors[f"{cat_key}_key"],
+            "Similarity filter (sim)": prepped_vectors[f"{cat_key}_sim"]
+        }
+
+        charts = make_plot_compare_3_filters(
+            datasets_dict=datasets_dict,
+            kind=kind,
+            temporal_scale=temporal_scale,
+            view=view,
+            top_n=top_n
+        )
+
+    # ========================
+    # Compare 2 years
+    # ========================
+    elif view == "Compare 2 years":
+        df_all = prepped_vectors["all_pts"]
+        charts = []
+
+        # Collect top topics per year if kind is "topic"
+        if kind == "topic":
+            # Get top N topics per year separately
+            year_top_topics = {
+                year: get_top_n_topics(df_all[df_all["year_label"] == year], n=top_n)
+                for year in df_all["year_label"].unique()
+            }
+            # Global union for consistent color scale
+            global_top_topics = sorted(set().union(*year_top_topics.values()))
+            color_scale = alt.Scale(domain=global_top_topics, scheme="tableau20")
+        else:
+            color_scale = SENTIMENT_COLORS
+
+        # Create a chart per year
+        for year in sorted(df_all["year_label"].unique()):
+            df_year = df_all[df_all["year_label"] == year].copy()
+
+            if kind == "topic":
+                df_year = df_year[df_year["topic_keywords_short"].isin(year_top_topics[year])]
+
+            #df_prep = prepare_for_temporal_scale(df_year, temporal_scale, view, kind=kind)
+            month_order = MONTH_ORDER_JUN_MAY  # ensure Jun→May order for Compare 2 years
+            df_prep = prepare_for_temporal_scale(df_year, temporal_scale, kind, month_order)
+
+            # Ensure proper ordering for months
+            if temporal_scale == "Months":
+                df_prep["x"] = pd.Categorical(df_prep["x"], categories=MONTH_ORDER_JUN_MAY, ordered=True)
+            elif temporal_scale == "Weekdays":
+                df_prep["x"] = pd.Categorical(df_prep["x"],
+                                              categories=["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+                                              ordered=True)
+            elif temporal_scale == "24 Hours":
+                df_prep["x"] = pd.Categorical(df_prep["x"], categories=range(24), ordered=True)
+
+            line_field = "sentiment_label" if kind == "sentiment" else "topic_keywords_short"
+
+            chart = (
+                alt.Chart(df_prep, title=f"Year {year}")
+                    .mark_line(point=True)
+                    .encode(
+                    x=alt.X("x:N", sort=list(df_prep["x"].cat.categories)),
+                    y="count:Q",
+                    color=alt.Color(line_field, scale=color_scale),
+                    tooltip=[line_field, "count", "x"]
+                )
+                    .properties(height=300)
+            )
+
+            charts.append(chart)
+
+        return charts
+
+    else:
+        raise ValueError("Unknown view")
+
+    # ========================
+    # Concatenate all charts horizontally
+    # ========================
+    combined_chart = charts[0]
+    for chart in charts[1:]:
+        combined_chart |= chart  # Altair horizontal concatenation
+
+    return combined_chart
+
+# ============================================================
+# === STREAMLIT UI ===========================================
+# ============================================================
+
+st.title("Vad tycker besökarna om Stockholms parker?")
+st.text("Här finner du sammanställd data från appen TyckTill!")
+
+st.sidebar.button("Clear Cache", on_click=st.cache_data.clear)
+
+section = st.sidebar.pills(
+    "Make a selection:",
+    ["Overview", "Sentiments", "Topics", "Themes"]
+)
+
+# ------------------------------------------------------------
+# OVERVIEW
+# ------------------------------------------------------------
+if section == "Overview":
+    overview_question = st.sidebar.radio(
+        "Choose a question:",
+        ["Where is Tyck till being used? (html heatmap)", "Where is Tyck till being used? (raw raster)"]
+    )
+    st.info("To be added")
+
+
+# ------------------------------------------------------------
+# SENTIMENTS
+# ------------------------------------------------------------
+if section == "Sentiments":
+    sentiment_question = st.sidebar.radio(
+        "Choose a question:",
+        ["Do sentiments vary over time?", "Sentiment question 2"]
+    )
+
+    if sentiment_question == "Do sentiments vary over time?":
+        category_group = st.sidebar.pills(
+            "Tyck till category:",
+            ["Praise + Ideas", "Error + Complaints"],
+            selection_mode="single",
+            default="Praise + Ideas",
+            key="sent_cat"
+        )
+
+        view_choice = st.sidebar.pills(
+            "View:",
+            ["Compare 2 years", "Compare 3 park filters"],
+            selection_mode="single",
+            default="Compare 2 years",
+            key="sent_view"
+        )
+
+        temporal_scale = st.sidebar.pills(
+            "Temporal scale:",
+            ["Months", "Weekdays", "24 Hours"],
+            selection_mode="single",
+            default="Months",
+            key="sent_temp"
+        )
+
+        charts = make_plot(
+            kind="sentiment",
+            category=category_group,
+            view=view_choice,
+            temporal_scale=temporal_scale,
+            prepped_vectors=prepped_vectors
+        )
+
+        st.altair_chart(alt.hconcat(*charts), use_container_width=True)
+
+# ------------------------------------------------------------
+# TOPICS
+# ------------------------------------------------------------
+if section == "Topics":
+    topic_question = st.sidebar.radio(
+        "Choose a question:",
+        ["Do topics vary over time?", "Topic question 2"]
+    )
+
+    if topic_question == "Do topics vary over time?":
+        category_group = st.sidebar.pills(
+            "Tyck till category:",
+            ["Praise + Ideas", "Error + Complaints"],
+            selection_mode="single",
+            default="Praise + Ideas",
+            key="topic_cat"
+        )
+
+        view_choice = st.sidebar.pills(
+            "View:",
+            ["Compare 2 years", "Compare 3 park filters"],
+            selection_mode="single",
+            default="Compare 2 years",
+            key="topic_view"
+        )
+
+        temporal_scale = st.sidebar.pills(
+            "Temporal scale:",
+            ["Months", "Weekdays", "24 Hours"],
+            selection_mode="single",
+            default="Months",
+            key="topic_temp"
+        )
+
+        charts = make_plot(
+            kind="topic",
+            category=category_group,
+            view=view_choice,
+            temporal_scale=temporal_scale,
+            prepped_vectors=prepped_vectors
+        )
+
+        st.altair_chart(alt.hconcat(*charts), use_container_width=True)
+
+# ------------------------------------------------------------
+# THEMES (not implemented)
+# ------------------------------------------------------------
+if section == "Themes":
+    theme_question = st.sidebar.radio(
+        "Choose a question:",
+        ["Theme question 1", "Theme question 2"]
+    )
+    st.info("To be added")

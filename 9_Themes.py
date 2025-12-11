@@ -209,67 +209,67 @@ print("\nTheme counts:\n", theme_counts)
 
 
 # pts_in_parks: 78454 rows
-# by_keyword: 26118 rows
-# by_BERTopic: 60011 rows
+# by_keyword: 26302 rows
+# by_BERTopic: 60877 rows
 #
 # === Sentiment per layer ===
 #                  pts_in_parks  by_keyword  by_BERTopic
 # sentiment_label
-# NEUTRAL                 51603       15306        42887
-# NEGATIVE                26316       10544        16544
-# POSITIVE                  535         268          580
+# NEUTRAL                 51603       15416        43400
+# NEGATIVE                26316       10617        16903
+# POSITIVE                  535         269          574
 # === ROW COUNTS PER LAYER BEFORE COMBINING ===
 # pts_in_parks: 78454 rows
-# by_keyword: 26118 rows
-# by_BERTopic: 60011 rows
+# by_keyword: 26302 rows
+# by_BERTopic: 60877 rows
 #
 # === AFTER CONCATENATION ===
-# Total rows (raw combined): 164583
+# Total rows (raw combined): 165633
 #
 # Rows per single-layer source_filter BEFORE grouping by Ärendenummer:
 # source_filter
 # pts_in_parks    78454
-# by_BERTopic     60011
-# by_keyword      26118
+# by_BERTopic     60877
+# by_keyword      26302
 # Name: count, dtype: int64
 #
 # === AFTER GROUPING/DEDUPLICATION ===
-# Total unique Ärendenummer: 118115
+# Total unique Ärendenummer: 118572
 #
 # Rows per source_filter combination AFTER grouping:
 # source_filter
-# pts_in_parks                             43764
-# by_BERTopic                              31204
-# by_BERTopic; pts_in_parks                17037
-# by_BERTopic; by_keyword; pts_in_parks     8824
-# by_keyword; pts_in_parks                  8801
-# by_keyword                                5551
-# by_BERTopic; by_keyword                   2934
+# pts_in_parks                             43517
+# by_BERTopic                              31602
+# by_BERTopic; pts_in_parks                17159
+# by_BERTopic; by_keyword; pts_in_parks     9071
+# by_keyword; pts_in_parks                  8679
+# by_keyword                                5511
+# by_BERTopic; by_keyword                   3033
 # Name: count, dtype: int64
 #
 # === Theme: safety ===
-# Rows with 'safety' in themes: 5222
+# Rows with 'safety' in themes: 5264
 # source_filter    by_BERTopic  by_keyword  pts_in_parks
 # sentiment_label
-# NEGATIVE                1301        1393          2532
-# NEUTRAL                  504         523          1197
-# POSITIVE                  12           8            14
+# NEGATIVE                1370        1400          2532
+# NEUTRAL                  517         524          1197
+# POSITIVE                  13           8            14
 #
 # === Theme: illumination ===
-# Rows with 'illumination' in themes: 9638
+# Rows with 'illumination' in themes: 10029
 # source_filter    by_BERTopic  by_keyword  pts_in_parks
 # sentiment_label
-# NEGATIVE                 889        1059          2872
-# NEUTRAL                 1195        1498          5244
-# POSITIVE                  29          28            45
+# NEGATIVE                1027        1062          2872
+# NEUTRAL                 1659        1506          5244
+# POSITIVE                  34          28            45
 #
 # === Theme: praise ===
-# Rows with 'praise' in themes: 383
+# Rows with 'praise' in themes: 382
 # source_filter    by_BERTopic  by_keyword  pts_in_parks
 # sentiment_label
-# NEGATIVE                  40          45            64
-# NEUTRAL                   35          44            69
-# POSITIVE                  90          74           107
+# NEGATIVE                  39          45            64
+# NEUTRAL                   35          46            69
+# POSITIVE                  89          74           107
 #
 # Saved combined dataset with themes:
 #  - data/tycktill_output/BERTopic_filtered\all_park_related_pts_with_themes.xlsx
@@ -277,109 +277,20 @@ print("\nTheme counts:\n", theme_counts)
 #
 # Theme counts:
 #  themes
-# maintenance                   28577
-# cleanliness                   25824
-# vandalism/damages             25803
-# nature/biodiversity           15014
-# illumination                   9638
-# traffic/transport planning     6851
-# safety                         5222
-# illegal parking                5076
-# snow clearing                  4444
-# noise                           865
-# accessibility                   620
-# drugs/alcohol                   598
-# praise                          383
+# maintenance                   28764
+# cleanliness                   25876
+# vandalism/damages             25835
+# nature/biodiversity           14813
+# illumination                  10029
+# traffic/transport planning     6868
+# safety                         5264
+# illegal parking                5093
+# snow clearing                  4441
+# noise                           868
+# accessibility                   622
+# drugs/alcohol                   601
+# praise                          382
 # socialising                     199
-# Name: count, dtype: int64
-#
-# Process finished with exit code 0
-
-
-# OLD:
-# pts_in_parks: 78454 rows
-# by_keyword: 25574 rows
-# by_BERTopic: 58809 rows
-#
-# === Sentiment per layer ===
-#                  pts_in_parks  by_keyword  by_BERTopic
-# sentiment_label
-# NEUTRAL                 51603       15004        42156
-# NEGATIVE                26316       10306        16098
-# POSITIVE                  535         264          555
-# === ROW COUNTS PER LAYER BEFORE COMBINING ===
-# pts_in_parks: 78454 rows
-# by_keyword: 25574 rows
-# by_BERTopic: 58809 rows
-#
-# === AFTER CONCATENATION ===
-# Total rows (raw combined): 162837
-#
-# Rows per single-layer source_filter BEFORE grouping by Ärendenummer:
-# source_filter
-# pts_in_parks    78454
-# by_BERTopic     58809
-# by_keyword      25574
-# Name: count, dtype: int64
-#
-# === AFTER GROUPING/DEDUPLICATION ===
-# Total unique Ärendenummer: 117217
-#
-# Rows per source_filter combination AFTER grouping:
-# source_filter
-# pts_in_parks                             44286
-# by_BERTopic                              30475
-# by_BERTopic; pts_in_parks                16890
-# by_keyword; pts_in_parks                  8665
-# by_BERTopic; by_keyword; pts_in_parks     8585
-# by_keyword                                5469
-# by_BERTopic; by_keyword                   2847
-# Name: count, dtype: int64
-#
-# === Theme: safety ===
-# Rows with 'safety' in themes: 5179
-# source_filter    by_BERTopic  by_keyword  pts_in_parks
-# sentiment_label
-# NEGATIVE                1259        1364          2532
-# NEUTRAL                  493         512          1197
-# POSITIVE                  12           8            14
-#
-# === Theme: illumination ===
-# Rows with 'illumination' in themes: 8204
-# source_filter    by_BERTopic  by_keyword  pts_in_parks
-# sentiment_label
-# NEGATIVE                 871        1047          2841
-# NEUTRAL                 1189        1481          3863
-# POSITIVE                  29          28            44
-#
-# === Theme: praise ===
-# Rows with 'praise' in themes: 376
-# source_filter    by_BERTopic  by_keyword  pts_in_parks
-# sentiment_label
-# NEGATIVE                  37          43            64
-# NEUTRAL                   33          42            69
-# POSITIVE                  88          73           107
-#
-# Saved combined dataset with themes:
-#  - data/tycktill_output/BERTopic_filtered\all_park_related_pts_with_themes.xlsx
-#  - data/tycktill_output/BERTopic_filtered\tycktill_filtered.gpkg
-#
-# Theme counts:
-#  themes
-# maintenance                   27547
-# cleanliness                   24892
-# vandalism/damages             24425
-# nature/biodiversity           13748
-# illumination                   8204
-# traffic/transport planning     6744
-# safety                         5179
-# illegal parking                4768
-# snow clearing                  4422
-# noise                           858
-# accessibility                   614
-# drugs/alcohol                   595
-# praise                          376
-# socialising                     196
 # Name: count, dtype: int64
 #
 # Process finished with exit code 0

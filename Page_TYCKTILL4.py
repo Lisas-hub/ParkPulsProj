@@ -46,12 +46,12 @@ raster_paths = {
 # ===================
 # === LOAD LAYERS ===
 
-@st.cache_data(show_spinner="Loading spatial data...")
+@st.cache_data(show_spinner="...")
 def vector_layer(path: str, layer_name: str) -> gpd.GeoDataFrame:
     gdf = gpd.read_file(path, layer=layer_name)
     return gdf.to_crs(epsg=4326)
 
-@st.cache_data(show_spinner="Loading layers…")
+@st.cache_data(show_spinner="Loading layers...")
 def load_all_VECTOR_data():
     data = {}
     data["stats_per_park"] = vector_layer(tycktill_GPKG, "stats_per_park")
@@ -98,7 +98,7 @@ raw_rasters = load_all_RASTER_data()
 def normalize_weekday(df):
     df = df.copy()
 
-    # convert full weekday names → weekday numbers 0–6
+    # convert full weekday names to weekday numbers 0–6
     full_to_num = {
         "Monday": 0, "Mon": 0,
         "Tuesday": 1, "Tue": 1,
@@ -110,7 +110,7 @@ def normalize_weekday(df):
     }
     df["weekday_num"] = df["weekday"].map(full_to_num)
 
-    # Create consistent short labels
+    # create consistent short labels
     labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     df["weekday_label"] = df["weekday_num"].map(lambda x: labels[x] if pd.notnull(x) else None)
 
@@ -141,7 +141,7 @@ def prepare_topic_df(df):
     return df
 
 def fix_sentiment_column_type(df):
-    """Ensure the sentiment column is string/categorical for plotting."""
+    """ensure the sentiment column is string/categorical for plotting."""
     if "sentiment_label" in df.columns:
         df = df.copy()
         df["sentiment_label"] = df["sentiment_label"].astype(str)
@@ -153,22 +153,11 @@ def fix_sentiment_column_type(df):
     return df
 
 def fix_topic_column_type(df):
-    """Ensure the topic column is string for plotting."""
+    """ensure the topic column is string for plotting."""
     if "topic_keywords_short" in df.columns:
         df = df.copy()
         df["topic_keywords_short"] = df["topic_keywords_short"].astype(str)
     return df
-
-def keep_top_n_topics(df, n=5):
-    """Keep only the top N topics (by frequency) in topic_keywords_short."""
-    df = df.copy()
-    top_topics = df['topic_keywords_short'].value_counts().head(n).index.tolist()
-    df = df[df['topic_keywords_short'].isin(top_topics)]
-    return df
-
-
-# add more prepp steps here AND don't forget to also add it to def prepare_data(raw) ??
-
 
 def prepare_vectors(raw_vectors):
     prepped_vectors = {}
@@ -314,6 +303,8 @@ CATEGORY_MAP = {
     "Error + Complaints": "error_complaint"
 }
 
+
+
 # ===============================
 # === TEMPORAL PREP FUNCTIONS ===
 
@@ -428,21 +419,14 @@ def prepare_for_temporal_scale(df, temporal_scale, view, kind, top_n=5):
         raise ValueError("Bad temporal scale")
 
 def plot_single_filter_altair(df, kind, temporal_scale, title, view, color_scale=None, already_prepared=False):
+    """creates a single Altair line plot"""
 
     if not already_prepared:
         df_prep = prepare_for_temporal_scale(df, temporal_scale, view, kind=kind)
     else:
         df_prep = df.copy()
 
-    #df_prep = prepare_for_temporal_scale(df, temporal_scale, view, kind=kind)
     line_field = "sentiment_label" if kind == "sentiment" else "topic_keywords_short"
-
-    #if kind == "sentiment":
-    #    line_field = "sentiment_label"
-    #    color_scale = SENTIMENT_COLORS
-    #elif kind == "topic":
-    #    line_field = "topic_keywords_short"
-    #    color_scale = TOPIC_COLORS
 
     chart = (
         alt.Chart(df_prep, title=title)
@@ -516,8 +500,6 @@ def plot_compare_filters(datasets, kind, temporal_scale, view, top_n=5):
         # --- Fill zeros and remove duplicates ---
         df_prep = prepare_for_temporal_scale(df, temporal_scale, view, kind=kind)
 
-
-
         # --------------------------------------------------
         # FIX FOR MONTH TOPIC COMPARE-3-FILTERS
         # (second prep removed)
@@ -561,7 +543,7 @@ def plot_compare_filters(datasets, kind, temporal_scale, view, top_n=5):
                 x=alt.X("x:N", sort=list(df_prep["x"].cat.categories)),
                 y="count:Q",
                 color=alt.Color(line_field, scale=color_scale),
-                strokeDash=alt.StrokeDash("filter:N"),  # <-- FIX duplicated lines
+                strokeDash=alt.StrokeDash("filter:N"),
                 tooltip=["filter:N", line_field, "count", "x"]
             )
                 .properties(height=250)
@@ -606,18 +588,6 @@ def make_plot(kind, category, view, temporal_scale, prepped_vectors):
     raise ValueError("Unknown view")
 
 
-with st.expander("🔍 Debug prepped_vectors content"):
-    for name, df in prepped_vectors.items():
-        st.write(f"### {name}")
-        st.write("Columns:", df.columns.tolist())
-        st.write("Rows:", len(df))
-        missing = [c for c in ["month","weekday","hour","year_label"] if c not in df.columns]
-        if missing:
-            st.error(f"Missing: {missing}")
-        else:
-            st.success("✔ All temporal columns present")
-
-
 # =================
 # === PAGE HEAD ===
 
@@ -645,10 +615,6 @@ if section == "Overview":
 
     if overview_question == "Where is Tyck till being used? (html heatmap)":
         st.info("to be added")
-
-        #if st.checkbox("Show filtered data"):
-        #    st.write(filtered_df.head())
-        #    st.write(filtered_df.columns)   # add this to all selections?
 
     elif overview_question == "Where is Tyck till being used? (raw raster)":
         st.info("to be added")
@@ -700,11 +666,6 @@ if section == "Sentiments":
 
         for chart in charts:
             st.altair_chart(chart, use_container_width=True)
-
-        # add separate tabs for figure and for data inspection (the latter so that visibility can be turned on or off?)
-        #if st.checkbox("Show filtered data"):
-        #    st.write(filtered_df.head())
-        #    st.write(filtered_df.columns)   # add this to all selections?
 
     elif sentiment_question == "Sentiment question 2":
         st.info("to be added")

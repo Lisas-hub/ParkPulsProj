@@ -292,12 +292,21 @@ def add_heatmap(m, gdf, radius=15, blur=10, max_zoom=13):
         if geom is not None
     ]
 
+    viridis_gradient = {
+        0.0: '#fde725',  # bright yellow
+        0.25: '#5ec962',
+        0.5: '#21918c',
+        0.75: '#3b528b',
+        1.0: '#440154'  # dark purple
+    }
+
     HeatMap(
         heat_points,
         radius=radius,
         blur=blur,
         max_zoom=max_zoom,
         min_opacity=0.4,
+        gradient=viridis_gradient,
     ).add_to(m)
 
     return m
