@@ -2,9 +2,13 @@
 import streamlit as st
 import geopandas as gpd
 import pandas as pd
-import numpy as np
 import altair as alt
 import os
+import folium
+from streamlit_folium import st_folium
+from folium.plugins import HeatMap
+from streamlit_folium import folium_static
+
 
 st.set_page_config(layout="wide")
 
@@ -59,6 +63,24 @@ def load_all_VECTOR_data():
 
 raw_vectors = load_all_VECTOR_data()
 
+# =================
+# === CONSTANTS ===
+
+MONTH_ORDER_JAN_DEC = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+MONTH_ORDER_JUN_MAY = ["Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar","Apr","May"]
+
+SENTIMENT_COLORS = alt.Scale(
+    domain=["POSITIVE", "NEUTRAL", "NEGATIVE"],
+    range=["#2ca02c", "#7f7f7f", "#d62728"]
+)
+
+CATEGORY_MAP = {
+    "Praise + Ideas": "praise_idea",
+    "Error + Complaints": "error_complaint"
+}
+
+TOPIC_COLOR_SCHEME = "tableau20"
+
 # ========================
 # === DATA PREPARATION ===
 
@@ -92,9 +114,10 @@ def add_day_night_columns(df):
     df = df.copy()
     df["is_day"] = df["hour"].between(6, 18)
     df["is_night"] = ~df["is_day"]
+
     return df
 
-def split_by_sentiment(df):
+def split_by_category(df):
     """split into two subsets used by both sentiments & topics"""
     return {
         "praise_idea": df[df["Kategori"].isin(["Beröm", "Idé"])],
@@ -142,7 +165,7 @@ def prepare_vectors(raw_vectors):
         df = fix_sentiment_column_type(df)
         df = fix_topic_column_type(df)
 
-        split = split_by_sentiment(df)
+        split = split_by_category(df)
         prepped_vectors[f"praise_idea_{suffix}"] = split["praise_idea"]
         prepped_vectors[f"error_complaint_{suffix}"] = split["error_complaint"]
 
@@ -154,31 +177,13 @@ def prepare_vectors(raw_vectors):
     prepped_vectors["all_pts"] = all_pts
 
     # sentiment splits for heatmaps
-    heat = split_by_sentiment(all_pts)
+    heat = split_by_category(all_pts)
     prepped_vectors["heat_praise_idea"] = heat["praise_idea"]
     prepped_vectors["heat_error_complaint"] = heat["error_complaint"]
 
     return prepped_vectors
 
 prepped_vectors = prepare_vectors(raw_vectors)
-
-# =================
-# === CONSTANTS ===
-
-MONTH_ORDER_JAN_DEC = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-MONTH_ORDER_JUN_MAY = ["Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar","Apr","May"]
-
-SENTIMENT_COLORS = alt.Scale(
-    domain=["POSITIVE", "NEUTRAL", "NEGATIVE"],
-    range=["#2ca02c", "#7f7f7f", "#d62728"]
-)
-
-CATEGORY_MAP = {
-    "Praise + Ideas": "praise_idea",
-    "Error + Complaints": "error_complaint"
-}
-
-TOPIC_COLOR_SCHEME = "tableau20"
 
 # ====================================
 # === TEMPORAL AGGREGATION HELPERS ===
@@ -565,6 +570,47 @@ def make_plot(kind, category, view, temporal_scale, prepped_vectors, top_n=5):
 
     return charts
 
+# ============
+# === MAPS ===
+
+def create_base_map():
+    m = folium.Map(location=(59.33, 17.99), zoom_start=10.5, tiles=None)
+    folium.TileLayer(
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attr='Esri',
+        name='Esri Satellite',
+        overlay=False,
+        control=True
+    ).add_to(m)
+    return m
+
+def add_heatmap(m, gdf, radius=15, blur=10, max_zoom=13):
+    # extract [lat, lon] from geometry
+    heat_points = [
+        [geom.y, geom.x]
+        for geom in gdf.geometry
+        if geom is not None
+    ]
+
+    viridis_gradient = {
+        0.0: '#fde725',  # bright yellow
+        0.25: '#5ec962',
+        0.5: '#21918c',
+        0.75: '#3b528b',
+        1.0: '#440154'  # dark purple
+    }
+
+    HeatMap(
+        heat_points,
+        radius=radius,
+        blur=blur,
+        max_zoom=max_zoom,
+        min_opacity=0.4,
+        gradient=viridis_gradient,
+    ).add_to(m)
+
+    return m
+
 # =================
 # === STREAMLIT ===
 
@@ -584,9 +630,43 @@ section = st.sidebar.pills(
 if section == "Overview":
     overview_question = st.sidebar.radio(
         "Choose a question:",
-        ["Where is Tyck till being used? (html heatmap)", "Where is Tyck till being used? (raw raster)"]
+        ["Where is Tyck till being used? (heatmap, day/night)", "Overview question 2"]
     )
-    st.info("To be added")
+
+    if overview_question == "Where is Tyck till being used? (heatmap, day/night)":
+
+        st.subheader("Tycktill entries")
+
+        category_choice = st.sidebar.pills("Tyck till category:",
+            ["Praise + Ideas", "Error + Complaints"],
+            selection_mode="single",
+            default="Praise + Ideas",
+            key="sent_cat")
+
+        if category_choice == "Praise + Ideas":
+            pts_category = prepped_vectors["heat_praise_idea"]
+        else:
+            pts_category = prepped_vectors["heat_error_complaint"]
+
+        pts_day = pts_category[pts_category["is_day"]]
+        pts_night = pts_category[pts_category["is_night"]]
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("**Daytime (06:00-18:00)**")
+            m_day = create_base_map()
+            add_heatmap(m_day, pts_day)
+            folium_static(m_day, width=550, height=550)
+
+        with col2:
+            st.markdown("**Nighttime (18:00-06:00)**")
+            m_night = create_base_map()
+            add_heatmap(m_night, pts_night)
+            folium_static(m_night, width=550, height=550)
+
+    elif overview_question == "Overview question 2":
+        st.info("To be added")
 
 # ==================
 # === SENTIMENTS ===
@@ -632,13 +712,16 @@ if section == "Sentiments":
 
         st.altair_chart(alt.hconcat(*charts).resolve_scale(y='shared'), use_container_width=True)
 
+    elif sentiment_question == "What sentiment dominates in what park (by location)?":
+        "add sentiment per park normalised by ha?"
+
 # ==============
 # === TOPICS ===
 
 if section == "Topics":
     topic_question = st.sidebar.radio(
         "Choose a question:",
-        ["Do topics vary over time?", "Topic question 2"]
+        ["Do topics vary over time?", "What are the top 5 topics per park (by location)?", "What are the top topics?"]
     )
 
     if topic_question == "Do topics vary over time?":
@@ -676,6 +759,12 @@ if section == "Topics":
 
         st.altair_chart(alt.hconcat(*charts).resolve_scale(y='shared'), use_container_width=True)
 
+    elif topic_question == "What are the top 5 topics per park (by location)?":
+        st.info("to be added")
+
+    elif topic_question == "What are the top topics?":
+        st.info("to be added")
+
 # ==============
 # === THEMES ===
 
@@ -684,4 +773,11 @@ if section == "Themes":
         "Choose a question:",
         ["Theme question 1", "Theme question 2"]
     )
-    st.info("To be added")
+
+    if theme_question == "Theme question 1":
+        st.info("add top themes bar chart")
+
+    elif theme_question == "Theme question 2":
+        st.info("add co-occurence matrix")
+
+

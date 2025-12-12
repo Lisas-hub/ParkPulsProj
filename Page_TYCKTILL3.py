@@ -12,7 +12,6 @@ import rasterio
 import numpy as np
 
 from matplotlib import pyplot as plt
-import folium
 import branca.colormap as cm
 from folium.raster_layers import ImageOverlay
 from matplotlib import cm as mpl_cm
