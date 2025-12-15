@@ -5,15 +5,24 @@ import pandas as pd
 import altair as alt
 import os
 import folium
-from streamlit_folium import st_folium
 from folium.plugins import HeatMap
 from streamlit_folium import folium_static
+#from streamlit_plotly_events import plotly_events     # *** use plotly for a heatmap + clickable point for wordcloud ***
+import h3
+from shapely.geometry import Polygon
+import json
+import plotly.express as px
+import branca.colormap as cm
+from wordcloud import WordCloud
+import base64
+from io import BytesIO
 
 
 st.set_page_config(layout="wide")
 
 tycktill_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\tycktill.gpkg"
 tycktill_filtered_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg"
+tycktill_filtered_with_lemmas_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\STANZA_for_word_cloud\STANZA_output.gpkg"
 
 plots_folder_path = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\plots"
 
@@ -41,24 +50,13 @@ def vector_layer(path: str, layer_name: str) -> gpd.GeoDataFrame:
 def load_all_VECTOR_data():
     data = {}
     data["stats_per_park"] = vector_layer(tycktill_GPKG, "stats_per_park")
-    data["all_park_related_pts_with_themes"] = vector_layer(
-        tycktill_filtered_GPKG, "all_park_related_pts_with_themes"
-    )
-
+    data["all_park_related_pts_with_themes"] = vector_layer(tycktill_filtered_GPKG, "all_park_related_pts_with_themes")
     # topic sources
-    data["pts_with_topics_by_location"] = vector_layer(
-        tycktill_filtered_GPKG, "pts_in_parks_with_topics"
-    )
-    data["pts_with_topics_by_keywords_strictly"] = vector_layer(
-        tycktill_filtered_GPKG, "park_comments_by_keyword"
-    )
-    data["pts_with_topics_by_keywords_similarity"] = vector_layer(
-        tycktill_filtered_GPKG, "park_comments_by_BERTopic"
-    )
-
-    data["parks_with_top5_topics"] = vector_layer(
-        tycktill_filtered_GPKG, "parks_with_top5_topics"
-    )
+    data["pts_with_topics_by_location"] = vector_layer(tycktill_filtered_GPKG, "pts_in_parks_with_topics")
+    data["pts_with_topics_by_keywords_strictly"] = vector_layer(tycktill_filtered_GPKG, "park_comments_by_keyword")
+    data["pts_with_topics_by_keywords_similarity"] = vector_layer(tycktill_filtered_GPKG, "park_comments_by_BERTopic")
+    data["parks_with_top5_topics"] = vector_layer(tycktill_filtered_GPKG, "parks_with_top5_topics")
+    data["all_park_related_pts_with_themes_AND_STANZA"] = vector_layer(tycktill_filtered_with_lemmas_GPKG, "all_park_related_pts_with_themes_AND_STANZA")
     return data
 
 raw_vectors = load_all_VECTOR_data()
@@ -146,6 +144,68 @@ def prepare_topic_df(df):
     df = normalize_weekday(df)
     return df
 
+#def clean_lemmas(df):
+#    df = df.copy()
+#    df["lemmas"] = df["lemmas"].apply(
+#        lambda lst: [w.strip("'\"") for w in lst] if isinstance(lst, list) else lst
+#    )
+#    return df
+
+def add_lat_lon(df):
+    # this step is for plotly
+    df = df.copy()
+    df["lon"] = df.geometry.x
+    df["lat"] = df.geometry.y
+    return df
+
+def add_h3_hex_id(df, resolution=9):
+    df = df.copy()
+    df["hex_id"] = df.apply(
+        lambda r: h3.latlng_to_cell(r["lat"], r["lon"], resolution),
+        axis=1
+    )
+    return df
+
+def prepare_hexbins(df, text_col="lemmas"):
+    """
+    Returns:
+      hex_df: one row per hexagon (for map)
+      points_df: original points with hex_id (for word cloud filtering)
+    """
+    # explode keywords so wordcloud has frequency
+    exploded = df.explode(text_col)
+
+    agg = (
+        exploded
+        .groupby("hex_id")
+        .agg(
+            count=("hex_id", "size"),
+            words=(text_col, lambda x: list(x.dropna()))
+        )
+        .reset_index()
+    )
+
+    # geometry for plotting hexagons
+    agg["geometry"] = agg["hex_id"].apply(
+        lambda h: Polygon(
+            [(lng, lat) for lat, lng in h3.cell_to_boundary(h)]
+        )
+    )
+
+    hex_gdf = gpd.GeoDataFrame(agg, geometry="geometry", crs="EPSG:4326")
+    return hex_gdf
+
+def generate_wordcloud(text_list, width=300, height=200):
+    """Create a word cloud image and return as base64 string."""
+    if not text_list:
+        text_list = ["No data"]
+    wc = WordCloud(width=width, height=height, background_color="white").generate(" ".join(text_list))
+    img_buffer = BytesIO()
+    wc.to_image().save(img_buffer, format="PNG")
+    img_buffer.seek(0)
+    img_b64 = base64.b64encode(img_buffer.read()).decode()
+    return img_b64
+
 # ============================
 # === PREPARED VECTOR DATA ===
 
@@ -180,6 +240,20 @@ def prepare_vectors(raw_vectors):
     heat = split_by_category(all_pts)
     prepped_vectors["heat_praise_idea"] = heat["praise_idea"]
     prepped_vectors["heat_error_complaint"] = heat["error_complaint"]
+
+    # hexbins
+    hex_src = add_lat_lon(raw_vectors["all_park_related_pts_with_themes_AND_STANZA"])
+    #hex_src = clean_lemmas(hex_src)
+    #hex_src = add_lat_lon(hex_src)
+    hex_src = prepare_topic_df(hex_src)
+    hex_src = add_h3_hex_id(hex_src, resolution=9)
+
+    split = split_by_category(hex_src)
+
+    prepped_vectors["hex_bins_praise_idea"] = prepare_hexbins(split["praise_idea"])          # original points with hex_id (for filtering / word cloud)
+    prepped_vectors["hex_bins_error_complaint"] = prepare_hexbins(split["error_complaint"])  # hex polygons (for map)
+    prepped_vectors["hex_points_praise_idea"] = split["praise_idea"]
+    prepped_vectors["hex_points_error_complaint"] = split["error_complaint"]
 
     return prepped_vectors
 
@@ -571,9 +645,9 @@ def make_plot(kind, category, view, temporal_scale, prepped_vectors, top_n=5):
     return charts
 
 # ============
-# === MAPS ===
+# === MAPS ===     *** remove all plotly hexbins if im using folium ***
 
-def create_base_map():
+def create_folium_basemap():
     m = folium.Map(location=(59.33, 17.99), zoom_start=10.5, tiles=None)
     folium.TileLayer(
         tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -584,7 +658,7 @@ def create_base_map():
     ).add_to(m)
     return m
 
-def add_heatmap(m, gdf, radius=15, blur=10, max_zoom=13):
+def add_folium_heatmap(m, gdf, radius=15, blur=10, max_zoom=13):
     # extract [lat, lon] from geometry
     heat_points = [
         [geom.y, geom.x]
@@ -611,6 +685,98 @@ def add_heatmap(m, gdf, radius=15, blur=10, max_zoom=13):
 
     return m
 
+def create_folium_hexbin_map(hex_gdf, color_col="count"):
+    # Start map centered on Stockholm
+    m = folium.Map(location=[59.33, 17.99], zoom_start=10.5, tiles=None)
+
+    # Add a satellite basemap
+    folium.TileLayer(
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attr='Esri',
+        name='Esri Satellite',
+        overlay=False,
+        control=True
+    ).add_to(m)
+
+    # Add hexagons as GeoJson
+    folium.GeoJson(
+        hex_gdf,
+        style_function=lambda feature: {
+            'fillColor': colormap(feature['properties'][color_col]),
+            'color': 'black',
+            'weight': 1,
+            'fillOpacity': 0.6
+        }
+    ).add_to(m)
+
+    return m
+
+def create_folium_hexbin_map_with_wc(hex_gdf, points_df, text_col="lemmas", color_col="count"):
+    m = folium.Map(location=[59.33, 17.99], zoom_start=10.5, tiles=None)
+    folium.TileLayer(
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',  # *** USE EXISTING BASEMAP INSTEAD ***
+        attr='Esri', name='Esri Satellite', overlay=False, control=True
+    ).add_to(m)
+
+    for _, row in hex_gdf.iterrows():
+        # points in this hex
+        pts_in_hex = points_df[points_df["hex_id"] == row["hex_id"]]
+        texts = pts_in_hex[text_col].dropna().tolist()
+        img_b64 = generate_wordcloud(texts)
+
+        popup_html = f'<img src="data:image/png;base64,{img_b64}" width="300" height="200">'
+
+        folium.GeoJson(
+            row["geometry"],
+            style_function=lambda f, color=row[color_col]: {
+                'fillColor': colormap(color),
+                'color': 'black',
+                'weight': 1,
+                'fillOpacity': 0.6
+            },
+            tooltip=folium.Tooltip(f"Count: {row[color_col]}"),
+            popup=folium.Popup(popup_html, max_width=320)
+        ).add_to(m)
+
+    return m
+
+def create_plotly_hexbin_map(hex_gdf):
+    # Convert GeoDataFrame to GeoJSON
+    geojson = json.loads(hex_gdf.to_json())
+
+    hex_gdf = hex_gdf.reset_index(drop=False).rename(columns={"index": "bin_index"})    # simplify hex_id for display purposes
+
+    # Simple choropleth map
+    fig = px.choropleth_mapbox(
+        hex_gdf,
+        geojson=geojson,
+        locations="hex_id",
+        featureidkey="properties.hex_id",  # matches hex_id in GeoJSON
+        color="count",                     # color ramp based on count
+        color_continuous_scale="Viridis",
+        mapbox_style="open-street-map",    # simplest basemap
+        center={"lat": 59.33, "lon": 17.99},
+        zoom=10,
+        opacity=0.4,
+        hover_data={'bin_index': True, 'count': True, 'hex_id':False}
+
+    )
+
+    # Remove extra margins
+    #fig.update_layout(margin={"r":0, "t":0, "l":0, "b":0})
+    fig.update_layout(
+        dragmode='pan',  # makes it possible to zoom by scrolling (not just using +/- buttons)  *** not working ***
+        mapbox=dict(
+            # style='satellite',
+            center={'lat': 59.33, 'lon': 17.99},
+            zoom=10
+        ),
+        height=700,
+        margin=dict(l=0, r=0, t=0, b=0)
+    )
+
+    return fig
+
 # =================
 # === STREAMLIT ===
 
@@ -630,7 +796,7 @@ section = st.sidebar.pills(
 if section == "Overview":
     overview_question = st.sidebar.radio(
         "Choose a question:",
-        ["Where is Tyck till being used? (heatmap, day/night)", "Overview question 2"]
+        ["Where is Tyck till being used? (heatmap, day/night)", "*What* is talked about *where*? (PLOTLY)", "*What* is talked about *where*? (FOLIUM)"]
     )
 
     if overview_question == "Where is Tyck till being used? (heatmap, day/night)":
@@ -655,18 +821,71 @@ if section == "Overview":
 
         with col1:
             st.markdown("**Daytime (06:00-18:00)**")
-            m_day = create_base_map()
-            add_heatmap(m_day, pts_day)
+            m_day = create_folium_basemap()
+            add_folium_heatmap(m_day, pts_day)
             folium_static(m_day, width=550, height=550)
 
         with col2:
             st.markdown("**Nighttime (18:00-06:00)**")
-            m_night = create_base_map()
-            add_heatmap(m_night, pts_night)
+            m_night = create_folium_basemap()
+            add_folium_heatmap(m_night, pts_night)
             folium_static(m_night, width=550, height=550)
 
-    elif overview_question == "Overview question 2":
-        st.info("To be added")
+    elif overview_question == "*What* is talked about *where*? (PLOTLY)":
+
+        st.subheader("Where are park-related comments concentrated?")
+
+        st.caption(
+            "Hexagon density map. Click a hexagon to explore dominant topics."
+        )
+
+        category_choice = st.sidebar.pills(
+            "Choose Category:",
+            ["Praise + Ideas", "Error + Complaints"],
+            selection_mode="single",
+            default="Praise + Ideas",
+            key="category_choice"
+        )
+
+        # Get the data for the selected category
+        if category_choice == "Praise + Ideas":
+            selected_data = prepped_vectors["heat_praise_idea"]
+        else:
+            selected_data = prepped_vectors["heat_error_complaint"]
+
+        hex_src = selected_data
+        hex_src = add_lat_lon(hex_src)
+        hex_src = add_h3_hex_id(hex_src, resolution=9)  # make sure the resolution is correct
+
+        hex_gdf = prepare_hexbins(hex_src, text_col="topic_keywords_list")
+        fig = create_plotly_hexbin_map(hex_gdf)
+
+        #fig = create_plotly_hexbin_map(prepped_vectors["hex_bins"])
+        st.plotly_chart(fig, use_container_width=True)
+
+    elif overview_question == "*What* is talked about *where*? (FOLIUM)":
+        category_choice = st.sidebar.pills(
+            "Select category:",
+            ["Praise + Ideas", "Error + Complaints"],
+            selection_mode="single",
+            default="Praise + Ideas"
+        )
+
+        if category_choice == "Praise + Ideas":
+            hex_gdf = prepped_vectors["hex_bins_praise_idea"]
+            points_df = prepped_vectors["hex_points_praise_idea"]
+
+            #st.write(points_df.iloc[0]["lemmas"])  # just a check, can be removed when all is working
+
+        else:
+            hex_gdf = prepped_vectors["hex_bins_error_complaint"]
+            points_df = prepped_vectors["hex_points_error_complaint"]
+
+        max_count = hex_gdf["count"].max()
+        colormap = cm.LinearColormap(['#440154', '#fde725'], vmin=0, vmax=max_count)
+
+        m = create_folium_hexbin_map_with_wc(hex_gdf, points_df, text_col="lemmas")
+        folium_static(m, width=700, height=500)
 
 # ==================
 # === SENTIMENTS ===
@@ -716,7 +935,7 @@ if section == "Sentiments":
         "add sentiment per park normalised by ha?"
 
 # ==============
-# === TOPICS ===
+# === TOPICS ===   *** lägg till en subpage med en dropdown lista över typ top 20 eller 50 topics och så kan man välja en och få lite olika grafer? ***
 
 if section == "Topics":
     topic_question = st.sidebar.radio(
