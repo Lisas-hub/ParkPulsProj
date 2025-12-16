@@ -17,8 +17,6 @@ from nltk.corpus import stopwords
 # ===============================
 # === LOAD PRE-PROCESSED DATA ===
 
-#df = pd.read_excel("data/cleaned_dataset.xlsx")
-
 tycktill_filtered_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg"
 df = gpd.read_file(tycktill_filtered_GPKG, layer="all_park_related_pts_with_themes")
 
@@ -29,41 +27,12 @@ df = gpd.read_file(tycktill_filtered_GPKG, layer="all_park_related_pts_with_them
 # load stopwords
 stop_words = set(stopwords.words("swedish"))
 
-# ======================
-# create geometry column
+# ===============================
+# subset a limited number of rows
 
-#df["geometry"] = df.apply(lambda row: Point(row["Koordinater_x"], row["Koordinater_Y"]), axis=1)
-#df_geo = gpd.GeoDataFrame(df, geometry="geometry", crs="EPSG:4326").to_crs("EPSG:3006")
+#df = df.sample(3000, random_state=42)
 
-# =================================================
-# prepp for filtering inside or outside parks later
-#parks = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
-
-#subset_within_parks = gpd.sjoin(df_geo, parks, how="inner", predicate="within")
-#df_geo["in_park"] = df_geo.index.isin(subset_within_parks.index)
-
-# ============================================
-# subset by parks and a limited number of rows
-
-
-subset_df = df.sample(3000, random_state=42)
-
-# subset dataset to begin with before committing to processing all 300000+ rows
-#kategori_filter = "Remiss skickad"
-#in_park_filter = True
-# ^^RERUN? Update here!^^
-
-#subset_df = df_geo[
-#    (df_geo["Kategori"] == kategori_filter) #&
-    #(df_geo["in_park"] == in_park_filter)
-#].copy()
-
-rows_before = len(subset_df)
-
-#print(f"Selected {rows_before} rows with Kategori = '{kategori_filter}' out of {len(df_geo)} total rows.")
-#print(f"Selected {len(subset_df)} rows with Kategori = '{kategori_filter}' and in_park = {in_park_filter} out of {len(df_geo)} total rows.")
-
-
+rows_before = len(df)
 
 # =================================================================
 # set up for saving figures based on number of points in the subset
@@ -76,8 +45,8 @@ os.makedirs(output_folder, exist_ok=True)
 nlp = stanza.Pipeline("sv", processors="tokenize,pos,lemma")
 
 lemmatized_rows = []
-for i, row in subset_df.iterrows():
-    print(f"Processing row {i + 1} of {len(subset_df)}", flush=True)
+for i, row in df.iterrows():
+    print(f"Processing row {i + 1} of {len(df)}", flush=True)
 
     text = row["clean_Fritext"]
 
@@ -89,22 +58,22 @@ for i, row in subset_df.iterrows():
 
     lemmatized_rows.append(lemmas)
 
-subset_df["lemmas"] = lemmatized_rows
+df["lemmas"] = lemmatized_rows
 
-subset_df = subset_df[subset_df["lemmas"].astype(bool)]       # remove any now empty rows (had only stopwords and therefor empty)
+df = df[df["lemmas"].astype(bool)]       # remove any now empty rows (had only stopwords and therefor empty)
 
-rows_after = len(subset_df)
+rows_after = len(df)
 removed_rows = rows_before - rows_after
 
 print("\n--- Filtering by municipality ---")
-print(f"Removed {removed_rows} rows that were empty after stopword removal, {len(subset_df)} total rows remaining.")
+print(f"Removed {removed_rows} rows that were empty after stopword removal, {len(df)} total rows remaining.")
 
 
 # ====
 # Save
 
-#subset_df.to_excel(f"{output_folder}/tycktill_with_lemmas_{kategori_filter}.xlsx", index=False)
-#subset_df.to_excel(f"{output_folder}/tycktill_with_lemmas_{kategori_filter}_in_park_{in_park_filter}.xlsx", index=False)
+df.to_file(f"{output_folder}/STANZA_output.gpkg", layer="all_park_related_pts_with_themes_AND_STANZA", driver="GPKG", mode="w")
 
-subset_df.to_file(f"{output_folder}/STANZA_output.gpkg", layer="all_park_related_pts_with_themes_AND_STANZA", driver="GPKG", mode="w")
 
+# --- Filtering by municipality ---
+# Removed 16 rows that were empty after stopword removal, 118556 total rows remaining.

@@ -7,15 +7,23 @@ import os
 import folium
 from folium.plugins import HeatMap
 from streamlit_folium import folium_static
-#from streamlit_plotly_events import plotly_events     # *** use plotly for a heatmap + clickable point for wordcloud ***
 import h3
 from shapely.geometry import Polygon
-import json
-import plotly.express as px
 import branca.colormap as cm
 from wordcloud import WordCloud
 import base64
 from io import BytesIO
+from itertools import combinations
+from collections import Counter
+from streamlit_folium import st_folium
+
+
+# TO DO
+# split praise and ideas
+# group similar topics (and use these instead of raw topics in topics matrix etc)
+# use park polygons like im using hexbins OR use hexbins and park polygons together (so for _by_location points use park polygons and for all other points use hexbins)
+# (make a dropdown list for topics to choose and then make graphs or maps that are specific to the chosen topic)
+# visa något i formatet streamlit table? de går att sortera tabellerna. https://discuss.streamlit.io/t/good-looking-table-for-a-streamlit-application-is-anyone-still-using-aggrid/63763/3
 
 
 st.set_page_config(layout="wide")
@@ -144,15 +152,7 @@ def prepare_topic_df(df):
     df = normalize_weekday(df)
     return df
 
-#def clean_lemmas(df):
-#    df = df.copy()
-#    df["lemmas"] = df["lemmas"].apply(
-#        lambda lst: [w.strip("'\"") for w in lst] if isinstance(lst, list) else lst
-#    )
-#    return df
-
 def add_lat_lon(df):
-    # this step is for plotly
     df = df.copy()
     df["lon"] = df.geometry.x
     df["lat"] = df.geometry.y
@@ -169,8 +169,7 @@ def add_h3_hex_id(df, resolution=9):
 def prepare_hexbins(df, text_col="lemmas"):
     """
     Returns:
-      hex_df: one row per hexagon (for map)
-      points_df: original points with hex_id (for word cloud filtering)
+        hex_gdf: one row per hexagon with geometry, count, and words
     """
     # explode keywords so wordcloud has frequency
     exploded = df.explode(text_col)
@@ -195,16 +194,129 @@ def prepare_hexbins(df, text_col="lemmas"):
     hex_gdf = gpd.GeoDataFrame(agg, geometry="geometry", crs="EPSG:4326")
     return hex_gdf
 
-def generate_wordcloud(text_list, width=300, height=200):
+def generate_wordcloud(text_list, width=300, height=200, max_words=50):
     """Create a word cloud image and return as base64 string."""
     if not text_list:
         text_list = ["No data"]
-    wc = WordCloud(width=width, height=height, background_color="white").generate(" ".join(text_list))
+    wc = WordCloud(width=width, height=height, max_words=max_words, background_color="white").generate(" ".join(text_list))
     img_buffer = BytesIO()
     wc.to_image().save(img_buffer, format="PNG")
     img_buffer.seek(0)
     img_b64 = base64.b64encode(img_buffer.read()).decode()
     return img_b64
+
+#def prepare_topic_cooccurrence_by_hex(df, topic_col="topic_keywords_short", min_topics_per_hex=2):
+#    """
+#    Computes topic co-occurrence per hexbin.
+#    Returns:
+#        dict:
+#            hex_id -> DataFrame with columns:
+#                ['topic_a', 'topic_b', 'count']
+#    """
+
+    # keep only rows with topics
+#    df = df[df[topic_col].notna()].copy()
+
+#    hex_cooccurrence = {}
+
+#    for hex_id, g in df.groupby("hex_id"):
+
+        # enforce per-hexbin threshold
+#        if len(g) < min_topics_per_hex:
+#            continue
+
+#        topics = g[topic_col].tolist()
+
+        # need at least two distinct topics
+#        unique_topics = sorted(set(topics))
+#        if len(unique_topics) < 2:
+#            continue
+
+        # build co-occurrence pairs across comments
+#        pairs = []
+
+#        for a, b in combinations(unique_topics, 2):
+#            count = (
+#                    (g[topic_col] == a).sum()
+#                    *
+#                    (g[topic_col] == b).sum()
+#            )
+#            if count > 0:
+#                pairs.append((a, b, count))
+
+#        if not pairs:
+#            continue
+
+#        co_df = (
+#            pd.DataFrame(
+#                pairs,
+#                columns=["topic_a", "topic_b", "count"]
+#            )
+#                .sort_values("count", ascending=False)
+#                .reset_index(drop=True)
+#        )
+
+#        hex_cooccurrence[hex_id] = co_df
+
+#    return hex_cooccurrence
+
+#def compute_topic_cooccurrence_limited(df, topic_col="topic_keywords_short", top_n=30, min_count=10):
+#    """
+#    Compute co-occurrence matrix limited to top N most frequent topics.
+#    """
+#    # count topic frequencies
+#    topic_counts = Counter(df[topic_col].dropna())
+#    top_topics = [t for t, _ in topic_counts.most_common(top_n)]
+
+    # filter dataframe to top topics only
+#    df_top = df[df[topic_col].isin(top_topics)]
+
+    # count co-occurrences
+#    counter = Counter()
+#    for a, b in combinations(top_topics, 2):
+#        count = (df_top[topic_col] == a).sum() * (df_top[topic_col] == b).sum()
+#        if count >= min_count:
+#            counter[(a, b)] = count
+
+#    coocc_df = pd.DataFrame(
+#        [(a, b, c) for (a, b), c in counter.items()],
+#        columns=["topic_a", "topic_b", "count"]
+#    )
+#    return coocc_df
+
+def compute_topic_cooccurrence_by_hex(hex_points_df, topic_col="topic_keywords_short", min_count=1, top_n=None):
+    """
+    hex_points_df: DataFrame with columns ['hex_id', topic_col] (one row per comment)
+    Returns a DataFrame with columns ['topic_a', 'topic_b', 'count'],
+    where count = number of hexbins where both topics appear.
+    """
+    # Filter top N topics if needed
+    if top_n:
+        all_topics = hex_points_df[topic_col].dropna().tolist()
+        from collections import Counter
+        top_topics = [t for t, _ in Counter(all_topics).most_common(top_n)]
+        df = hex_points_df[hex_points_df[topic_col].isin(top_topics)]
+    else:
+        df = hex_points_df.copy()
+
+    # Group by hex_id
+    hex_groups = df.groupby("hex_id")[topic_col].apply(lambda x: set(x.dropna()))
+
+    # Count co-occurrences across hexes
+    counter = Counter()
+    for topics in hex_groups:
+        if len(topics) < 2:
+            continue
+        for a, b in combinations(sorted(topics), 2):
+            counter[(a, b)] += 1
+
+    # Convert to DataFrame and filter by min_count
+    coocc_df = pd.DataFrame(
+        [(a, b, c) for (a, b), c in counter.items() if c >= min_count],
+        columns=["topic_a", "topic_b", "count"]
+    ).sort_values("count", ascending=False).reset_index(drop=True)
+
+    return coocc_df
 
 # ============================
 # === PREPARED VECTOR DATA ===
@@ -243,17 +355,51 @@ def prepare_vectors(raw_vectors):
 
     # hexbins
     hex_src = add_lat_lon(raw_vectors["all_park_related_pts_with_themes_AND_STANZA"])
-    #hex_src = clean_lemmas(hex_src)
-    #hex_src = add_lat_lon(hex_src)
     hex_src = prepare_topic_df(hex_src)
     hex_src = add_h3_hex_id(hex_src, resolution=9)
 
     split = split_by_category(hex_src)
 
-    prepped_vectors["hex_bins_praise_idea"] = prepare_hexbins(split["praise_idea"])          # original points with hex_id (for filtering / word cloud)
+    prepped_vectors["hex_bins_praise_idea"] = prepare_hexbins(split["praise_idea"])
     prepped_vectors["hex_bins_error_complaint"] = prepare_hexbins(split["error_complaint"])  # hex polygons (for map)
     prepped_vectors["hex_points_praise_idea"] = split["praise_idea"]
-    prepped_vectors["hex_points_error_complaint"] = split["error_complaint"]
+    prepped_vectors["hex_points_error_complaint"] = split["error_complaint"]                 # original points with hex_id (for filtering / word cloud)
+
+    # topic co-occurrence per hexbin
+    #prepped_vectors["topic_cooccurrence_praise_idea"] = (
+    #    prepare_topic_cooccurrence_by_hex(
+    #        split["praise_idea"],
+    #        topic_col="topic_keywords_short",
+    #        min_topics_per_hex=2
+    #    )
+    #)
+
+    #prepped_vectors["topic_cooccurrence_error_complaint"] = (
+    #    prepare_topic_cooccurrence_by_hex(
+    #        split["error_complaint"],
+    #        topic_col="topic_keywords_short",
+    #        min_topics_per_hex=2
+    #    )
+    #)
+
+    # co-occurrence matrices
+    #prepped_vectors["topic_cooccurrence_praise_idea"] = compute_topic_cooccurrence_limited(split["praise_idea"])
+    #prepped_vectors["topic_cooccurrence_error_complaint"] = compute_topic_cooccurrence_limited(split["error_complaint"])
+
+    # For hex-based co-occurrence matrices
+    prepped_vectors["hex_topic_cooccurrence_praise_idea"] = compute_topic_cooccurrence_by_hex(
+        prepped_vectors["hex_points_praise_idea"],
+        topic_col="topic_keywords_short",
+        min_count=1,
+        top_n=50
+    )
+
+    prepped_vectors["hex_topic_cooccurrence_error_complaint"] = compute_topic_cooccurrence_by_hex(
+        prepped_vectors["hex_points_error_complaint"],
+        topic_col="topic_keywords_short",
+        min_count=1,
+        top_n=50
+    )
 
     return prepped_vectors
 
@@ -645,7 +791,7 @@ def make_plot(kind, category, view, temporal_scale, prepped_vectors, top_n=5):
     return charts
 
 # ============
-# === MAPS ===     *** remove all plotly hexbins if im using folium ***
+# === MAPS ===
 
 def create_folium_basemap():
     m = folium.Map(location=(59.33, 17.99), zoom_start=10.5, tiles=None)
@@ -685,46 +831,24 @@ def add_folium_heatmap(m, gdf, radius=15, blur=10, max_zoom=13):
 
     return m
 
-def create_folium_hexbin_map(hex_gdf, color_col="count"):
-    # Start map centered on Stockholm
-    m = folium.Map(location=[59.33, 17.99], zoom_start=10.5, tiles=None)
-
-    # Add a satellite basemap
-    folium.TileLayer(
-        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        attr='Esri',
-        name='Esri Satellite',
-        overlay=False,
-        control=True
-    ).add_to(m)
-
-    # Add hexagons as GeoJson
-    folium.GeoJson(
-        hex_gdf,
-        style_function=lambda feature: {
-            'fillColor': colormap(feature['properties'][color_col]),
-            'color': 'black',
-            'weight': 1,
-            'fillOpacity': 0.6
-        }
-    ).add_to(m)
-
-    return m
-
 def create_folium_hexbin_map_with_wc(hex_gdf, points_df, text_col="lemmas", color_col="count"):
-    m = folium.Map(location=[59.33, 17.99], zoom_start=10.5, tiles=None)
-    folium.TileLayer(
-        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',  # *** USE EXISTING BASEMAP INSTEAD ***
-        attr='Esri', name='Esri Satellite', overlay=False, control=True
-    ).add_to(m)
+
+    m = create_folium_basemap()
 
     for _, row in hex_gdf.iterrows():
-        # points in this hex
         pts_in_hex = points_df[points_df["hex_id"] == row["hex_id"]]
-        texts = pts_in_hex[text_col].dropna().tolist()
-        img_b64 = generate_wordcloud(texts)
 
-        popup_html = f'<img src="data:image/png;base64,{img_b64}" width="300" height="200">'
+        texts = pts_in_hex[text_col].dropna().tolist()
+
+        # make hexbins if > 10 comments in the bin
+        if len(texts) < 10:
+            popup_html = "<b>Too few comments to display</b>"
+        else:
+            img_b64 = generate_wordcloud(texts)
+            popup_html = (
+                f'<img src="data:image/png;base64,{img_b64}" '
+                f'width="300" height="200">'
+            )
 
         folium.GeoJson(
             row["geometry"],
@@ -740,42 +864,87 @@ def create_folium_hexbin_map_with_wc(hex_gdf, points_df, text_col="lemmas", colo
 
     return m
 
-def create_plotly_hexbin_map(hex_gdf):
-    # Convert GeoDataFrame to GeoJSON
-    geojson = json.loads(hex_gdf.to_json())
+#def cooccurrence_df_to_html(df, max_rows=10):
+#    """
+#    Render a co-occurrence DataFrame as HTML for Folium popup.
+#    """
+#    if df is None or df.empty:
+#        return "<b>Too few comments to show topic co-occurrence</b>"
 
-    hex_gdf = hex_gdf.reset_index(drop=False).rename(columns={"index": "bin_index"})    # simplify hex_id for display purposes
+#    df = df.head(max_rows)
 
-    # Simple choropleth map
-    fig = px.choropleth_mapbox(
-        hex_gdf,
-        geojson=geojson,
-        locations="hex_id",
-        featureidkey="properties.hex_id",  # matches hex_id in GeoJSON
-        color="count",                     # color ramp based on count
-        color_continuous_scale="Viridis",
-        mapbox_style="open-street-map",    # simplest basemap
-        center={"lat": 59.33, "lon": 17.99},
-        zoom=10,
-        opacity=0.4,
-        hover_data={'bin_index': True, 'count': True, 'hex_id':False}
+#    html = """
+#    <table style="width:100%; font-size:12px; border-collapse: collapse;">
+#        <tr>
+#            <th style="border-bottom:1px solid #999; text-align:left;">Topic A</th>
+#            <th style="border-bottom:1px solid #999; text-align:left;">Topic B</th>
+#            <th style="border-bottom:1px solid #999; text-align:right;">Count</th>
+#        </tr>
+#    """
 
-    )
+#    for _, row in df.iterrows():
+#        html += f"""
+#        <tr>
+#            <td>{row['topic_a']}</td>
+#            <td>{row['topic_b']}</td>
+#            <td style="text-align:right;">{row['count']}</td>
+#        </tr>
+#        """
 
-    # Remove extra margins
-    #fig.update_layout(margin={"r":0, "t":0, "l":0, "b":0})
-    fig.update_layout(
-        dragmode='pan',  # makes it possible to zoom by scrolling (not just using +/- buttons)  *** not working ***
-        mapbox=dict(
-            # style='satellite',
-            center={'lat': 59.33, 'lon': 17.99},
-            zoom=10
-        ),
-        height=700,
-        margin=dict(l=0, r=0, t=0, b=0)
-    )
+#    html += "</table>"
+#    return html
 
-    return fig
+#def create_folium_hexbin_map_for_selection(hex_gdf, color_col="count"):
+#    m = create_folium_basemap()
+
+#    folium.GeoJson(
+#        hex_gdf,
+#        name="hexbins",
+#        style_function=lambda feature: {
+#            "fillColor": colormap(feature["properties"][color_col]),
+#            "color": "black",
+#            "weight": 1,
+#            "fillOpacity": 0.6,
+#        },
+#        tooltip=folium.GeoJsonTooltip(
+#            fields=[color_col],
+#            aliases=["Count:"],
+#            localize=True
+#        ),
+#    ).add_to(m)
+
+#    return m
+
+#def plot_topic_cooccurrence_altair(coocc_df):
+#    chart = (
+#        alt.Chart(coocc_df)
+#        .mark_rect()
+#        .encode(
+#            x=alt.X(
+#                "topic_a:N",
+#                title="Topic A",
+#                axis=alt.Axis(labelAngle=45)
+#            ),
+#            y=alt.Y(
+#                "topic_b:N",
+#                title="Topic B"
+#            ),
+#            color=alt.Color(
+#                "count:Q",
+#                scale=alt.Scale(scheme="viridis"),
+#                title="Co-occurrence count"
+#            ),
+#            tooltip=["topic_a", "topic_b", "count"]
+#        )
+#        .properties(
+#            width=600,
+#            height=600
+#        )
+#    )
+
+#    return chart
+
+
 
 # =================
 # === STREAMLIT ===
@@ -791,12 +960,12 @@ section = st.sidebar.pills(
 )
 
 # ================
-# === OVERVIEW ===
+# === OVERVIEW ===    *** add another st.pills level, options: Word Cloud; co-occurence between topics within a hexagon?; ...
 
 if section == "Overview":
     overview_question = st.sidebar.radio(
         "Choose a question:",
-        ["Where is Tyck till being used? (heatmap, day/night)", "*What* is talked about *where*? (PLOTLY)", "*What* is talked about *where*? (FOLIUM)"]
+        ["Where is Tyck till being used? (heatmap, day/night)", "*What* is talked about *where*?"]
     )
 
     if overview_question == "Where is Tyck till being used? (heatmap, day/night)":
@@ -831,51 +1000,26 @@ if section == "Overview":
             add_folium_heatmap(m_night, pts_night)
             folium_static(m_night, width=550, height=550)
 
-    elif overview_question == "*What* is talked about *where*? (PLOTLY)":
-
-        st.subheader("Where are park-related comments concentrated?")
-
-        st.caption(
-            "Hexagon density map. Click a hexagon to explore dominant topics."
-        )
-
-        category_choice = st.sidebar.pills(
-            "Choose Category:",
-            ["Praise + Ideas", "Error + Complaints"],
-            selection_mode="single",
-            default="Praise + Ideas",
-            key="category_choice"
-        )
-
-        # Get the data for the selected category
-        if category_choice == "Praise + Ideas":
-            selected_data = prepped_vectors["heat_praise_idea"]
-        else:
-            selected_data = prepped_vectors["heat_error_complaint"]
-
-        hex_src = selected_data
-        hex_src = add_lat_lon(hex_src)
-        hex_src = add_h3_hex_id(hex_src, resolution=9)  # make sure the resolution is correct
-
-        hex_gdf = prepare_hexbins(hex_src, text_col="topic_keywords_list")
-        fig = create_plotly_hexbin_map(hex_gdf)
-
-        #fig = create_plotly_hexbin_map(prepped_vectors["hex_bins"])
-        st.plotly_chart(fig, use_container_width=True)
-
-    elif overview_question == "*What* is talked about *where*? (FOLIUM)":
+    elif overview_question == "*What* is talked about *where*?":
         category_choice = st.sidebar.pills(
             "Select category:",
             ["Praise + Ideas", "Error + Complaints"],
             selection_mode="single",
-            default="Praise + Ideas"
+            default="Praise + Ideas",
+            key="overview_cat"
+        )
+
+        hex_choice = st.sidebar.pills(
+            "Select analysis:",
+            ["Word clouds", "Topic co-occurence"],
+            selection_mode="single",
+            default="Word clouds",
+            key="overview_hex"
         )
 
         if category_choice == "Praise + Ideas":
             hex_gdf = prepped_vectors["hex_bins_praise_idea"]
             points_df = prepped_vectors["hex_points_praise_idea"]
-
-            #st.write(points_df.iloc[0]["lemmas"])  # just a check, can be removed when all is working
 
         else:
             hex_gdf = prepped_vectors["hex_bins_error_complaint"]
@@ -884,8 +1028,60 @@ if section == "Overview":
         max_count = hex_gdf["count"].max()
         colormap = cm.LinearColormap(['#440154', '#fde725'], vmin=0, vmax=max_count)
 
-        m = create_folium_hexbin_map_with_wc(hex_gdf, points_df, text_col="lemmas")
-        folium_static(m, width=700, height=500)
+        if hex_choice == "Word clouds":
+            m = create_folium_hexbin_map_with_wc(
+                hex_gdf,
+                points_df,
+                text_col="lemmas"
+            )
+            folium_static(m, width=700, height=500)
+
+        #elif hex_choice == "Topic co-occurence":
+
+        #    if category_choice == "Praise + Ideas":
+        #        hex_gdf = prepped_vectors["hex_bins_praise_idea"]
+        #        cooccurrence = prepped_vectors["topic_cooccurrence_praise_idea"]
+        #    else:
+        #        hex_gdf = prepped_vectors["hex_bins_error_complaint"]
+        #        cooccurrence = prepped_vectors["topic_cooccurrence_error_complaint"]
+
+        #    st.subheader("Topic co-occurrence by location")
+        #    st.caption("Click a hexagon to explore which topics appear together.")
+
+            # --- MAP ---
+        #    m = create_folium_hexbin_map_for_selection(hex_gdf)
+
+        #    map_out = st_folium(
+        #        m,
+        #        width=700,
+        #        height=500,
+        #        returned_objects=["last_active_drawing"]
+        #    )
+
+            # --- HEX SELECTION ---
+        #    selected_hex_id = None
+
+        #    if (
+        #            map_out
+        #            and map_out.get("last_active_drawing")
+        #            and map_out["last_active_drawing"].get("properties")
+        #    ):
+        #        selected_hex_id = map_out["last_active_drawing"]["properties"].get("hex_id")
+
+            # --- PLOT ---
+        #    if selected_hex_id is None:
+        #        st.info("Click a hexagon on the map to see topic co-occurrence.")
+        #    else:
+        #        coocc_df = cooccurrence.get(selected_hex_id)
+
+        #        if coocc_df is None or coocc_df.empty:
+        #            st.warning("Too few comments in this area to compute topic co-occurrence.")
+        #        else:
+        #            st.altair_chart(
+        #                plot_topic_cooccurrence_altair(coocc_df),
+        #                use_container_width=True
+        #            )
+
 
 # ==================
 # === SENTIMENTS ===
@@ -940,7 +1136,7 @@ if section == "Sentiments":
 if section == "Topics":
     topic_question = st.sidebar.radio(
         "Choose a question:",
-        ["Do topics vary over time?", "What are the top 5 topics per park (by location)?", "What are the top topics?"]
+        ["Do topics vary over time?", "What are the top 5 topics per park (by location)?", "What are the top topics?","Topic co-occurence"]
     )
 
     if topic_question == "Do topics vary over time?":
@@ -983,6 +1179,38 @@ if section == "Topics":
 
     elif topic_question == "What are the top topics?":
         st.info("to be added")
+
+    elif topic_question == "Topic co-occurence":
+        st.subheader("Topic co-occurrence matrix")
+
+        category_choice = st.sidebar.pills(
+            "Select category:",
+            ["Praise + Ideas", "Error + Complaints"],
+            selection_mode="single",
+            default="Praise + Ideas"
+        )
+
+        if category_choice == "Praise + Ideas":
+            coocc_df = prepped_vectors["hex_topic_cooccurrence_praise_idea"]
+        else:
+            coocc_df = prepped_vectors["hex_topic_cooccurrence_error_complaint"]
+
+        if coocc_df.empty:
+            st.warning("Not enough data to show co-occurrences.")
+        else:
+            # Altair heatmap
+            chart = (
+                alt.Chart(coocc_df)
+                    .mark_rect()
+                    .encode(
+                    x=alt.X("topic_a:N", title="Topic A", axis=alt.Axis(labelAngle=45)),
+                    y=alt.Y("topic_b:N", title="Topic B"),
+                    color=alt.Color("count:Q", scale=alt.Scale(scheme="viridis"), title="Co-occurrence count"),
+                    tooltip=["topic_a", "topic_b", "count"]
+                )
+                    .properties(width=700, height=700)
+            )
+            st.altair_chart(chart, use_container_width=True)
 
 # ==============
 # === THEMES ===
