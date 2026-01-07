@@ -19,7 +19,6 @@ from streamlit_folium import st_folium
 
 
 # TO DO
-# split praise and ideas
 # group similar topics (and use these instead of raw topics in topics matrix etc)
 # use park polygons like im using hexbins OR use hexbins and park polygons together (so for _by_location points use park polygons and for all other points use hexbins)
 # (make a dropdown list for topics to choose and then make graphs or maps that are specific to the chosen topic)
@@ -34,7 +33,7 @@ tycktill_filtered_with_lemmas_GPKG = r"C:\Users\lisajos\PycharmProjects\park_pro
 
 plots_folder_path = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\plots"
 
-raster_paths = {
+raster_paths = {                      # am I using the rasters? if not, remove
     "Praise+Ideas": {
         "Day": os.path.join(plots_folder_path, "kde_praise_ideas_comments_day.tif"),       # *** change to _per_1000_residents.tif later ***
         "Night": os.path.join(plots_folder_path, "kde_praise_ideas_comments_night.tif")
@@ -81,8 +80,15 @@ SENTIMENT_COLORS = alt.Scale(
 )
 
 CATEGORY_MAP = {
-    "Praise + Ideas": "praise_idea",
+    "Praise": "praise",
+    "Ideas": "idea",
     "Error + Complaints": "error_complaint"
+}
+
+category_map = {
+    "praise": ["Beröm"],
+    "idea": ["Idé"],
+    "error_complaint": ["Felanmälan", "Klagomål"],
 }
 
 TOPIC_COLOR_SCHEME = "tableau20"
@@ -116,17 +122,30 @@ def extract_topic_keyword_lists(df):
     df["topic_keywords_short"] = df["topic_keywords_list"].str[:3].apply(", ".join)
     return df
 
-def add_day_night_columns(df):
+def add_time_period_column(df):
     df = df.copy()
-    df["is_day"] = df["hour"].between(6, 18)
-    df["is_night"] = ~df["is_day"]
+    #df["is_day"] = df["hour"].between(6, 18)
+    #df["is_night"] = ~df["is_day"]
+
+    def classify_hour(hour):
+        if 0 <= hour <= 5:
+            return "Night"        # 00-05
+        elif 6 <= hour <= 9:
+            return "Morning"      # 06-09
+        elif 10 <= hour <= 15:
+            return "Midday"       # 10-15
+        else:  # 16–23
+            return "Evening"      # 16-23
+
+    df["time_period"] = df["hour"].apply(classify_hour)
 
     return df
 
 def split_by_category(df):
     """split into two subsets used by both sentiments & topics"""
     return {
-        "praise_idea": df[df["Kategori"].isin(["Beröm", "Idé"])],
+        "praise": df[df["Kategori"].isin(["Beröm"])],
+        "idea": df[df["Kategori"].isin(["Idé"])],
         "error_complaint": df[df["Kategori"].isin(["Felanmälan", "Klagomål"])]
     }
 
@@ -205,85 +224,6 @@ def generate_wordcloud(text_list, width=300, height=200, max_words=50):
     img_b64 = base64.b64encode(img_buffer.read()).decode()
     return img_b64
 
-#def prepare_topic_cooccurrence_by_hex(df, topic_col="topic_keywords_short", min_topics_per_hex=2):
-#    """
-#    Computes topic co-occurrence per hexbin.
-#    Returns:
-#        dict:
-#            hex_id -> DataFrame with columns:
-#                ['topic_a', 'topic_b', 'count']
-#    """
-
-    # keep only rows with topics
-#    df = df[df[topic_col].notna()].copy()
-
-#    hex_cooccurrence = {}
-
-#    for hex_id, g in df.groupby("hex_id"):
-
-        # enforce per-hexbin threshold
-#        if len(g) < min_topics_per_hex:
-#            continue
-
-#        topics = g[topic_col].tolist()
-
-        # need at least two distinct topics
-#        unique_topics = sorted(set(topics))
-#        if len(unique_topics) < 2:
-#            continue
-
-        # build co-occurrence pairs across comments
-#        pairs = []
-
-#        for a, b in combinations(unique_topics, 2):
-#            count = (
-#                    (g[topic_col] == a).sum()
-#                    *
-#                    (g[topic_col] == b).sum()
-#            )
-#            if count > 0:
-#                pairs.append((a, b, count))
-
-#        if not pairs:
-#            continue
-
-#        co_df = (
-#            pd.DataFrame(
-#                pairs,
-#                columns=["topic_a", "topic_b", "count"]
-#            )
-#                .sort_values("count", ascending=False)
-#                .reset_index(drop=True)
-#        )
-
-#        hex_cooccurrence[hex_id] = co_df
-
-#    return hex_cooccurrence
-
-#def compute_topic_cooccurrence_limited(df, topic_col="topic_keywords_short", top_n=30, min_count=10):
-#    """
-#    Compute co-occurrence matrix limited to top N most frequent topics.
-#    """
-#    # count topic frequencies
-#    topic_counts = Counter(df[topic_col].dropna())
-#    top_topics = [t for t, _ in topic_counts.most_common(top_n)]
-
-    # filter dataframe to top topics only
-#    df_top = df[df[topic_col].isin(top_topics)]
-
-    # count co-occurrences
-#    counter = Counter()
-#    for a, b in combinations(top_topics, 2):
-#        count = (df_top[topic_col] == a).sum() * (df_top[topic_col] == b).sum()
-#        if count >= min_count:
-#            counter[(a, b)] = count
-
-#    coocc_df = pd.DataFrame(
-#        [(a, b, c) for (a, b), c in counter.items()],
-#        columns=["topic_a", "topic_b", "count"]
-#    )
-#    return coocc_df
-
 def compute_topic_cooccurrence_by_hex(hex_points_df, topic_col="topic_keywords_short", min_count=1, top_n=None):
     """
     hex_points_df: DataFrame with columns ['hex_id', topic_col] (one row per comment)
@@ -338,11 +278,12 @@ def prepare_vectors(raw_vectors):
         df = fix_topic_column_type(df)
 
         split = split_by_category(df)
-        prepped_vectors[f"praise_idea_{suffix}"] = split["praise_idea"]
+        prepped_vectors[f"praise_{suffix}"] = split["praise"]
+        prepped_vectors[f"idea_{suffix}"] = split["idea"]
         prepped_vectors[f"error_complaint_{suffix}"] = split["error_complaint"]
 
     # all_pts used for year comparisons
-    all_pts = add_day_night_columns(raw_vectors["all_park_related_pts_with_themes"])
+    all_pts = add_time_period_column(raw_vectors["all_park_related_pts_with_themes"])
     all_pts = prepare_topic_df(all_pts)
     all_pts = fix_sentiment_column_type(all_pts)
     all_pts = fix_topic_column_type(all_pts)
@@ -350,7 +291,8 @@ def prepare_vectors(raw_vectors):
 
     # sentiment splits for heatmaps
     heat = split_by_category(all_pts)
-    prepped_vectors["heat_praise_idea"] = heat["praise_idea"]
+    prepped_vectors["heat_praise"] = heat["praise"]
+    prepped_vectors["heat_idea"] = heat["idea"]
     prepped_vectors["heat_error_complaint"] = heat["error_complaint"]
 
     # hexbins
@@ -360,35 +302,22 @@ def prepare_vectors(raw_vectors):
 
     split = split_by_category(hex_src)
 
-    prepped_vectors["hex_bins_praise_idea"] = prepare_hexbins(split["praise_idea"])
+    prepped_vectors["hex_bins_praise"] = prepare_hexbins(split["praise"])
+    prepped_vectors["hex_bins_idea"] = prepare_hexbins(split["idea"])
     prepped_vectors["hex_bins_error_complaint"] = prepare_hexbins(split["error_complaint"])  # hex polygons (for map)
-    prepped_vectors["hex_points_praise_idea"] = split["praise_idea"]
+    prepped_vectors["hex_points_praise"] = split["praise"]
+    prepped_vectors["hex_points_idea"] = split["idea"]
     prepped_vectors["hex_points_error_complaint"] = split["error_complaint"]                 # original points with hex_id (for filtering / word cloud)
 
-    # topic co-occurrence per hexbin
-    #prepped_vectors["topic_cooccurrence_praise_idea"] = (
-    #    prepare_topic_cooccurrence_by_hex(
-    #        split["praise_idea"],
-    #        topic_col="topic_keywords_short",
-    #        min_topics_per_hex=2
-    #    )
-    #)
+    prepped_vectors["hex_topic_cooccurrence_praise"] = compute_topic_cooccurrence_by_hex(
+        prepped_vectors["hex_points_praise"],
+        topic_col="topic_keywords_short",
+        min_count=1,
+        top_n=50
+    )
 
-    #prepped_vectors["topic_cooccurrence_error_complaint"] = (
-    #    prepare_topic_cooccurrence_by_hex(
-    #        split["error_complaint"],
-    #        topic_col="topic_keywords_short",
-    #        min_topics_per_hex=2
-    #    )
-    #)
-
-    # co-occurrence matrices
-    #prepped_vectors["topic_cooccurrence_praise_idea"] = compute_topic_cooccurrence_limited(split["praise_idea"])
-    #prepped_vectors["topic_cooccurrence_error_complaint"] = compute_topic_cooccurrence_limited(split["error_complaint"])
-
-    # For hex-based co-occurrence matrices
-    prepped_vectors["hex_topic_cooccurrence_praise_idea"] = compute_topic_cooccurrence_by_hex(
-        prepped_vectors["hex_points_praise_idea"],
+    prepped_vectors["hex_topic_cooccurrence_idea"] = compute_topic_cooccurrence_by_hex(
+        prepped_vectors["hex_points_idea"],
         topic_col="topic_keywords_short",
         min_count=1,
         top_n=50
@@ -504,7 +433,8 @@ def get_global_topic_domain(prepped_vectors, top_n=5):
     all_topics = []
 
     topic_keys = [
-        "praise_idea_loc", "praise_idea_key", "praise_idea_sim",
+        "praise_loc", "praise_key", "praise_sim",
+        "idea_loc", "idea_key", "idea_sim",
         "error_complaint_loc", "error_complaint_key", "error_complaint_sim",
         "all_pts"
     ]
@@ -568,7 +498,7 @@ def build_single_chart(df, title, kind, temporal_scale, month_order, color_scale
 def make_plot_compare_2_years(prepped_vectors, kind, category, temporal_scale):
     df = prepped_vectors["all_pts"]
     cat_key = CATEGORY_MAP[category]
-    df = df[df["Kategori"].isin(["Beröm","Idé"])] if cat_key=="praise_idea" else df[df["Kategori"].isin(["Felanmälan","Klagomål"])]
+    df = df[df["Kategori"].isin(category_map[cat_key])]
 
     # separate per year
     years = sorted(df["year_label"].unique())
@@ -702,8 +632,10 @@ def make_plot(kind, category, view, temporal_scale, prepped_vectors, top_n=5):
         df_all = prepped_vectors["all_pts"]
 
         cat_key = CATEGORY_MAP[category]
-        if cat_key == "praise_idea":
-            df_all = df_all[df_all["Kategori"].isin(["Beröm", "Idé"])]
+        if cat_key == "praise":
+            df_all = df_all[df_all["Kategori"].isin(["Beröm"])]
+        elif cat_key == "idea":
+            df_all = df_all[df_all["Kategori"].isin(["Idé"])]
         elif cat_key == "error_complaint":
             df_all = df_all[df_all["Kategori"].isin(["Felanmälan", "Klagomål"])]
 
@@ -864,88 +796,6 @@ def create_folium_hexbin_map_with_wc(hex_gdf, points_df, text_col="lemmas", colo
 
     return m
 
-#def cooccurrence_df_to_html(df, max_rows=10):
-#    """
-#    Render a co-occurrence DataFrame as HTML for Folium popup.
-#    """
-#    if df is None or df.empty:
-#        return "<b>Too few comments to show topic co-occurrence</b>"
-
-#    df = df.head(max_rows)
-
-#    html = """
-#    <table style="width:100%; font-size:12px; border-collapse: collapse;">
-#        <tr>
-#            <th style="border-bottom:1px solid #999; text-align:left;">Topic A</th>
-#            <th style="border-bottom:1px solid #999; text-align:left;">Topic B</th>
-#            <th style="border-bottom:1px solid #999; text-align:right;">Count</th>
-#        </tr>
-#    """
-
-#    for _, row in df.iterrows():
-#        html += f"""
-#        <tr>
-#            <td>{row['topic_a']}</td>
-#            <td>{row['topic_b']}</td>
-#            <td style="text-align:right;">{row['count']}</td>
-#        </tr>
-#        """
-
-#    html += "</table>"
-#    return html
-
-#def create_folium_hexbin_map_for_selection(hex_gdf, color_col="count"):
-#    m = create_folium_basemap()
-
-#    folium.GeoJson(
-#        hex_gdf,
-#        name="hexbins",
-#        style_function=lambda feature: {
-#            "fillColor": colormap(feature["properties"][color_col]),
-#            "color": "black",
-#            "weight": 1,
-#            "fillOpacity": 0.6,
-#        },
-#        tooltip=folium.GeoJsonTooltip(
-#            fields=[color_col],
-#            aliases=["Count:"],
-#            localize=True
-#        ),
-#    ).add_to(m)
-
-#    return m
-
-#def plot_topic_cooccurrence_altair(coocc_df):
-#    chart = (
-#        alt.Chart(coocc_df)
-#        .mark_rect()
-#        .encode(
-#            x=alt.X(
-#                "topic_a:N",
-#                title="Topic A",
-#                axis=alt.Axis(labelAngle=45)
-#            ),
-#            y=alt.Y(
-#                "topic_b:N",
-#                title="Topic B"
-#            ),
-#            color=alt.Color(
-#                "count:Q",
-#                scale=alt.Scale(scheme="viridis"),
-#                title="Co-occurrence count"
-#            ),
-#            tooltip=["topic_a", "topic_b", "count"]
-#        )
-#        .properties(
-#            width=600,
-#            height=600
-#        )
-#    )
-
-#    return chart
-
-
-
 # =================
 # === STREAMLIT ===
 
@@ -965,47 +815,58 @@ section = st.sidebar.pills(
 if section == "Overview":
     overview_question = st.sidebar.radio(
         "Choose a question:",
-        ["Where is Tyck till being used? (heatmap, day/night)", "*What* is talked about *where*?"]
+        ["*Where* and *when* is Tyck till being used?", "*What* is talked about *where*?"]
     )
 
-    if overview_question == "Where is Tyck till being used? (heatmap, day/night)":
+    if overview_question == "*Where* and *when* is Tyck till being used?":            # *** change to slider + weekday vs weekend?? ***
 
         st.subheader("Tycktill entries")
 
         category_choice = st.sidebar.pills("Tyck till category:",
-            ["Praise + Ideas", "Error + Complaints"],
+            ["Praise", "Ideas", "Error + Complaints"],
             selection_mode="single",
-            default="Praise + Ideas",
+            default="Praise",
             key="sent_cat")
 
-        if category_choice == "Praise + Ideas":
-            pts_category = prepped_vectors["heat_praise_idea"]
+        if category_choice == "Praise":
+            pts_category = prepped_vectors["heat_praise"]
+        elif category_choice == "Ideas":
+            pts_category = prepped_vectors["heat_idea"]
         else:
             pts_category = prepped_vectors["heat_error_complaint"]
 
-        pts_day = pts_category[pts_category["is_day"]]
-        pts_night = pts_category[pts_category["is_night"]]
+        TIME_PERIODS = [
+            ("Night", "Night (00:00–05:59)"),
+            ("Morning", "Morning (06:00–09:59)"),
+            ("Midday", "Midday (10:00–15:59)"),
+            ("Evening", "Evening (16:00–23:59)")
+        ]
 
-        col1, col2 = st.columns(2)
+        cols = st.columns(2)
+        rows = [cols, st.columns(2)]
 
-        with col1:
-            st.markdown("**Daytime (06:00-18:00)**")
-            m_day = create_folium_basemap()
-            add_folium_heatmap(m_day, pts_day)
-            folium_static(m_day, width=550, height=550)
+        period_dfs = {
+            period: pts_category[pts_category["time_period"] == period]
+            for period, _ in TIME_PERIODS
+        }
 
-        with col2:
-            st.markdown("**Nighttime (18:00-06:00)**")
-            m_night = create_folium_basemap()
-            add_folium_heatmap(m_night, pts_night)
-            folium_static(m_night, width=550, height=550)
+        i = 0
+        for row in rows:
+            for col in row:
+                period, label = TIME_PERIODS[i]
+                with col:
+                    st.markdown(f"**{label}**")
+                    m = create_folium_basemap()
+                    add_folium_heatmap(m, period_dfs[period])
+                    folium_static(m, width=500, height=500)
+                i += 1
 
     elif overview_question == "*What* is talked about *where*?":
         category_choice = st.sidebar.pills(
             "Select category:",
-            ["Praise + Ideas", "Error + Complaints"],
+            ["Praise", "Ideas", "Error + Complaints"],
             selection_mode="single",
-            default="Praise + Ideas",
+            default="Praise",
             key="overview_cat"
         )
 
@@ -1017,10 +878,12 @@ if section == "Overview":
             key="overview_hex"
         )
 
-        if category_choice == "Praise + Ideas":
-            hex_gdf = prepped_vectors["hex_bins_praise_idea"]
-            points_df = prepped_vectors["hex_points_praise_idea"]
-
+        if category_choice == "Praise":
+            hex_gdf = prepped_vectors["hex_bins_praise"]
+            points_df = prepped_vectors["hex_points_praise"]
+        elif category_choice == "Ideas":
+            hex_gdf = prepped_vectors["hex_bins_idea"]
+            points_df = prepped_vectors["hex_points_idea"]
         else:
             hex_gdf = prepped_vectors["hex_bins_error_complaint"]
             points_df = prepped_vectors["hex_points_error_complaint"]
@@ -1036,51 +899,6 @@ if section == "Overview":
             )
             folium_static(m, width=700, height=500)
 
-        #elif hex_choice == "Topic co-occurence":
-
-        #    if category_choice == "Praise + Ideas":
-        #        hex_gdf = prepped_vectors["hex_bins_praise_idea"]
-        #        cooccurrence = prepped_vectors["topic_cooccurrence_praise_idea"]
-        #    else:
-        #        hex_gdf = prepped_vectors["hex_bins_error_complaint"]
-        #        cooccurrence = prepped_vectors["topic_cooccurrence_error_complaint"]
-
-        #    st.subheader("Topic co-occurrence by location")
-        #    st.caption("Click a hexagon to explore which topics appear together.")
-
-            # --- MAP ---
-        #    m = create_folium_hexbin_map_for_selection(hex_gdf)
-
-        #    map_out = st_folium(
-        #        m,
-        #        width=700,
-        #        height=500,
-        #        returned_objects=["last_active_drawing"]
-        #    )
-
-            # --- HEX SELECTION ---
-        #    selected_hex_id = None
-
-        #    if (
-        #            map_out
-        #            and map_out.get("last_active_drawing")
-        #            and map_out["last_active_drawing"].get("properties")
-        #    ):
-        #        selected_hex_id = map_out["last_active_drawing"]["properties"].get("hex_id")
-
-            # --- PLOT ---
-        #    if selected_hex_id is None:
-        #        st.info("Click a hexagon on the map to see topic co-occurrence.")
-        #    else:
-        #        coocc_df = cooccurrence.get(selected_hex_id)
-
-        #        if coocc_df is None or coocc_df.empty:
-        #            st.warning("Too few comments in this area to compute topic co-occurrence.")
-        #        else:
-        #            st.altair_chart(
-        #                plot_topic_cooccurrence_altair(coocc_df),
-        #                use_container_width=True
-        #            )
 
 
 # ==================
@@ -1095,9 +913,9 @@ if section == "Sentiments":
     if sentiment_question == "Do sentiments vary over time?":
         category_group = st.sidebar.pills(
             "Tyck till category:",
-            ["Praise + Ideas", "Error + Complaints"],
+            ["Praise", "Ideas", "Error + Complaints"],
             selection_mode="single",
-            default="Praise + Ideas",
+            default="Praise",
             key="sent_cat"
         )
 
@@ -1142,9 +960,9 @@ if section == "Topics":
     if topic_question == "Do topics vary over time?":
         category_group = st.sidebar.pills(
             "Tyck till category:",
-            ["Praise + Ideas", "Error + Complaints"],
+            ["Praise", "Ideas", "Error + Complaints"],
             selection_mode="single",
-            default="Praise + Ideas",
+            default="Praise",
             key="topic_cat"
         )
 
@@ -1185,13 +1003,15 @@ if section == "Topics":
 
         category_choice = st.sidebar.pills(
             "Select category:",
-            ["Praise + Ideas", "Error + Complaints"],
+            ["Praise", "Ideas", "Error + Complaints"],
             selection_mode="single",
-            default="Praise + Ideas"
+            default="Praise"
         )
 
-        if category_choice == "Praise + Ideas":
-            coocc_df = prepped_vectors["hex_topic_cooccurrence_praise_idea"]
+        if category_choice == "Praise":
+            coocc_df = prepped_vectors["hex_topic_cooccurrence_praise"]
+        elif category_choice == "Ideas":
+            coocc_df = prepped_vectors["hex_topic_cooccurrence_idea"]
         else:
             coocc_df = prepped_vectors["hex_topic_cooccurrence_error_complaint"]
 
