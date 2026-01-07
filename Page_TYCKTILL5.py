@@ -19,8 +19,8 @@ from streamlit_folium import st_folium
 
 
 # TO DO
+# fix wordclouds (they should be the same for hexbins in the same park BUT words are placed in different spots with different colors)
 # group similar topics (and use these instead of raw topics in topics matrix etc)
-# use park polygons like im using hexbins OR use hexbins and park polygons together (so for _by_location points use park polygons and for all other points use hexbins)
 # (make a dropdown list for topics to choose and then make graphs or maps that are specific to the chosen topic)
 # visa något i formatet streamlit table? de går att sortera tabellerna. https://discuss.streamlit.io/t/good-looking-table-for-a-streamlit-application-is-anyone-still-using-aggrid/63763/3
 
@@ -186,32 +186,61 @@ def add_h3_hex_id(df, resolution=9):
     return df
 
 def prepare_hexbins(df, text_col="lemmas"):
-    """
-    Returns:
-        hex_gdf: one row per hexagon with geometry, count, and words
-    """
-    # explode keywords so wordcloud has frequency
-    exploded = df.explode(text_col)
-
-    agg = (
-        exploded
-        .groupby("hex_id")
-        .agg(
-            count=("hex_id", "size"),
-            words=(text_col, lambda x: list(x.dropna()))
+    if text_col in df.columns:
+        exploded = df.explode(text_col)
+        agg = (
+            exploded
+            .groupby("hex_id")
+            .agg(
+                count=("hex_id", "size"),
+                words=(text_col, lambda x: list(x.dropna()))
+            )
+            .reset_index()
         )
-        .reset_index()
-    )
+    else:
+        agg = df[["hex_id"]].drop_duplicates()
+        agg["count"] = 0
+        agg["words"] = [[] for _ in range(len(agg))]
 
     # geometry for plotting hexagons
     agg["geometry"] = agg["hex_id"].apply(
-        lambda h: Polygon(
-            [(lng, lat) for lat, lng in h3.cell_to_boundary(h)]
-        )
+        lambda h: Polygon([(lng, lat) for lat, lng in h3.cell_to_boundary(h)])
     )
 
     hex_gdf = gpd.GeoDataFrame(agg, geometry="geometry", crs="EPSG:4326")
     return hex_gdf
+
+def assign_hexes_to_parks(hex_gdf, parks_gdf, group_col="group"):
+    """
+    Returns hex_gdf with a new column:
+        - agg_id: group if hex is inside a park, else hex_id
+        - group: group or None
+    """
+    # Use centroids for stable assignment
+    hex_gdf = hex_gdf.copy()
+    hex_gdf["centroid"] = hex_gdf.geometry.centroid
+
+    hex_centroids = hex_gdf.set_geometry("centroid")
+
+    # Spatial join: which hex centroid falls inside which park
+    joined = gpd.sjoin(
+        hex_centroids,
+        parks_gdf[[group_col, "geometry"]],
+        how="left",
+        predicate="within"
+    )
+
+    # Restore geometry
+    joined = joined.drop(columns="centroid").set_geometry("geometry")
+
+    joined["group"] = joined[group_col]
+
+    # Aggregation key:
+    #   group if exists, else hex_id
+    joined["agg_id"] = joined["group"].fillna(joined["hex_id"])
+
+    return joined
+
 
 def generate_wordcloud(text_list, width=300, height=200, max_words=50):
     """Create a word cloud image and return as base64 string."""
@@ -299,35 +328,51 @@ def prepare_vectors(raw_vectors):
     hex_src = add_lat_lon(raw_vectors["all_park_related_pts_with_themes_AND_STANZA"])
     hex_src = prepare_topic_df(hex_src)
     hex_src = add_h3_hex_id(hex_src, resolution=9)
-
     split = split_by_category(hex_src)
 
-    prepped_vectors["hex_bins_praise"] = prepare_hexbins(split["praise"])
-    prepped_vectors["hex_bins_idea"] = prepare_hexbins(split["idea"])
-    prepped_vectors["hex_bins_error_complaint"] = prepare_hexbins(split["error_complaint"])  # hex polygons (for map)
-    prepped_vectors["hex_points_praise"] = split["praise"]
-    prepped_vectors["hex_points_idea"] = split["idea"]
-    prepped_vectors["hex_points_error_complaint"] = split["error_complaint"]                 # original points with hex_id (for filtering / word cloud)
+    # ---- create hex -> group lookup (ONCE) ----
+    parks_gdf = raw_vectors["stats_per_park"]
 
+    # Prepare hex geometries and assign to parks
+    hex_geom_lookup = prepare_hexbins(hex_src[["hex_id"]].drop_duplicates())
+    hex_geom_lookup = assign_hexes_to_parks(hex_geom_lookup, parks_gdf)
+    hex_lookup = hex_geom_lookup[["hex_id", "group", "agg_id"]]
+
+    #prepped_vectors["hex_bins_praise"] = prepare_hexbins(split["praise"])
+    #prepped_vectors["hex_bins_idea"] = prepare_hexbins(split["idea"])
+    #prepped_vectors["hex_bins_error_complaint"] = prepare_hexbins(split["error_complaint"])  # hex polygons (for map)
+
+    #hex_bins_praise = prepare_hexbins(split["praise"])
+    #hex_bins_idea = prepare_hexbins(split["idea"])
+    #hex_bins_error = prepare_hexbins(split["error_complaint"])
+
+    # ---- Hex bins with aggregation ----
+    hex_bins_praise = prepare_hexbins(split["praise"]).merge(hex_lookup, on="hex_id", how="left")
+    hex_bins_idea = prepare_hexbins(split["idea"]).merge(hex_lookup, on="hex_id", how="left")
+    hex_bins_error = prepare_hexbins(split["error_complaint"]).merge(hex_lookup, on="hex_id", how="left")
+
+    #hex_bins_praise = assign_hexes_to_parks(hex_bins_praise, parks_gdf)
+    #hex_bins_idea = assign_hexes_to_parks(hex_bins_idea, parks_gdf)
+    #hex_bins_error = assign_hexes_to_parks(hex_bins_error, parks_gdf)
+
+    prepped_vectors["hex_bins_praise"] = hex_bins_praise
+    prepped_vectors["hex_bins_idea"] = hex_bins_idea
+    prepped_vectors["hex_bins_error_complaint"] = hex_bins_error
+
+    # ---- Hex points with same aggregation info ----
+    prepped_vectors["hex_points_praise"] = split["praise"].merge(hex_lookup, on="hex_id", how="left")
+    prepped_vectors["hex_points_idea"] = split["idea"].merge(hex_lookup, on="hex_id", how="left")
+    prepped_vectors["hex_points_error_complaint"] = split["error_complaint"].merge(hex_lookup, on="hex_id", how="left")
+
+    # ---- Topic co-occurrence ----
     prepped_vectors["hex_topic_cooccurrence_praise"] = compute_topic_cooccurrence_by_hex(
-        prepped_vectors["hex_points_praise"],
-        topic_col="topic_keywords_short",
-        min_count=1,
-        top_n=50
+        prepped_vectors["hex_points_praise"], topic_col="topic_keywords_short", min_count=1, top_n=50
     )
-
     prepped_vectors["hex_topic_cooccurrence_idea"] = compute_topic_cooccurrence_by_hex(
-        prepped_vectors["hex_points_idea"],
-        topic_col="topic_keywords_short",
-        min_count=1,
-        top_n=50
+        prepped_vectors["hex_points_idea"], topic_col="topic_keywords_short", min_count=1, top_n=50
     )
-
     prepped_vectors["hex_topic_cooccurrence_error_complaint"] = compute_topic_cooccurrence_by_hex(
-        prepped_vectors["hex_points_error_complaint"],
-        topic_col="topic_keywords_short",
-        min_count=1,
-        top_n=50
+        prepped_vectors["hex_points_error_complaint"], topic_col="topic_keywords_short", min_count=1, top_n=50
     )
 
     return prepped_vectors
@@ -768,30 +813,77 @@ def create_folium_hexbin_map_with_wc(hex_gdf, points_df, text_col="lemmas", colo
     m = create_folium_basemap()
 
     for _, row in hex_gdf.iterrows():
-        pts_in_hex = points_df[points_df["hex_id"] == row["hex_id"]]
+        #pts_in_hex = points_df[points_df["hex_id"] == row["hex_id"]]
+        #################
+        # get pts per hex or per aggregated hexes if overlapping with the same park
+        agg_id = row["agg_id"]
+
+        pts_in_hex = points_df[points_df["agg_id"] == agg_id]
+        #################
 
         texts = pts_in_hex[text_col].dropna().tolist()
 
         # make hexbins if > 10 comments in the bin
+        #if len(texts) < 10:
+        #    popup_html = "<b>Too few comments to display</b>"
+        #else:
+        #    img_b64 = generate_wordcloud(texts)
+        #    popup_html = (
+        #        f'<img src="data:image/png;base64,{img_b64}" '
+        #        f'width="300" height="200">'
+        #    )
+
+        n_hexes = hex_gdf.loc[hex_gdf["agg_id"] == agg_id, "hex_id"].nunique()
+
         if len(texts) < 10:
-            popup_html = "<b>Too few comments to display</b>"
+            popup_html = (
+                "<b>Too few comments to display</b><br>"
+                f"<i>Based on {n_hexes} hexbin{'s' if n_hexes > 1 else ''}</i>"
+            )
         else:
             img_b64 = generate_wordcloud(texts)
             popup_html = (
+                f"<b>Word cloud</b><br>"
+                f"<i>Based on {n_hexes} hexbin{'s' if n_hexes > 1 else ''}</i><br>"
                 f'<img src="data:image/png;base64,{img_b64}" '
                 f'width="300" height="200">'
             )
 
+        #folium.GeoJson(
+        #    row["geometry"],
+        #    style_function=lambda f, color=row[color_col]: {
+        #        'fillColor': colormap(color),
+        #        'color': 'black',
+        #        'weight': 1,
+        #        'fillOpacity': 0.6
+        #    },
+        #    tooltip=folium.Tooltip(f"Count: {row[color_col]}"),
+        #    popup=folium.Popup(popup_html, max_width=320)
+        #).add_to(m)
+
+        # Tooltip text
+        in_park = pd.notna(row["group"])
+        if not in_park:
+            tooltip_text = "Single hexbin"
+        elif n_hexes == 1:
+            tooltip_text = "Hexbin overlaps with a park"
+        else:
+            tooltip_text = "Aggregated across multiple hexbins (park)"
+
+        # Border weight
+        border_weight = 3 if in_park else 1
+        border_color = "black"
+
         folium.GeoJson(
             row["geometry"],
-            style_function=lambda f, color=row[color_col]: {
-                'fillColor': colormap(color),
-                'color': 'black',
-                'weight': 1,
-                'fillOpacity': 0.6
+            style_function=lambda f, color=row[color_col], weight=border_weight, border_color=border_color: {
+                "fillColor": colormap(color),
+                "color": border_color,
+                "weight": weight,
+                "fillOpacity": 0.6,
             },
-            tooltip=folium.Tooltip(f"Count: {row[color_col]}"),
-            popup=folium.Popup(popup_html, max_width=320)
+            tooltip=folium.Tooltip(tooltip_text),
+            popup=folium.Popup(popup_html, max_width=340),
         ).add_to(m)
 
     return m
@@ -898,6 +990,9 @@ if section == "Overview":
                 text_col="lemmas"
             )
             folium_static(m, width=700, height=500)
+
+        elif hex_choice == "Topic co-occurence":
+            st.info("remove this choice if no topic co-occurence in relation to hexbins??")
 
 
 
