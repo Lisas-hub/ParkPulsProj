@@ -14,8 +14,10 @@ from wordcloud import WordCloud
 import base64
 from io import BytesIO
 from itertools import combinations
+import itertools
 from collections import Counter
 from streamlit_folium import st_folium
+import ast
 
 
 # TO DO
@@ -56,14 +58,13 @@ def vector_layer(path: str, layer_name: str) -> gpd.GeoDataFrame:
 @st.cache_data(show_spinner="Loading layers…")
 def load_all_VECTOR_data():
     data = {}
-    data["stats_per_park"] = vector_layer(tycktill_GPKG, "stats_per_park")
-    data["all_park_related_pts_with_themes"] = vector_layer(tycktill_filtered_GPKG, "all_park_related_pts_with_themes")
-    # topic sources
-    data["pts_with_topics_by_location"] = vector_layer(tycktill_filtered_GPKG, "pts_in_parks_with_topics")
-    data["pts_with_topics_by_keywords_strictly"] = vector_layer(tycktill_filtered_GPKG, "park_comments_by_keyword")
-    data["pts_with_topics_by_keywords_similarity"] = vector_layer(tycktill_filtered_GPKG, "park_comments_by_BERTopic")
-    data["parks_with_top5_topics"] = vector_layer(tycktill_filtered_GPKG, "parks_with_top5_topics")
-    data["all_park_related_pts_with_themes_AND_STANZA"] = vector_layer(tycktill_filtered_with_lemmas_GPKG, "all_park_related_pts_with_themes_AND_STANZA")
+    data["stats_per_park"] = vector_layer(tycktill_GPKG, "stats_per_park")                                              # park polygons
+    data["all_park_related_pts_with_themes"] = vector_layer(tycktill_filtered_GPKG, "all_park_related_pts_with_themes") # all datapoints with most(?) columns (including original columns, sentiment, topic and themes columns)
+    data["pts_with_topics_by_location"] = vector_layer(tycktill_filtered_GPKG, "pts_in_parks_with_topics")              # filtered by park boundary output (includes original columns, sentiment, topic and themes columns)
+    data["pts_with_topics_by_keywords_strictly"] = vector_layer(tycktill_filtered_GPKG, "park_comments_by_keyword")     # filtered by keywords (strictly) output (includes original columns, sentiment, topic and themes columns)
+    data["pts_with_topics_by_keywords_similarity"] = vector_layer(tycktill_filtered_GPKG, "park_comments_by_BERTopic")  # filtered by keywords (similarity) output (includes original columns, sentiment, topic and themes columns)
+    data["parks_with_top5_topics"] = vector_layer(tycktill_filtered_GPKG, "parks_with_top5_topics")                     # park polygons + columns for top 5 topics per park
+    data["all_park_related_pts_with_themes_AND_STANZA"] = vector_layer(tycktill_filtered_with_lemmas_GPKG, "all_park_related_pts_with_themes_AND_STANZA") # basically same as all_park_related_pts_with_themes but with additional columns for word clouds
     return data
 
 raw_vectors = load_all_VECTOR_data()
@@ -92,6 +93,8 @@ category_map = {
 }
 
 TOPIC_COLOR_SCHEME = "tableau20"
+
+MIXED_SENTIMENT_REL_THRESHOLD = 0.3           # 30%
 
 # ========================
 # === DATA PREPARATION ===
@@ -241,7 +244,6 @@ def assign_hexes_to_parks(hex_gdf, parks_gdf, group_col="group"):
 
     return joined
 
-
 def generate_wordcloud(text_list, width=300, height=200, max_words=50):
     """Create a word cloud image and return as base64 string."""
     if not text_list:
@@ -287,6 +289,21 @@ def compute_topic_cooccurrence_by_hex(hex_points_df, topic_col="topic_keywords_s
 
     return coocc_df
 
+def convert_sentiment_all(x):
+    if isinstance(x, str):
+        return ast.literal_eval(x)
+    return x
+
+def count_mixed_sentiment(sent_list, rel_threshold=MIXED_SENTIMENT_REL_THRESHOLD):
+    """
+    Counts how many sentiments are close to the max sentiment score in a single comment.
+    Returns labels that are within rel_threshold of the max.
+    """
+    if not sent_list:
+        return []
+    max_score = max(s['score'] for s in sent_list)
+    return [s['label'] for s in sent_list if s['score'] >= max_score * (1 - rel_threshold)]
+
 # ============================
 # === PREPARED VECTOR DATA ===
 
@@ -324,6 +341,15 @@ def prepare_vectors(raw_vectors):
     prepped_vectors["heat_idea"] = heat["idea"]
     prepped_vectors["heat_error_complaint"] = heat["error_complaint"]
 
+    # mixed sentiments - convert sentiment_all to list
+    all_pts['sentiment_all'] = all_pts['sentiment_all'].apply(convert_sentiment_all)
+
+    # mixed sentiments (mixed_count = 1 is clear dominant sentiment, mixed_count > 1 is mixed sentiment)
+    all_pts['mixed_sent_labels'] = all_pts['sentiment_all'].apply(count_mixed_sentiment)
+    all_pts['mixed_count'] = all_pts['mixed_sent_labels'].apply(len)
+
+    prepped_vectors["all_pts"] = all_pts
+
     # hexbins
     hex_src = add_lat_lon(raw_vectors["all_park_related_pts_with_themes_AND_STANZA"])
     hex_src = prepare_topic_df(hex_src)
@@ -338,22 +364,10 @@ def prepare_vectors(raw_vectors):
     hex_geom_lookup = assign_hexes_to_parks(hex_geom_lookup, parks_gdf)
     hex_lookup = hex_geom_lookup[["hex_id", "group", "agg_id"]]
 
-    #prepped_vectors["hex_bins_praise"] = prepare_hexbins(split["praise"])
-    #prepped_vectors["hex_bins_idea"] = prepare_hexbins(split["idea"])
-    #prepped_vectors["hex_bins_error_complaint"] = prepare_hexbins(split["error_complaint"])  # hex polygons (for map)
-
-    #hex_bins_praise = prepare_hexbins(split["praise"])
-    #hex_bins_idea = prepare_hexbins(split["idea"])
-    #hex_bins_error = prepare_hexbins(split["error_complaint"])
-
     # ---- Hex bins with aggregation ----
     hex_bins_praise = prepare_hexbins(split["praise"]).merge(hex_lookup, on="hex_id", how="left")
     hex_bins_idea = prepare_hexbins(split["idea"]).merge(hex_lookup, on="hex_id", how="left")
     hex_bins_error = prepare_hexbins(split["error_complaint"]).merge(hex_lookup, on="hex_id", how="left")
-
-    #hex_bins_praise = assign_hexes_to_parks(hex_bins_praise, parks_gdf)
-    #hex_bins_idea = assign_hexes_to_parks(hex_bins_idea, parks_gdf)
-    #hex_bins_error = assign_hexes_to_parks(hex_bins_error, parks_gdf)
 
     prepped_vectors["hex_bins_praise"] = hex_bins_praise
     prepped_vectors["hex_bins_idea"] = hex_bins_idea
@@ -767,6 +781,104 @@ def make_plot(kind, category, view, temporal_scale, prepped_vectors, top_n=5):
 
     return charts
 
+# =====================
+# plot mixed sentiments
+
+def get_mixed_sentiment_summary(df, category_name):
+    category_map = {
+        "Praise": ["Beröm"],
+        "Ideas": ["Idé"],
+        "Error + Complaints": ["Felanmälan", "Klagomål"]
+    }
+    # Filter by category
+    df_filtered = df[df["Kategori"].isin(category_map[category_name])]
+    # Map mixed_count to single/mixed
+    summary = df_filtered['mixed_count'].apply(lambda x: "Single sentiment" if x == 1 else "Mixed sentiment").value_counts().reset_index()
+    summary.columns = ["Sentiment type", "Count"]
+    return summary
+
+def plot_mixed_sentiment_bar(summary):
+    return alt.Chart(summary).mark_bar(color="#aecad6").encode(
+        x=alt.X("Sentiment type:N", title="Sentiment type", axis=alt.Axis(labelAngle=0)),
+        y=alt.Y("Count:Q", title="Number of comments"),
+        tooltip=["Sentiment type", "Count"]
+    )
+
+def compute_sentiment_cooccurrence_matrix(df):
+    """
+    Builds a normalized lower-triangle co-occurrence matrix
+    for mixed-sentiment comments only.
+    """
+
+    # Keep only mixed comments
+    df_mixed = df[df["mixed_count"] > 1]
+
+    # Count sentiment pair occurrences
+    pair_counts = {}
+
+    for labels in df_mixed["mixed_sent_labels"]:
+        unique_labels = sorted(set(labels))
+        for i in range(len(unique_labels)):
+            for j in range(i):  # LOWER TRIANGLE ONLY
+                pair = (unique_labels[i], unique_labels[j])
+                pair_counts[pair] = pair_counts.get(pair, 0) + 1
+
+    if not pair_counts:
+        return pd.DataFrame(columns=["sent_a", "sent_b", "count", "percent"])
+
+    cooc_df = (
+        pd.DataFrame(
+            [(a, b, c) for (a, b), c in pair_counts.items()],
+            columns=["sent_a", "sent_b", "count"]
+        )
+    )
+
+    # Normalize by total mixed comments
+    total_mixed = len(df_mixed)
+    cooc_df["percent"] = cooc_df["count"] / total_mixed * 100
+
+    return cooc_df
+
+def plot_sentiment_cooccurrence_matrix(cooc_df):
+    if cooc_df.empty:
+        return alt.Chart(pd.DataFrame({"msg": ["No mixed sentiments found"]})).mark_text().encode(text="msg")
+
+    chart = (
+        alt.Chart(cooc_df)
+        .mark_rect()
+        .encode(
+            x=alt.X(
+                "sent_b:N",
+                title="Sentiment",
+                sort=["NEGATIVE", "NEUTRAL", "POSITIVE"],
+                axis=alt.Axis(labelAngle=0)
+            ),
+            y=alt.Y(
+                "sent_a:N",
+                title="Sentiment",
+                sort=["NEGATIVE", "NEUTRAL", "POSITIVE"]
+            ),
+            color=alt.Color(
+                "percent:Q",
+                title="Share of mixed comments (%)",
+                scale=alt.Scale(scheme="viridis")
+            ),
+            tooltip=[
+                alt.Tooltip("sent_a:N", title="Sentiment A"),
+                alt.Tooltip("sent_b:N", title="Sentiment B"),
+                alt.Tooltip("count:Q", title="Number of comments"),
+                alt.Tooltip("percent:Q", title="Share (%)", format=".2f")
+            ]
+        )
+        .properties(
+            title="Sentiment co-occurrence in mixed comments",
+            width=300,
+            height=300
+        )
+    )
+
+    return chart
+
 # ============
 # === MAPS ===
 
@@ -994,15 +1106,13 @@ if section == "Overview":
         elif hex_choice == "Topic co-occurence":
             st.info("remove this choice if no topic co-occurence in relation to hexbins??")
 
-
-
 # ==================
 # === SENTIMENTS ===
 
 if section == "Sentiments":
     sentiment_question = st.sidebar.radio(
         "Choose a question:",
-        ["Do sentiments vary over time?", "Sentiment question 2"]
+        ["Do sentiments vary over time?", "What sentiment dominates in what park (by location)?", "Do sentiments mix within comments?"]
     )
 
     if sentiment_question == "Do sentiments vary over time?":
@@ -1042,6 +1152,47 @@ if section == "Sentiments":
 
     elif sentiment_question == "What sentiment dominates in what park (by location)?":
         "add sentiment per park normalised by ha?"
+
+    elif sentiment_question == "Do sentiments mix within comments?":
+
+        chart_type = st.sidebar.pills(
+            "Choose chart type:",
+            ["Bar chart", "Co-occurence matrix"],
+            selection_mode="single",
+            default="Bar chart",
+            key="mixed_chart_type"
+        )
+
+        if chart_type == "Bar chart":
+
+            category_group = st.sidebar.pills(
+                "Tyck till category:",
+                ["Praise", "Ideas", "Error + Complaints"],
+                selection_mode="single",
+                default="Praise",
+                key="sent_mixed_cat"
+            )
+
+            st.subheader(f"Mixed vs Single Sentiment: {category_group}")
+
+            summary = get_mixed_sentiment_summary(prepped_vectors["all_pts"], category_group)
+            bar_chart = plot_mixed_sentiment_bar(summary)
+            #st.altair_chart(bar_chart, use_container_width=True)
+            st.altair_chart(bar_chart, width=600)
+
+        elif chart_type == "Co-occurence matrix":
+            st.subheader("How sentiments combine within individual comments")
+
+            cooc_df = compute_sentiment_cooccurrence_matrix(prepped_vectors["all_pts"])
+            matrix_chart = plot_sentiment_cooccurrence_matrix(cooc_df)
+
+            st.altair_chart(matrix_chart, use_container_width=True)
+
+            st.caption(
+                "Matrix shows how often sentiment pairs co-occur within the same comment. "
+                "Values are normalized by the total number of mixed-sentiment comments."
+            )
+
 
 # ==============
 # === TOPICS ===   *** lägg till en subpage med en dropdown lista över typ top 20 eller 50 topics och så kan man välja en och få lite olika grafer? ***

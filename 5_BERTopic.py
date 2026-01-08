@@ -187,6 +187,12 @@ topic_summary.to_excel(topic_summary_out, index=False)
 # save model
 topic_model.save(model_path)
 
+# save topic embeddings (needed for topic grouping for co-occurence matrix)
+np.save(f"{output_folder}/topic_embeddings.npy", topic_model.topic_embeddings_)
+
+# save topic info (needed for topic grouping for co-occurence matrix)
+topic_model.get_topic_info().to_csv(f"{output_folder}/topic_info.csv", index=False)
+
 # save probabilities
 np.save(os.path.join(output_folder, "topic_probabilities.npy"), probs)
 
