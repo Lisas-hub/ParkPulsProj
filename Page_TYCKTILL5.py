@@ -32,6 +32,7 @@ st.set_page_config(layout="wide")
 tycktill_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\tycktill.gpkg"
 tycktill_filtered_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg"
 tycktill_filtered_with_lemmas_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\STANZA_for_word_cloud\STANZA_output.gpkg"
+tycktill_reduced_topics_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_reduce_topics\tycktill_reduced_topics.gpkg"
 
 plots_folder_path = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\plots"
 
@@ -65,6 +66,7 @@ def load_all_VECTOR_data():
     data["pts_with_topics_by_keywords_similarity"] = vector_layer(tycktill_filtered_GPKG, "park_comments_by_BERTopic")  # filtered by keywords (similarity) output (includes original columns, sentiment, topic and themes columns)
     data["parks_with_top5_topics"] = vector_layer(tycktill_filtered_GPKG, "parks_with_top5_topics")                     # park polygons + columns for top 5 topics per park
     data["all_park_related_pts_with_themes_AND_STANZA"] = vector_layer(tycktill_filtered_with_lemmas_GPKG, "all_park_related_pts_with_themes_AND_STANZA") # basically same as all_park_related_pts_with_themes but with additional columns for word clouds
+    data["tycktill_with_topics_and_meta_topics"] = vector_layer(tycktill_reduced_topics_GPKG, "tycktill_with_topics_and_meta_topics") # basically same as all_park_related_pts_with_themes but with additional columns for meta topics
     return data
 
 raw_vectors = load_all_VECTOR_data()
@@ -350,21 +352,22 @@ def prepare_vectors(raw_vectors):
 
     prepped_vectors["all_pts"] = all_pts
 
-    # hexbins
-    hex_src = add_lat_lon(raw_vectors["all_park_related_pts_with_themes_AND_STANZA"])
+    # HEXBINS
+    #hex_src = add_lat_lon(raw_vectors["all_park_related_pts_with_themes_AND_STANZA"])
+    hex_src = add_lat_lon(raw_vectors["tycktill_with_topics_and_meta_topics"])
     hex_src = prepare_topic_df(hex_src)
     hex_src = add_h3_hex_id(hex_src, resolution=9)
     split = split_by_category(hex_src)
 
-    # ---- create hex -> group lookup (ONCE) ----
+    # create hex -> group lookup (ONCE)
     parks_gdf = raw_vectors["stats_per_park"]
 
-    # Prepare hex geometries and assign to parks
+    # prepare hex geometries and assign to parks
     hex_geom_lookup = prepare_hexbins(hex_src[["hex_id"]].drop_duplicates())
     hex_geom_lookup = assign_hexes_to_parks(hex_geom_lookup, parks_gdf)
     hex_lookup = hex_geom_lookup[["hex_id", "group", "agg_id"]]
 
-    # ---- Hex bins with aggregation ----
+    # hex bins with aggregation
     hex_bins_praise = prepare_hexbins(split["praise"]).merge(hex_lookup, on="hex_id", how="left")
     hex_bins_idea = prepare_hexbins(split["idea"]).merge(hex_lookup, on="hex_id", how="left")
     hex_bins_error = prepare_hexbins(split["error_complaint"]).merge(hex_lookup, on="hex_id", how="left")
@@ -373,12 +376,12 @@ def prepare_vectors(raw_vectors):
     prepped_vectors["hex_bins_idea"] = hex_bins_idea
     prepped_vectors["hex_bins_error_complaint"] = hex_bins_error
 
-    # ---- Hex points with same aggregation info ----
+    # hex points with same aggregation info
     prepped_vectors["hex_points_praise"] = split["praise"].merge(hex_lookup, on="hex_id", how="left")
     prepped_vectors["hex_points_idea"] = split["idea"].merge(hex_lookup, on="hex_id", how="left")
     prepped_vectors["hex_points_error_complaint"] = split["error_complaint"].merge(hex_lookup, on="hex_id", how="left")
 
-    # ---- Topic co-occurrence ----
+    # topic co-occurrence (using hexbins for matrix as there needs to be some spatial grouping of points to make co-occurence)
     prepped_vectors["hex_topic_cooccurrence_praise"] = compute_topic_cooccurrence_by_hex(
         prepped_vectors["hex_points_praise"], topic_col="topic_keywords_short", min_count=1, top_n=50
     )
@@ -387,6 +390,28 @@ def prepare_vectors(raw_vectors):
     )
     prepped_vectors["hex_topic_cooccurrence_error_complaint"] = compute_topic_cooccurrence_by_hex(
         prepped_vectors["hex_points_error_complaint"], topic_col="topic_keywords_short", min_count=1, top_n=50
+    )
+
+    # meta topic co-occurrence (using hexbins for matrix as there needs to be some spatial grouping of points to make co-occurence)
+    prepped_vectors["hex_meta_topic_cooccurrence_praise"] = compute_topic_cooccurrence_by_hex(
+        prepped_vectors["hex_points_praise"],
+        topic_col="meta_topic_label",
+        min_count=1,
+        top_n=50
+    )
+
+    prepped_vectors["hex_meta_topic_cooccurrence_idea"] = compute_topic_cooccurrence_by_hex(
+        prepped_vectors["hex_points_idea"],
+        topic_col="meta_topic_label",
+        min_count=1,
+        top_n=50
+    )
+
+    prepped_vectors["hex_meta_topic_cooccurrence_error_complaint"] = compute_topic_cooccurrence_by_hex(
+        prepped_vectors["hex_points_error_complaint"],
+        topic_col="meta_topic_label",
+        min_count=1,
+        top_n=50
     )
 
     return prepped_vectors
@@ -1200,7 +1225,11 @@ if section == "Sentiments":
 if section == "Topics":
     topic_question = st.sidebar.radio(
         "Choose a question:",
-        ["Do topics vary over time?", "What are the top 5 topics per park (by location)?", "What are the top topics?","Topic co-occurence"]
+        ["Do topics vary over time?",
+         "What are the top 5 topics per park (by location)?",
+         "What are the top topics?",
+         "Topic co-occurence",
+         "Meta topic co-occurence"]
     )
 
     if topic_question == "Do topics vary over time?":
@@ -1272,6 +1301,45 @@ if section == "Topics":
                     x=alt.X("topic_a:N", title="Topic A", axis=alt.Axis(labelAngle=45)),
                     y=alt.Y("topic_b:N", title="Topic B"),
                     color=alt.Color("count:Q", scale=alt.Scale(scheme="viridis"), title="Co-occurrence count"),
+                    tooltip=["topic_a", "topic_b", "count"]
+                )
+                    .properties(width=700, height=700)
+            )
+            st.altair_chart(chart, use_container_width=True)
+
+    elif topic_question == "Meta topic co-occurence":
+        st.subheader("Meta topic co-occurrence matrix")
+
+        st.info("adjust meta topic size limit to mitigate holes?")
+
+        category_choice = st.sidebar.pills(
+            "Select category:",
+            ["Praise", "Ideas", "Error + Complaints"],
+            selection_mode="single",
+            default="Praise"
+        )
+
+        if category_choice == "Praise":
+            coocc_df = prepped_vectors["hex_meta_topic_cooccurrence_praise"]
+        elif category_choice == "Ideas":
+            coocc_df = prepped_vectors["hex_meta_topic_cooccurrence_idea"]
+        else:
+            coocc_df = prepped_vectors["hex_meta_topic_cooccurrence_error_complaint"]
+
+        if coocc_df.empty:
+            st.warning("Not enough data to show meta-topic co-occurrences.")
+        else:
+            chart = (
+                alt.Chart(coocc_df)
+                    .mark_rect()
+                    .encode(
+                    x=alt.X("topic_a:N", title="Meta-topic A", axis=alt.Axis(labelAngle=45)),
+                    y=alt.Y("topic_b:N", title="Meta-topic B"),
+                    color=alt.Color(
+                        "count:Q",
+                        scale=alt.Scale(scheme="viridis"),
+                        title="Co-occurrence count"
+                    ),
                     tooltip=["topic_a", "topic_b", "count"]
                 )
                     .properties(width=700, height=700)
