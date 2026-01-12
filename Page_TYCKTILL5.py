@@ -18,11 +18,12 @@ import itertools
 from collections import Counter
 from streamlit_folium import st_folium
 import ast
-
+import vl_convert as vlc
 
 # TO DO
+# KONTROLLERA VARFÖR _with_topics_and_meta_topics HAR SÅ MÅNGA FLER RADER ÄN all_park_related_pts_with_themes OCH _with_themes_AND_STANZA
+# Ändra hexbin/wordclouds så att det står "överlappar med en park" eller "överlappar med mer än en park" samt att det ska vara intersect, inte within
 # fix wordclouds (they should be the same for hexbins in the same park BUT words are placed in different spots with different colors)
-# group similar topics (and use these instead of raw topics in topics matrix etc)
 # (make a dropdown list for topics to choose and then make graphs or maps that are specific to the chosen topic)
 # visa något i formatet streamlit table? de går att sortera tabellerna. https://discuss.streamlit.io/t/good-looking-table-for-a-streamlit-application-is-anyone-still-using-aggrid/63763/3
 
@@ -94,9 +95,60 @@ category_map = {
     "error_complaint": ["Felanmälan", "Klagomål"],
 }
 
-TOPIC_COLOR_SCHEME = "tableau20"
+TABLEAU20 = [
+    "#4E79A7", "#A0CBE8",
+    "#F28E2B", "#FFBE7D",
+    "#59A14F", "#8CD17D",
+    "#B6992D", "#F1CE63",
+    "#499894", "#86BCB6",
+    "#E15759", "#FF9D9A",
+    "#79706E", "#BAB0AC",
+    "#D37295", "#FABFD2",
+    "#B07AA1", "#D4A6C8",
+    "#9D7660", "#D7B5A6",
+]
+
+EXTRA_COLORS = [
+    "#17BECF",  # teal-cyan (distinct from Tableau blue/green)
+    "#BCBD22",  # olive-lime (distinct from Tableau yellow/green)
+    "#8C564B",  # dark brown (distinct from orange/red)
+    "#AEC7E8",  # pale blue-lavender (lighter than Tableau blues)
+    "#C49C94",  # dusty rose (distinct from Tableau pink/red)
+]
+
+TOPIC_COLOR_SCHEME = TABLEAU20 + EXTRA_COLORS
+
 
 MIXED_SENTIMENT_REL_THRESHOLD = 0.3           # 30%
+
+TEMPORAL_VIEWS = {
+    "Day": {
+        "column": "time_period",
+        "order": [
+            ("Night", "Night (00:00–05:59)"),
+            ("Morning", "Morning (06:00–09:59)"),
+            ("Midday", "Midday (10:00–15:59)"),
+            ("Evening", "Evening (16:00–23:59)")
+        ]
+    },
+    "Week": {
+        "column": "week_group",
+        "order": [
+            ("Weekday", "Weekdays (Mon–Fri)"),
+            ("Weekend", "Weekend (Sat–Sun)")
+        ]
+    },
+    "Seasons": {
+        "column": "season",
+        "order": [
+            ("Spring", "Spring"),
+            ("Summer", "Summer"),
+            ("Autumn", "Autumn"),
+            ("Winter", "Winter")
+        ]
+    }
+}
+
 
 # ========================
 # === DATA PREPARATION ===
@@ -306,6 +358,25 @@ def count_mixed_sentiment(sent_list, rel_threshold=MIXED_SENTIMENT_REL_THRESHOLD
     max_score = max(s['score'] for s in sent_list)
     return [s['label'] for s in sent_list if s['score'] >= max_score * (1 - rel_threshold)]
 
+def add_temporal_groups(df):
+    df = df.copy()
+
+    # seasons (meteorological)
+    season_map = {
+        12: "Winter", 1: "Winter", 2: "Winter",
+        3: "Spring", 4: "Spring", 5: "Spring",
+        6: "Summer", 7: "Summer", 8: "Summer",
+        9: "Autumn", 10: "Autumn", 11: "Autumn",
+    }
+    df["season"] = df["month"].map(season_map)
+
+    # week grouping
+    df["week_group"] = df["weekday_label"].apply(
+        lambda d: "Weekend" if d in ["Sat", "Sun"] else "Weekday"
+    )
+
+    return df
+
 # ============================
 # === PREPARED VECTOR DATA ===
 
@@ -335,6 +406,7 @@ def prepare_vectors(raw_vectors):
     all_pts = prepare_topic_df(all_pts)
     all_pts = fix_sentiment_column_type(all_pts)
     all_pts = fix_topic_column_type(all_pts)
+    all_pts = add_temporal_groups(all_pts)
     prepped_vectors["all_pts"] = all_pts
 
     # sentiment splits for heatmaps
@@ -353,9 +425,20 @@ def prepare_vectors(raw_vectors):
     prepped_vectors["all_pts"] = all_pts
 
     # HEXBINS
-    #hex_src = add_lat_lon(raw_vectors["all_park_related_pts_with_themes_AND_STANZA"])
-    hex_src = add_lat_lon(raw_vectors["tycktill_with_topics_and_meta_topics"])
+    #hex_src = add_lat_lon(raw_vectors["tycktill_with_topics_and_meta_topics"])
+    #hex_src = prepare_topic_df(hex_src)
+
+    ##############
+    hex_src = raw_vectors["tycktill_with_topics_and_meta_topics"].merge(
+        raw_vectors["all_park_related_pts_with_themes_AND_STANZA"][["Ärendenummer", "lemmas"]],
+        on="Ärendenummer",
+        how="left"
+    )
+
+    hex_src = add_lat_lon(hex_src)
     hex_src = prepare_topic_df(hex_src)
+    ##############
+
     hex_src = add_h3_hex_id(hex_src, resolution=9)
     split = split_by_category(hex_src)
 
@@ -532,11 +615,13 @@ def get_global_topic_domain(prepped_vectors, top_n=5):
 
 GLOBAL_TOPIC_DOMAIN = get_global_topic_domain(prepped_vectors, top_n=5)
 
-missing_topic = "felparkerade, parkerade, gågata"  # this topic only occurs in one single plot and goes transparent if not appended
-if missing_topic not in GLOBAL_TOPIC_DOMAIN:
-    GLOBAL_TOPIC_DOMAIN.append(missing_topic)
+missing_topics = ["tags, räcke, pelare", "felparkerade, parkerade, gågata"]  # these topics only occurs in one single plot and goes transparent if not appended
 
-GLOBAL_TOPIC_COLOR_SCALE = alt.Scale(domain=GLOBAL_TOPIC_DOMAIN, scheme="tableau20")
+for topic in missing_topics:
+    if topic not in GLOBAL_TOPIC_DOMAIN:
+        GLOBAL_TOPIC_DOMAIN.append(topic)
+
+GLOBAL_TOPIC_COLOR_SCALE = alt.Scale(domain=GLOBAL_TOPIC_DOMAIN, range=TOPIC_COLOR_SCHEME)
 
 def get_shared_color_scale(kind, datasets, n=5):
 
@@ -806,6 +891,18 @@ def make_plot(kind, category, view, temporal_scale, prepped_vectors, top_n=5):
 
     return charts
 
+# =======================
+# save plots in streamlit
+
+def altair_chart_to_png(chart, scale=2):
+    """
+    convert an Altair chart to PNG
+    scale increases resolution (do 2 or 3)
+    """
+    spec = chart.to_dict()
+    png_bytes = vlc.vegalite_to_png(spec, scale=scale)
+    return png_bytes
+
 # =====================
 # plot mixed sentiments
 
@@ -1025,11 +1122,37 @@ def create_folium_hexbin_map_with_wc(hex_gdf, points_df, text_col="lemmas", colo
 
     return m
 
+def render_temporal_heatmaps(gdf, temporal_view):
+    view = TEMPORAL_VIEWS[temporal_view]
+    col_name = view["column"]
+    periods = view["order"]
+
+    n = len(periods)
+    cols_per_row = 2
+    rows = [st.columns(cols_per_row) for _ in range((n + 1) // 2)]
+
+    i = 0
+    for row in rows:
+        for col in row:
+            if i >= n:
+                break
+
+            value, label = periods[i]
+            subset = gdf[gdf[col_name] == value]
+
+            with col:
+                st.markdown(f"**{label}**")
+                m = create_folium_basemap()
+                add_folium_heatmap(m, subset)
+                folium_static(m, width=500, height=500)
+
+            i += 1
+
 # =================
 # === STREAMLIT ===
 
 st.title("Vad tycker besökarna om Stockholms parker?")
-st.text("Här finner du sammanställd data från appen TyckTill!")
+st.text("Här finner du sammanställd data från appen Tyck till från Stockholms stad!")
 
 st.sidebar.button("Clear Cache", on_click=st.cache_data.clear)
 
@@ -1039,7 +1162,7 @@ section = st.sidebar.pills(
 )
 
 # ================
-# === OVERVIEW ===    *** add another st.pills level, options: Word Cloud; co-occurence between topics within a hexagon?; ...
+# === OVERVIEW ===
 
 if section == "Overview":
     overview_question = st.sidebar.radio(
@@ -1047,7 +1170,7 @@ if section == "Overview":
         ["*Where* and *when* is Tyck till being used?", "*What* is talked about *where*?"]
     )
 
-    if overview_question == "*Where* and *when* is Tyck till being used?":            # *** change to slider + weekday vs weekend?? ***
+    if overview_question == "*Where* and *when* is Tyck till being used?":
 
         st.subheader("Tycktill entries")
 
@@ -1055,40 +1178,20 @@ if section == "Overview":
             ["Praise", "Ideas", "Error + Complaints"],
             selection_mode="single",
             default="Praise",
-            key="sent_cat")
+            key="overview_cat")
 
-        if category_choice == "Praise":
-            pts_category = prepped_vectors["heat_praise"]
-        elif category_choice == "Ideas":
-            pts_category = prepped_vectors["heat_idea"]
-        else:
-            pts_category = prepped_vectors["heat_error_complaint"]
+        temporal_view = st.sidebar.pills(
+            "Time grouping:",
+            ["Day", "Week", "Seasons"],
+            selection_mode="single",
+            default="Day",
+            key="overview_time"
+        )
 
-        TIME_PERIODS = [
-            ("Night", "Night (00:00–05:59)"),
-            ("Morning", "Morning (06:00–09:59)"),
-            ("Midday", "Midday (10:00–15:59)"),
-            ("Evening", "Evening (16:00–23:59)")
-        ]
+        cat_key = CATEGORY_MAP[category_choice]
+        pts_category = prepped_vectors[f"heat_{cat_key}"]
 
-        cols = st.columns(2)
-        rows = [cols, st.columns(2)]
-
-        period_dfs = {
-            period: pts_category[pts_category["time_period"] == period]
-            for period, _ in TIME_PERIODS
-        }
-
-        i = 0
-        for row in rows:
-            for col in row:
-                period, label = TIME_PERIODS[i]
-                with col:
-                    st.markdown(f"**{label}**")
-                    m = create_folium_basemap()
-                    add_folium_heatmap(m, period_dfs[period])
-                    folium_static(m, width=500, height=500)
-                i += 1
+        render_temporal_heatmaps(pts_category, temporal_view)
 
     elif overview_question == "*What* is talked about *where*?":
         category_choice = st.sidebar.pills(
@@ -1129,7 +1232,7 @@ if section == "Overview":
             folium_static(m, width=700, height=500)
 
         elif hex_choice == "Topic co-occurence":
-            st.info("remove this choice if no topic co-occurence in relation to hexbins??")
+            st.info("remove this choice if no topic co-occurence shown with hexbin map??")
 
 # ==================
 # === SENTIMENTS ===
@@ -1173,7 +1276,35 @@ if section == "Sentiments":
             prepped_vectors=prepped_vectors
         )
 
-        st.altair_chart(alt.hconcat(*charts).resolve_scale(y='shared'), use_container_width=True)
+        combined_chart = alt.hconcat(*charts).resolve_scale(y='shared')
+
+        st.altair_chart(combined_chart, use_container_width=True)
+
+        png = altair_chart_to_png(combined_chart)
+
+        # download full figure
+        st.download_button(
+            label="Download full figure (PNG)",
+            data=png,
+            file_name=f"sentiments_over_time_{category_group}_{view_choice}_{temporal_scale}.png",
+            mime="image/png"
+        )
+
+        # download individual figures
+        for i, chart in enumerate(charts, start=1):
+            png_panel = altair_chart_to_png(chart)
+
+            st.download_button(
+                label=f"Download individual sub-figure {i} (PNG)",
+                data=png_panel,
+                file_name=(
+                    f"sentiments_{category_group}_{view_choice}_"
+                    f"{temporal_scale}_panel_{i}.png"
+                ),
+                mime="image/png",
+                key=f"sent_panel_dl_{i}"
+            )
+
 
     elif sentiment_question == "What sentiment dominates in what park (by location)?":
         "add sentiment per park normalised by ha?"
@@ -1265,7 +1396,34 @@ if section == "Topics":
             prepped_vectors=prepped_vectors
         )
 
-        st.altair_chart(alt.hconcat(*charts).resolve_scale(y='shared'), use_container_width=True)
+        combined_chart = alt.hconcat(*charts).resolve_scale(y='shared')
+
+        st.altair_chart(combined_chart, use_container_width=True)
+
+        png = altair_chart_to_png(combined_chart)
+
+        # download full figure
+        st.download_button(
+            label="Download full figure (PNG)",
+            data=png,
+            file_name=f"topics_over_time_{category_group}_{view_choice}_{temporal_scale}.png",
+            mime="image/png"
+        )
+
+        # download individual figures
+        for i, chart in enumerate(charts, start=1):
+            png_panel = altair_chart_to_png(chart)
+
+            st.download_button(
+                label=f"Download individual sub-figure {i} (PNG)",
+                data=png_panel,
+                file_name=(
+                    f"sentiments_{category_group}_{view_choice}_"
+                    f"{temporal_scale}_panel_{i}.png"
+                ),
+                mime="image/png",
+                key=f"sent_panel_dl_{i}"
+            )
 
     elif topic_question == "What are the top 5 topics per park (by location)?":
         st.info("to be added")
