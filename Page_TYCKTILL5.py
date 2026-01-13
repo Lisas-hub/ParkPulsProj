@@ -141,10 +141,10 @@ TEMPORAL_VIEWS = {
     "Seasons": {
         "column": "season",
         "order": [
-            ("Spring", "Spring"),
-            ("Summer", "Summer"),
-            ("Autumn", "Autumn"),
-            ("Winter", "Winter")
+            ("Spring", "Spring (Mar-May)"),
+            ("Summer", "Summer (Jun-Aug)"),
+            ("Autumn", "Autumn (Sep-Nov)"),
+            ("Winter", "Winter (Dec-Feb)")
         ]
     }
 }
@@ -414,6 +414,25 @@ def prepare_vectors(raw_vectors):
     prepped_vectors["heat_praise"] = heat["praise"]
     prepped_vectors["heat_idea"] = heat["idea"]
     prepped_vectors["heat_error_complaint"] = heat["error_complaint"]
+
+    # heatmaps per filter (loc / key / sim)
+    heat_sources = {
+        "loc": raw_vectors["pts_with_topics_by_location"],
+        "key": raw_vectors["pts_with_topics_by_keywords_strictly"],
+        "sim": raw_vectors["pts_with_topics_by_keywords_similarity"],
+    }
+
+    for suffix, raw_df in heat_sources.items():
+        df = add_time_period_column(raw_df)
+        df = prepare_topic_df(df)
+        df = fix_sentiment_column_type(df)
+        df = add_temporal_groups(df)
+
+        split = split_by_category(df)
+
+        prepped_vectors[f"heat_praise_{suffix}"] = split["praise"]
+        prepped_vectors[f"heat_idea_{suffix}"] = split["idea"]
+        prepped_vectors[f"heat_error_complaint_{suffix}"] = split["error_complaint"]
 
     # mixed sentiments - convert sentiment_all to list
     all_pts['sentiment_all'] = all_pts['sentiment_all'].apply(convert_sentiment_all)
@@ -1005,7 +1024,7 @@ def plot_sentiment_cooccurrence_matrix(cooc_df):
 # === MAPS ===
 
 def create_folium_basemap():
-    m = folium.Map(location=(59.33, 17.99), zoom_start=10.5, tiles=None)
+    m = folium.Map(location=(59.33, 17.99), zoom_start=11, tiles=None)
     folium.TileLayer(
         tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         attr='Esri',
@@ -1015,7 +1034,7 @@ def create_folium_basemap():
     ).add_to(m)
     return m
 
-def add_folium_heatmap(m, gdf, radius=15, blur=10, max_zoom=13):
+def add_folium_heatmap(m, gdf, radius=15, blur=10, max_zoom=15):
     # extract [lat, lon] from geometry
     heat_points = [
         [geom.y, geom.x]
@@ -1041,6 +1060,52 @@ def add_folium_heatmap(m, gdf, radius=15, blur=10, max_zoom=13):
     ).add_to(m)
 
     return m
+
+def render_temporal_heatmaps(gdf, temporal_view):
+    view = TEMPORAL_VIEWS[temporal_view]
+    col_name = view["column"]
+    periods = view["order"]
+
+    n = len(periods)
+    cols_per_row = 2
+    rows = [st.columns(cols_per_row) for _ in range((n + 1) // 2)]
+
+    i = 0
+    for row in rows:
+        for col in row:
+            if i >= n:
+                break
+
+            value, label = periods[i]
+            subset = gdf[gdf[col_name] == value]
+
+            with col:
+                n_points = len(subset)
+                n_str = f"{n_points:,}".replace(",", " ")
+
+                st.markdown(
+                    f"**{label}**  \n"
+                    f"<span style='color:#666;font-size:0.85em;'>"
+                    f"{n_str} Tyck till entries</span>",
+                    unsafe_allow_html=True
+                )
+
+                if n_points < 10:
+                    st.markdown(
+                        "<div style='height:500px;"
+                        "display:flex;align-items:center;justify-content:center;"
+                        "color:#999;font-style:italic;"
+                        "border:1px dashed #ccc;'>"
+                        "Not enough points"
+                        "</div>",
+                        unsafe_allow_html=True
+                    )
+                else:
+                    m = create_folium_basemap()
+                    add_folium_heatmap(m, subset)
+                    folium_static(m, height=500)
+
+            i += 1
 
 def create_folium_hexbin_map_with_wc(hex_gdf, points_df, text_col="lemmas", color_col="count"):
 
@@ -1122,32 +1187,6 @@ def create_folium_hexbin_map_with_wc(hex_gdf, points_df, text_col="lemmas", colo
 
     return m
 
-def render_temporal_heatmaps(gdf, temporal_view):
-    view = TEMPORAL_VIEWS[temporal_view]
-    col_name = view["column"]
-    periods = view["order"]
-
-    n = len(periods)
-    cols_per_row = 2
-    rows = [st.columns(cols_per_row) for _ in range((n + 1) // 2)]
-
-    i = 0
-    for row in rows:
-        for col in row:
-            if i >= n:
-                break
-
-            value, label = periods[i]
-            subset = gdf[gdf[col_name] == value]
-
-            with col:
-                st.markdown(f"**{label}**")
-                m = create_folium_basemap()
-                add_folium_heatmap(m, subset)
-                folium_static(m, width=500, height=500)
-
-            i += 1
-
 # =================
 # === STREAMLIT ===
 
@@ -1178,20 +1217,38 @@ if section == "Overview":
             ["Praise", "Ideas", "Error + Complaints"],
             selection_mode="single",
             default="Praise",
-            key="overview_cat")
+            key="overview_cat"
+                                           )
+
+        filter_choice = st.sidebar.pills("Filter:",
+            ["By location", "By keywords (strictly)", "By keywords (similarity)"],
+            selection_mode = "single",
+            default = "By location",
+            key = "overview_filter"
+        )
 
         temporal_view = st.sidebar.pills(
             "Time grouping:",
-            ["Day", "Week", "Seasons"],
+            ["Seasons", "Week", "Day"],
             selection_mode="single",
-            default="Day",
+            default="Seasons",
             key="overview_time"
         )
 
         cat_key = CATEGORY_MAP[category_choice]
-        pts_category = prepped_vectors[f"heat_{cat_key}"]
+
+        filter_map = {
+            "By location": "loc",
+            "By keywords (strictly)": "key",
+            "By keywords (similarity)": "sim",
+        }
+
+        filter_suffix = filter_map[filter_choice]
+
+        pts_category = prepped_vectors[f"heat_{cat_key}_{filter_suffix}"]
 
         render_temporal_heatmaps(pts_category, temporal_view)
+
 
     elif overview_question == "*What* is talked about *where*?":
         category_choice = st.sidebar.pills(
