@@ -14,11 +14,11 @@ from wordcloud import WordCloud
 import base64
 from io import BytesIO
 from itertools import combinations
-import itertools
-from collections import Counter
-from streamlit_folium import st_folium
 import ast
 import vl_convert as vlc
+from branca.element import MacroElement
+from jinja2 import Template
+from folium import Element
 
 # TO DO
 # KONTROLLERA VARFÖR _with_topics_and_meta_topics HAR SÅ MÅNGA FLER RADER ÄN all_park_related_pts_with_themes OCH _with_themes_AND_STANZA
@@ -1024,7 +1024,7 @@ def plot_sentiment_cooccurrence_matrix(cooc_df):
 # === MAPS ===
 
 def create_folium_basemap():
-    m = folium.Map(location=(59.33, 17.99), zoom_start=11, tiles=None)
+    m = folium.Map(location=(59.33, 17.99), zoom_start=10, tiles=None)
     folium.TileLayer(
         tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         attr='Esri',
@@ -1034,7 +1034,7 @@ def create_folium_basemap():
     ).add_to(m)
     return m
 
-def add_folium_heatmap(m, gdf, radius=15, blur=10, max_zoom=15):
+def add_folium_heatmap(m, gdf, radius=13, blur=10, max_zoom=25, show_legend=True,):
     # extract [lat, lon] from geometry
     heat_points = [
         [geom.y, geom.x]
