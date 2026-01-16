@@ -21,9 +21,9 @@ os.makedirs(output_folder, exist_ok=True)
 # KDE parameters
 radius_m = 250       # KDE bandwidth in meters
 pixel_size = 50      # pixel size in meters
-gaussian_sigma = 5  # only applied to Praise + Ideas
+gaussian_sigma = 5   # only applied to Praise + Ideas
+nodata_val = -9999.0
 
-# categories and seasons
 categories = {
     "Praise": ["Beröm"],
     "Ideas": ["Idé"],
@@ -37,7 +37,17 @@ seasons = {
     "Autumn": [9, 10, 11]
 }
 
-nodata_val = -9999.0
+week_groups = {
+    "Weekday": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+    "Weekend": ["Saturday", "Sunday"]
+}
+
+hour_groups = {
+    "Night": list(range(0, 6)),        # 00–05
+    "Morning": list(range(6, 10)),     # 06–09
+    "Midday": list(range(10, 16)),     # 10–15
+    "Evening": list(range(16, 24))     # 16–23
+}
 
 # =========
 # load data
@@ -52,7 +62,11 @@ if points.crs != boundary.crs:
 # helper function to create KDE raster
 
 def create_kde_raster(points_gdf, boundary_gdf, radius_m, pixel_size, gaussian_sigma=None):
+
+    n_points = len(points_gdf)
+
     coords = np.array([(pt.x, pt.y) for pt in points_gdf.geometry])
+
     if len(coords) == 0:
         return None, None, None, None
 
@@ -67,21 +81,33 @@ def create_kde_raster(points_gdf, boundary_gdf, radius_m, pixel_size, gaussian_s
     # KDE
     kde = KernelDensity(bandwidth=radius_m, kernel='gaussian')
     kde.fit(coords)
-    Z_kde = np.exp(kde.score_samples(grid_coords)).reshape(X.shape)
+
+    #Z_kde = np.exp(kde.score_samples(grid_coords)).reshape(X.shape)
+    ###############
+    # normalise
+    # KDE (integrates to 1)
+    kde = KernelDensity(bandwidth=radius_m, kernel="gaussian")
+    kde.fit(coords)
+
+    Z_raw = np.exp(kde.score_samples(grid_coords)).reshape(X.shape)
+
+    # Scale by number of points (absolute density)
+    Z_raw = Z_raw * n_points
+    ###############
 
     # extra gaussian smoothing
     Z_gauss = None
     if gaussian_sigma is not None:
-        Z_gauss = gaussian_filter(Z_kde, sigma=gaussian_sigma)
+        Z_gauss = gaussian_filter(Z_raw, sigma=gaussian_sigma)
 
-    Z_kde = Z_kde / Z_kde.max()
-    if Z_gauss is not None:
-        Z_gauss = Z_gauss / Z_gauss.max()
+    #Z_kde = Z_kde / Z_kde.max()
+    #if Z_gauss is not None:
+    #    Z_gauss = Z_gauss / Z_gauss.max()
 
     # rasterio transform
     transform = from_origin(minx, maxy, pixel_size, pixel_size)
 
-    return Z_kde, Z_gauss, transform, Z_kde.shape
+    return Z_raw, Z_gauss, transform, Z_raw.shape
 
 # =====================================
 # helper function to save + mask raster
@@ -123,62 +149,150 @@ def save_raster(Z, transform, shape, out_path, boundary_gdf, nodata_val):
     with rasterio.open(out_path, "w", **out_meta_clipped) as dst:
         dst.write(out_image)
 
-kde_summary = []
+def run_kde(points, time_groups, time_col, label_name):
+    summary = []
+
+    total_jobs = len(categories) * len(time_groups)
+    job_counter = 0
+
+    print(f"\nStarting KDE run for: {label_name}")
+    print(f"Total rasters to process: {total_jobs}\n")
+
+    for cat_name, cat_values in categories.items():
+        for group_name, group_values in time_groups.items():
+
+            job_counter += 1
+            print(
+                f"[{job_counter}/{total_jobs}] "
+                f"{label_name}: {group_name} | Category: {cat_name}"
+            )
+
+            subset = points[
+                points["Kategori"].isin(cat_values) &
+                points[time_col].isin(group_values)
+            ]
+
+            summary.append({
+                "Category": cat_name,
+                label_name: group_name,
+                "Points": len(subset)
+            })
+
+            Z_raw, Z_gauss, transform, shape = create_kde_raster(
+                subset,
+                boundary,
+                radius_m,
+                pixel_size,
+                gaussian_sigma
+            )
+
+            if Z_raw is None:
+                continue
+
+            # RAW
+            save_raster(
+                Z_raw,
+                transform,
+                shape,
+                os.path.join(output_folder, f"KDE_{cat_name}_{group_name}_RAW.tif"),
+                boundary,
+                nodata_val
+            )
+
+            # GAUSSIAN
+            if Z_gauss is not None:
+                save_raster(
+                    Z_gauss,
+                    transform,
+                    shape,
+                    os.path.join(output_folder, f"KDE_{cat_name}_{group_name}_GAUSS.tif"),
+                    boundary,
+                    nodata_val
+                )
+
+    return pd.DataFrame(summary)
+
 
 # ===================================
 # loop through categories and seasons
 
-for cat_name, cat_values in categories.items():
-    for season_name, month_values in seasons.items():
+# for cat_name, cat_values in categories.items():
+#     for season_name, month_values in seasons.items():
+#
+#         # filter points
+#         subset = points[
+#             points["Kategori"].isin(cat_values) &
+#             points["month"].isin(month_values)
+#         ]
+#
+#         point_count = len(subset)
+#         kde_summary.append({
+#             "Category": cat_name,
+#             "Season": season_name,
+#             "Points": point_count
+#         })
+#
+#         Z_raw, Z_smooth, transform, shape = create_kde_raster(
+#             subset,
+#             boundary,
+#             radius_m,
+#             pixel_size,
+#             gaussian_sigma=gaussian_sigma
+#         )
+#
+#         if Z_raw is None:
+#             print(f"No points for {cat_name} – {season_name}, skipping.")
+#             continue
+#
+#         # RAW KDE
+#         raw_path = os.path.join(
+#             output_folder,
+#             f"KDE_{cat_name}_{season_name}_RAW.tif"
+#         )
+#         save_raster(Z_raw, transform, shape, raw_path, boundary, nodata_val)
+#
+#         # GAUSSIAN-SMOOTHED KDE
+#         if Z_smooth is not None:
+#             gauss_path = os.path.join(
+#                 output_folder,
+#                 f"KDE_{cat_name}_{season_name}_GAUSS.tif"
+#             )
+#             save_raster(Z_smooth, transform, shape, gauss_path, boundary, nodata_val)
+#
+#         print(f"Saved {cat_name} – {season_name}")
 
-        # filter points
-        subset = points[
-            points["Kategori"].isin(cat_values) &
-            points["month"].isin(month_values)
-        ]
+#summary_df = pd.DataFrame(kde_summary)
 
-        point_count = len(subset)
-        kde_summary.append({
-            "Category": cat_name,
-            "Season": season_name,
-            "Points": point_count
-        })
+# Seasons
+season_summary = run_kde(points, seasons, "month", "Season")
 
-        Z_raw, Z_smooth, transform, shape = create_kde_raster(
-            subset,
-            boundary,
-            radius_m,
-            pixel_size,
-            gaussian_sigma=gaussian_sigma
-        )
+# Weekday / Weekend
+weekday_summary = run_kde(points, week_groups, "weekday", "WeekType")
 
-        if Z_raw is None:
-            print(f"No points for {cat_name} – {season_name}, skipping.")
-            continue
+# Time of day
+hour_summary = run_kde(points, hour_groups, "hour", "TimeOfDay")
 
-        # RAW KDE
-        raw_path = os.path.join(
-            output_folder,
-            f"KDE_{cat_name}_{season_name}_RAW.tif"
-        )
-        save_raster(Z_raw, transform, shape, raw_path, boundary, nodata_val)
 
-        # GAUSSIAN-SMOOTHED KDE
-        if Z_smooth is not None:
-            gauss_path = os.path.join(
-                output_folder,
-                f"KDE_{cat_name}_{season_name}_GAUSS.tif"
-            )
-            save_raster(Z_smooth, transform, shape, gauss_path, boundary, nodata_val)
+# summary_df.to_csv(os.path.join(output_folder, "kde_season_counts.csv"), index=False)
+# weekday_summary.to_csv(os.path.join(output_folder, "kde_weekday_counts.csv"), index=False)
+# hour_summary.to_csv(os.path.join(output_folder, "kde_hour_counts.csv"), index=False)
+#
+#
+#
+# print("\nKDE input point counts:")
+# print(summary_df.to_string(index=False))
 
-        print(f"Saved {cat_name} – {season_name}")
+print("\nSeasonal KDE point counts:")
+print(season_summary.to_string(index=False))
 
-summary_df = pd.DataFrame(kde_summary)
+print("\nWeekday / Weekend KDE point counts:")
+print(weekday_summary.to_string(index=False))
 
-print("\nKDE input point counts:")
-print(summary_df.to_string(index=False))
+print("\nTime-of-day KDE point counts:")
+print(hour_summary.to_string(index=False))
 
-# KDE input point counts:
+
+# Seasonal KDE point counts:
 #         Category Season  Points
 #           Praise Winter      95
 #           Praise Spring      83
@@ -192,3 +306,29 @@ print(summary_df.to_string(index=False))
 # Error_Complaints Spring   20412
 # Error_Complaints Summer   25187
 # Error_Complaints Autumn   19572
+#
+# Weekday / Weekend KDE point counts:
+#         Category WeekType  Points
+#           Praise  Weekday     240
+#           Praise  Weekend      61
+#            Ideas  Weekday     587
+#            Ideas  Weekend     242
+# Error_Complaints  Weekday   57686
+# Error_Complaints  Weekend   19638
+#
+# Time-of-day KDE point counts:
+#         Category TimeOfDay  Points
+#           Praise     Night       8
+#           Praise   Morning      63
+#           Praise    Midday     117
+#           Praise   Evening     113
+#            Ideas     Night      11
+#            Ideas   Morning     158
+#            Ideas    Midday     331
+#            Ideas   Evening     329
+# Error_Complaints     Night     820
+# Error_Complaints   Morning   16071
+# Error_Complaints    Midday   36587
+# Error_Complaints   Evening   23846
+#
+# Process finished with exit code 0
