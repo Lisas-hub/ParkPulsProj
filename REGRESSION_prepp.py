@@ -4,8 +4,10 @@ import pandas as pd
 import os
 
 # TO DO
-# add topic/sentiment/praise, idea, error+complaint columns
-# check why there are duplicate columns of noise pollution (?), like 40-45_x and 40-45_y
+# add topic/sentiment columns?
+# add protected areas columns that are count or area
+# add public transport count or similar
+# add distance to city center
 
 ###########
 # might need to join other layers to this one to get like meta topics, themes or whatever
@@ -24,7 +26,7 @@ POLYGON_LAYERS = [
     "VARIABLES_amenities",
     "VARIABLES_environment",
     "VARIABLES_food",
-    "VARIABLES_noise_pollution",
+    #"VARIABLES_noise_pollution",    # not relevant anymore, noise is handled within VARIABLES_environment
     "VARIABLES_safety",
     "VARIABLES_socioeconomic",
     "VARIABLES_typology"
@@ -171,8 +173,6 @@ counts = counts.fillna(0)
 counts = counts.reset_index()
 
 
-
-
 # # calculate proportion for each category
 # for col in counts.columns:
 #     if col != "total_points":
@@ -206,6 +206,8 @@ merged[count_cols] = merged[count_cols].fillna(0)
 
 # ====
 # SAVE
+
+merged.to_excel(f"{OUTPUT_PATH}/VARIABLES_regression.xlsx", index=False)
 
 merged.to_file(
     OUTPUT_FILE,

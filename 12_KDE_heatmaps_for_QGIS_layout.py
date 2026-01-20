@@ -9,6 +9,10 @@ from rasterio.transform import from_origin
 from rasterio.mask import mask
 import pandas as pd
 
+# TO DO
+# change time of day to same size groups (24/4 = 6 hours:   morning 05-11, midday 11-17, evening 17-23, night 23-05)
+
+
 points_path = r"C:/Users/lisajos/PycharmProjects/park_proj/data/tycktill_output/BERTopic_filtered/tycktill_filtered.gpkg"
 points_layername = "pts_in_parks_with_topics"
 
@@ -19,9 +23,9 @@ output_folder = r"C:\Users\lisajos\PycharmProjects\park_proj\data\qgis_maps\TEST
 os.makedirs(output_folder, exist_ok=True)
 
 # KDE parameters
-radius_m = 250       # KDE bandwidth in meters
-pixel_size = 50      # pixel size in meters
-gaussian_sigma = 5   # only applied to Praise + Ideas
+radius_m = 250        # KDE bandwidth in meters
+pixel_size = 50       # pixel size in meters
+gaussian_sigma = 5    # only applied to Praise + Ideas
 nodata_val = -9999.0
 GLOBAL_KDE_MAX = {}
 
@@ -97,11 +101,7 @@ def create_kde_raster(points_gdf, boundary_gdf, radius_m, pixel_size, category, 
     if gaussian_sigma is not None:
         Z_gauss = gaussian_filter(Z_raw, sigma=gaussian_sigma)
 
-    # update global max (for first pass)
-    #global GLOBAL_KDE_MAX
-    #local_max = np.nanmax(Z_gauss if Z_gauss is not None else Z_raw)
-    #GLOBAL_KDE_MAX = max(GLOBAL_KDE_MAX, local_max)
-
+    # update global max
     global GLOBAL_KDE_MAX
 
     local_max = np.nanmax(Z_gauss if Z_gauss is not None else Z_raw)
@@ -110,8 +110,6 @@ def create_kde_raster(points_gdf, boundary_gdf, radius_m, pixel_size, category, 
         GLOBAL_KDE_MAX[category] = local_max
     else:
         GLOBAL_KDE_MAX[category] = max(GLOBAL_KDE_MAX[category], local_max)
-
-
 
     # rasterio transform
     transform = from_origin(minx, maxy, pixel_size, pixel_size)
@@ -169,10 +167,6 @@ def save_raster(Z, transform, shape, out_path, boundary_gdf, nodata_val):
 
 def run_kde(points, time_groups, time_col, label_name, normalize=False):
     summary = []
-
-    # global GLOBAL_KDE_MAX
-    # if not normalize:
-    #     GLOBAL_KDE_MAX = 0.0
 
     global GLOBAL_KDE_MAX
     if not normalize:
@@ -239,17 +233,6 @@ def run_kde(points, time_groups, time_col, label_name, normalize=False):
                     )
 
     return pd.DataFrame(summary)
-
-
-# seasons
-#season_summary = run_kde(points, seasons, "month", "Season", normalize=True)
-
-# weekday vs weekend
-#weekday_summary = run_kde(points, week_groups, "weekday", "WeekType", normalize=True)
-
-# time of day
-#hour_summary = run_kde(points, hour_groups, "hour", "TimeOfDay", normalize=True)
-
 
 # ===== SEASONS =====
 season_summary = run_kde(points, seasons, "month", "Season")
