@@ -65,7 +65,7 @@ def load_all_VECTOR_data():
     data["pts_with_topics_by_location"] = vector_layer(tycktill_filtered_GPKG, "pts_in_parks_with_topics")              # filtered by park boundary output (includes original columns, sentiment, topic and themes columns)
     data["pts_with_topics_by_keywords_strictly"] = vector_layer(tycktill_filtered_GPKG, "park_comments_by_keyword")     # filtered by keywords (strictly) output (includes original columns, sentiment, topic and themes columns)
     data["pts_with_topics_by_keywords_similarity"] = vector_layer(tycktill_filtered_GPKG, "park_comments_by_BERTopic")  # filtered by keywords (similarity) output (includes original columns, sentiment, topic and themes columns)
-    data["parks_with_top5_topics"] = vector_layer(tycktill_filtered_GPKG, "parks_with_top5_topics")                     # park polygons + columns for top 5 topics per park
+    #data["parks_with_top5_topics"] = vector_layer(tycktill_filtered_GPKG, "parks_with_top5_topics")                     # park polygons + columns for top 5 topics per park
     data["all_park_related_pts_with_themes_AND_STANZA"] = vector_layer(tycktill_filtered_with_lemmas_GPKG, "all_park_related_pts_with_themes_AND_STANZA") # basically same as all_park_related_pts_with_themes but with additional columns for word clouds
     data["tycktill_with_topics_and_meta_topics"] = vector_layer(tycktill_reduced_topics_GPKG, "tycktill_with_topics_and_meta_topics") # basically same as all_park_related_pts_with_themes but with additional columns for meta topics
     return data
@@ -117,7 +117,6 @@ EXTRA_COLORS = [
 ]
 
 TOPIC_COLOR_SCHEME = TABLEAU20 + EXTRA_COLORS
-
 
 MIXED_SENTIMENT_REL_THRESHOLD = 0.3           # 30%
 
@@ -1405,7 +1404,6 @@ if section == "Sentiments":
                 "Matrix shows how often sentiment pairs co-occur within the same comment. "
                 "Values are normalized by the total number of mixed-sentiment comments."
             )
-
 
 # ==============
 # === TOPICS ===   *** lägg till en subpage med en dropdown lista över typ top 20 eller 50 topics och så kan man välja en och få lite olika grafer? ***

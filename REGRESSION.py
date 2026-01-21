@@ -163,6 +163,7 @@ gdf = gdf.rename(columns=lambda c: (
      .replace(">", "gt_")
 ))
 
+# *** use up to ish 12 variables per Q ***
 
 # NEW RUN LOGIC:
 for question, predictors in QUESTIONS.items():
