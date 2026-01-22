@@ -109,11 +109,13 @@ TABLEAU20 = [
 ]
 
 EXTRA_COLORS = [
-    "#17BECF",  # teal-cyan (distinct from Tableau blue/green)
+    #"#17BECF", # teal-cyan (distinct from Tableau blue/green)
+    "#14532D",  # dark forest green
     "#BCBD22",  # olive-lime (distinct from Tableau yellow/green)
     "#8C564B",  # dark brown (distinct from orange/red)
     "#AEC7E8",  # pale blue-lavender (lighter than Tableau blues)
     "#C49C94",  # dusty rose (distinct from Tableau pink/red)
+    "#1F3A8A",  # deep cobolt blue (distinct from Tableau blue)
 ]
 
 TOPIC_COLOR_SCHEME = TABLEAU20 + EXTRA_COLORS
