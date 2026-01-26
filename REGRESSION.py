@@ -151,8 +151,6 @@ QUESTIONS = {                      # Are there simply more comments because more
     "Q4_safety": PREDICTORS_BASE + SAFETY, # Do perceived or actual safety problems drive complaints? - use crime, lighting, LULC
 }
 
-
-
 # statsmodels uses Patsy which interprets for example / as a maths operator column need to be renamed
 gdf = gdf.rename(columns=lambda c: (
     c.replace(" ", "_")

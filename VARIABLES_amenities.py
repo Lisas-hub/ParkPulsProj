@@ -60,6 +60,19 @@ def THEME_amenities_to_layer2(layer2):
     # combine toilets with other amenities
     combined_amenities = pd.concat([joined_amenities, joined_buffered_WC], ignore_index=True)
 
+    #############
+    # === amenity diversity (number of unique amenity types per park) ===
+    amenity_diversity = (
+        combined_amenities
+            .groupby('index_right')['amenity']
+            .nunique()
+            .rename('amenity_diversity')
+    )
+
+    layer2 = layer2.join(amenity_diversity, how='left')
+    layer2['amenity_diversity'] = layer2['amenity_diversity'].fillna(0)
+    #############
+
     grouped_amenities = (
         combined_amenities.groupby('index_right')['amenity']
             .apply(lambda x: ", ".join(sorted(set(x.dropna()))))

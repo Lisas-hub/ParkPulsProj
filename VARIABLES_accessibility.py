@@ -1,6 +1,7 @@
 
 import geopandas as gpd
 import pandas as pd
+from shapely.geometry import Point
 
 input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
 
@@ -43,6 +44,36 @@ def THEME_accessibility_to_layer2(layer2):
         predicate='intersects'
     )
 
+    ########
+    # transport type diversity (output: 0 = no public transport nearby; 1 = only bus or only subway; 2 = both bus + subway)
+    transport_type_diversity = (
+        joined_transport
+            .groupby('index_right')['transport_type']
+            .nunique()
+            .rename('transport_type_diversity')
+    )
+
+    layer2 = layer2.join(transport_type_diversity, how='left')
+    layer2['transport_type_diversity'] = layer2['transport_type_diversity'].fillna(0)
+
+    # transport points per park
+    transport_point_counts = (
+        joined_transport
+            .groupby('index_right')
+            .size()
+            .rename('transport_points_count')
+    )
+
+    layer2 = layer2.join(transport_point_counts, how='left')
+    layer2['transport_points_count'] = layer2['transport_points_count'].fillna(0)
+
+    # transport points per hectare
+    layer2['transport_points_per_ha'] = (
+            layer2['transport_points_count'] / (layer2['park_area'] / 10000)
+    )
+    layer2['transport_points_per_ha'] = layer2['transport_points_per_ha'].fillna(0)
+    ########
+
     # Group by polygon and list transport type
     grouped_transport = (
         joined_transport.groupby('index_right')['transport_type']
@@ -83,8 +114,29 @@ def THEME_accessibility_to_layer2(layer2):
     # Save
     #dissolved.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_roads3", driver="GPKG", mode="w")
 
+    ##########
+    # distance to city center (Euclidean)
+
+    # Stockholm Central Station (city center)
+    city_center_wgs84 = gpd.GeoSeries(
+        [Point(18.0589, 59.3303)],
+        crs="EPSG:4326"
+    )
+
+    # project to same CRS as layer2
+    city_center = city_center_wgs84.to_crs(layer2.crs).iloc[0]
+
+    # distance in meters
+    layer2['distance_to_city_center_m'] = (layer2.geometry.centroid.distance(city_center))
+
+    # optional: distance in km (often nicer for regression coefficients)
+    layer2['distance_to_city_center_km'] = layer2['distance_to_city_center_m'] / 1000
+    ##########
+
     return layer2
 layer2 = THEME_accessibility_to_layer2(layer2)
+
+
 
 layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_accessibility", driver="GPKG", mode="w")
 

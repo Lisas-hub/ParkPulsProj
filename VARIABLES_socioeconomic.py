@@ -100,6 +100,29 @@ def THEME_socioeconomic_to_layer2(layer2):
                  'Tot_Bef': "AGG_migr_Tot_Bef"
                  })
 
+    #########
+    # AGE: combined children 0-15
+    layer2['AGG_Alder_0_15'] = (
+            layer2['AGG_Alder_0_6'] +
+            layer2['AGG_Alder_7_15']
+    )
+
+    # AGE: density per hectare
+    age_columns = [
+        'AGG_Alder_0_6',
+        'AGG_Alder_7_15',
+        'AGG_Alder_16_1',
+        'AGG_Alder_20_2',
+        'AGG_Alder_25_4',
+        'AGG_Alder_45_6',
+        'AGG_Alder_65',
+        'AGG_Alder_0_15'
+    ]
+    for col in age_columns:
+        layer2[f"{col}_per_ha"] = layer2[col] / (layer2['park_area'] / 10000)
+        layer2[f"{col}_per_ha"] = layer2[f"{col}_per_ha"].fillna(0)
+    #########
+
     # == weighted columns ==
     deso_all['deso_area'] = deso_all.geometry.area
 
