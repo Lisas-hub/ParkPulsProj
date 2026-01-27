@@ -5,12 +5,47 @@ import statsmodels.formula.api as smf
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 import pandas as pd
+import os
 
 
 # ABOUT THE DATA
 # PRAISE:       mean =  0.278   variance =     0.896   proportion of zeros = 84.8%   (lots of zeros -> zero-inflated -> Zero-Inflated Negative Binomial (ZINB))
 # COMPLAINTS:   mean = 71.464   variance = 30608.41    proportion of zeros =  3.9%   (variance is higher than mean = overdispersion -> negative binomial regression)
 # IDEAS:        mean =  0.766   variance =     3.815   proportion of zeros = 70.6%   (overdispersion + zero-inflated -> Negative Binomial, then Zero-Inflated NB as comparison)
+
+OUTPUT_PATH = "data/regression_output/plots"
+os.makedirs(OUTPUT_PATH, exist_ok=True)
+
+# =================
+# === load data ===
+
+gdf = gpd.read_file("data/regression_output/VARIABLES_regression.gpkg", layer="VARIABLES_regression")
+
+# ===========================
+# === outcome diagnostics ===
+
+OUTCOMES = {
+    "complaints": "error_complaint_count",
+    "ideas": "idea_count",
+    "praise": "praise_count"
+}
+
+print("\n=== Count outcome diagnostics ===\n")
+
+for name, col in OUTCOMES.items():
+    y = gdf[col].dropna()
+
+    mean_y = y.mean()
+    var_y = y.var()
+    prop_zero = (y == 0).mean()
+
+    print(f"{name.upper()}")
+    print(f"  N               : {len(y)}")
+    print(f"  Mean            : {mean_y:.3f}")
+    print(f"  Variance        : {var_y:.3f}")
+    print(f"  Variance / Mean : {(var_y / mean_y) if mean_y > 0 else np.nan:.3f}")
+    print(f"  Proportion zero : {prop_zero:.3f}\n")
+
 
 # =================================
 # === choose dependent variable ===
@@ -33,24 +68,13 @@ print(f"\n✓ Running model for: {dependent_var}\n")
 # ========================
 # === park area offset ===
 
-USE_OFFSET = False  # set False to study park size effect
-
-# =============================
-# === load and prepare data ===
-
-gdf = gpd.read_file("data/regression_output/VARIABLES_regression.gpkg", layer="VARIABLES_regression")
-
-# drop missing outcome
-#gdf = gdf.dropna(subset=[dependent_var])
-
-gdf["park_area_raw"] = gdf["park_area"]
-
+USE_OFFSET = False  # set False to study park size effect for ideas
 
 # =============================
 # === model specification ===
 
 BLOCK_1_base = [
-    "park_area",                    # offset park_area or not? ***
+    #"park_area",                    # offset park_area or not? ***
     "TotPop_weighted",
 ]
 
@@ -117,6 +141,23 @@ if kategori_input == "praise":
     scaler = StandardScaler()
     gdf[scale_cols] = scaler.fit_transform(gdf[scale_cols])
 
+if kategori_input == "complaints":
+    scale_cols = [
+        "TotPop_weighted",
+        "amenity_diversity",
+        "Temp_max_upper",
+        "max_noise",
+        "crime_per_hectare",
+        "avg_Unsafe_NBHD_density",
+        "lighting_coverage",
+        "MedianInk_weighted",
+        "AGG_Alder_0_15_per_ha",
+        "distance_to_city_center_km",
+        "transport_points_per_ha",
+    ]
+
+    scaler = StandardScaler()
+    gdf[scale_cols] = scaler.fit_transform(gdf[scale_cols])
 
 
 # =========================================
@@ -137,14 +178,33 @@ current_vars = []
 for block_name, block_vars in BLOCKS:
 
     current_vars += block_vars
-    formula = dependent_var + " ~ " + " + ".join(current_vars)
+
+    vars_for_formula = current_vars.copy()
+
+    if kategori_input in ["ideas", "praise"]:
+        vars_for_formula = ["park_area"] + vars_for_formula # this includes park_area as a regular variable for praise and ideas (but for complaints it is used as exposure)
+
+    formula = dependent_var + " ~ " + " + ".join(vars_for_formula)
 
     print(f"\n--- Fitting model with blocks: {current_vars} ---")
 
     # -------------------------
-    # complaints & ideas
+    # complaints
     # -------------------------
-    if kategori_input in ["complaints", "ideas"]:
+    if kategori_input == "complaints":
+
+        exposure = gdf["park_area"] + 1  # must be > 0
+
+        model=sm.NegativeBinomial.from_formula(     # to fix issue with fixed alpha to default = 1
+            formula=formula,
+            data=gdf,
+            exposure = exposure
+        ).fit(maxiter=200, disp=False)
+
+    # -------------------------
+    # ideas
+    # -------------------------
+    elif kategori_input == "ideas":
         model = smf.glm(
             formula=formula,
             data=gdf,
@@ -193,160 +253,53 @@ print(best["model"].summary())
 
 
 
-# formula = dependent_var + " ~ " + " + ".join(BLOCK_1_base)
-#
-# # =============================
-# # === fit model by category ===
-#
-# if kategori_input == "complaints":
-#     print("→ Using Negative Binomial regression")
-#
-#     model = smf.glm(
-#         formula=formula,
-#         data=gdf,
-#         family=sm.families.NegativeBinomial(),
-#         offset=offset
-#     ).fit()
-#
-# elif kategori_input == "ideas":
-#     print("→ Using Negative Binomial regression (compare with ZINB later)")
-#
-#     model = smf.glm(
-#         formula=formula,
-#         data=gdf,
-#         family=sm.families.NegativeBinomial(),
-#         offset=offset
-#     ).fit()
-#
-# elif kategori_input == "praise":
-#     print("→ Using Zero-Inflated Negative Binomial regression")
-#
-#     # scaling, aka transform predictors to fix issues with nan in the output, formula used is xscaled = X-mean(x)/sd(x)
-#     #for col in ["park_area", "Temp_max_upper", "TotPop_weighted"]:
-#     #    gdf[col] = (gdf[col] - gdf[col].mean()) / gdf[col].std()
-#
-#     model = sm.ZeroInflatedNegativeBinomialP.from_formula(
-#         formula=formula,
-#         data=gdf,
-#         inflation="logit"   # models zero vs non-zero process
-#     ).fit(method="bfgs", maxiter=200)
-#
-# # =============================
-# # === output ===
-#
-# print(model.summary())
+
+# ================================
+# === Plot significant predictors (robust) ===
+# ================================
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Get coefficients and p-values depending on model type
+coefs = best["model"].params
+pvals = best["model"].pvalues
+
+# Remove intercept and alpha
+coefs = coefs.drop(["Intercept", "alpha"], errors="ignore")
+pvals = pvals.drop(["Intercept", "alpha"], errors="ignore")
+
+# Filter significant predictors
+sig_predictors = pvals[pvals < 0.05].index
+
+if len(sig_predictors) == 0:
+    print("No significant predictors to plot.")
+else:
+    print("\n✓ Significant predictors to plot:")
+    print(sig_predictors)
+
+    for var in sig_predictors:
+        plt.figure(figsize=(6,4))
+        sns.scatterplot(
+            x=gdf[var],
+            y=gdf[dependent_var],
+            alpha=0.6
+        )
+        sns.regplot(
+            x=gdf[var],
+            y=gdf[dependent_var],
+            scatter=False,
+            color="red"
+        )
+        plt.xlabel(var)
+        plt.ylabel(dependent_var)
+        plt.title(f"{dependent_var} vs {var} (significant)")
+        plt.tight_layout()
+        plt.savefig(f"{OUTPUT_PATH}/{kategori_input}_{var}.png", dpi=300, bbox_inches="tight")
+        plt.show()
 
 
 
 
-# COMPLAINTS
-#                    Generalized Linear Model Regression Results
-# =================================================================================
-# Dep. Variable:     error_complaint_count   No. Observations:                 1082
-# Model:                               GLM   Df Residuals:                     1078
-# Model Family:           NegativeBinomial   Df Model:                            3
-# Link Function:                       Log   Scale:                          1.0000
-# Method:                             IRLS   Log-Likelihood:                -5154.1
-# Date:                   Mon, 26 Jan 2026   Deviance:                       1616.6
-# Time:                           10:51:58   Pearson chi2:                 1.57e+03
-# No. Iterations:                       71   Pseudo R-squ. (CS):             0.6413 <- Very strong model (pseudo R² ≈ 0.64)
-# Covariance Type:               nonrobust
-# ===================================================================================
-#                       coef    std err          z      P>|z|      [0.025      0.975]
-# -----------------------------------------------------------------------------------
-# Intercept          -0.9738      0.676     -1.441      0.150      -2.299       0.351   Intercept not significant but this is not necessarily important in this model
-# park_area        2.588e-06   1.04e-07     24.926      0.000    2.38e-06    2.79e-06   Park area           (coef = 2.59e-06, p < 0.001): Larger parks       → more complaints (likely an exposure effect: more space, more things that can go wrong)
-# Temp_max_upper      0.1126      0.020      5.537      0.000       0.073       0.152   Maximum temperature (coef = 0.113,    p < 0.001): Hotter conditions  → more complaints
-# TotPop_weighted   9.26e-05   5.27e-06     17.567      0.000    8.23e-05       0.000   Population          (coef = 9.26e-05, p < 0.001): More people nearby → more complaints (strongly supports a usage/exposure story)
-# ===================================================================================
-
-
-# IDEAS
-#                 Generalized Linear Model Regression Results
-# ==============================================================================
-# Dep. Variable:             idea_count   No. Observations:                 1082
-# Model:                            GLM   Df Residuals:                     1078
-# Model Family:        NegativeBinomial   Df Model:                            3
-# Link Function:                    Log   Scale:                          1.0000
-# Method:                          IRLS   Log-Likelihood:                -1093.9
-# Date:                Mon, 26 Jan 2026   Deviance:                       990.60
-# Time:                        10:50:35   Pearson chi2:                 1.70e+03
-# No. Iterations:                    31   Pseudo R-squ. (CS):             0.3266 <- Moderate fit (pseudo R² ≈ 0.33), expected: idea submission is a rarer and more discretionary behavior
-# Covariance Type:            nonrobust
-# ===================================================================================
-#                       coef    std err          z      P>|z|      [0.025      0.975]
-# -----------------------------------------------------------------------------------
-# Intercept          -3.0443      1.172     -2.597      0.009      -5.342      -0.747  Intercept (significant and negative)
-# park_area        1.274e-06    1.1e-07     11.544      0.000    1.06e-06    1.49e-06  Park area (coef = 1.27e-06, p < 0.001): Larger parks → more ideas (same exposure logic, but effect is weaker than for complaints)
-# Temp_max_upper      0.0467      0.035      1.334      0.182      -0.022       0.115  Maximum temperature (not significant): Temperature does not meaningfully affect idea submissions
-# TotPop_weighted  8.866e-05   7.28e-06     12.178      0.000    7.44e-05       0.000  Nearby population (coef = 8.87e-05, p < 0.001): Strong positive effect -> More people = more potential idea contributors
-# ===================================================================================
-
-
-# PRAISE (after scaling)
-# Optimization terminated successfully.
-#          Current function value: 0.539499
-#          Iterations: 45
-#          Function evaluations: 46
-#          Gradient evaluations: 46
-#                      ZeroInflatedNegativeBinomialP Regression Results
-# =========================================================================================
-# Dep. Variable:                      praise_count   No. Observations:                 1082
-# Model:             ZeroInflatedNegativeBinomialP   Df Residuals:                     1078
-# Method:                                      MLE   Df Model:                            3
-# Date:                           Mon, 26 Jan 2026   Pseudo R-squ.:                  0.1179
-# Time:                                   11:25:32   Log-Likelihood:                -583.74
-# converged:                                  True   LL-Null:                       -661.74
-# Covariance Type:                       nonrobust   LLR p-value:                 1.333e-33
-# ===================================================================================
-#                       coef    std err          z      P>|z|      [0.025      0.975]
-# -----------------------------------------------------------------------------------
-# inflate_const     -12.2683    121.909     -0.101      0.920    -251.205     226.669
-# Intercept          -1.7586      0.091    -19.407      0.000      -1.936      -1.581
-# park_area           0.2956      0.099      2.995      0.003       0.102       0.489
-# Temp_max_upper      0.0334      0.089      0.375      0.708      -0.142       0.208
-# TotPop_weighted     0.6786      0.074      9.167      0.000       0.534       0.824
-# alpha               2.1231      0.398      5.335      0.000       1.343       2.903
-# ===================================================================================
-
-# PRAISE (original outout)
-# C:\Users\lisajos\.conda\envs\park_proj_env\Lib\site-packages\statsmodels\discrete\discrete_model.py:1567: RuntimeWarning: overflow encountered in exp
-#   L = np.exp(np.dot(X,params) + exposure + offset)
-# C:\Users\lisajos\.conda\envs\park_proj_env\Lib\site-packages\statsmodels\discrete\discrete_model.py:1568: RuntimeWarning: overflow encountered in multiply
-#   return -np.dot(L*X.T, X)
-# C:\Users\lisajos\.conda\envs\park_proj_env\Lib\site-packages\statsmodels\discrete\discrete_model.py:1478: RuntimeWarning: overflow encountered in exp
-#   L = np.exp(np.dot(X,params) + offset + exposure)
-# → Using Zero-Inflated Negative Binomial regression
-# C:\Users\lisajos\.conda\envs\park_proj_env\Lib\site-packages\statsmodels\base\model.py:595: HessianInversionWarning: Inverting hessian failed, no bse or cov_params available
-#   warnings.warn('Inverting hessian failed, no bse or cov_params '
-# C:\Users\lisajos\.conda\envs\park_proj_env\Lib\site-packages\scipy\optimize\_optimize.py:1330: OptimizeWarning: NaN result encountered.
-#   res = _minimize_bfgs(f, x0, args, fprime, callback=callback, **opts)
-# C:\Users\lisajos\.conda\envs\park_proj_env\Lib\site-packages\statsmodels\base\model.py:595: HessianInversionWarning: Inverting hessian failed, no bse or cov_params available
-#          Current function value: nan
-#          Iterations: 0
-#          Function evaluations: 2
-#          Gradient evaluations: 2
-#   warnings.warn('Inverting hessian failed, no bse or cov_params '
-# C:\Users\lisajos\.conda\envs\park_proj_env\Lib\site-packages\statsmodels\base\model.py:607: ConvergenceWarning: Maximum Likelihood optimization failed to converge. Check mle_retvals
-#   warnings.warn("Maximum Likelihood optimization failed to "
-#                      ZeroInflatedNegativeBinomialP Regression Results
-# =========================================================================================
-# Dep. Variable:                      praise_count   No. Observations:                 1082
-# Model:             ZeroInflatedNegativeBinomialP   Df Residuals:                     1078
-# Method:                                      MLE   Df Model:                            3
-# Date:                           Mon, 26 Jan 2026   Pseudo R-squ.:                     nan
-# Time:                                   11:09:02   Log-Likelihood:                    nan
-# converged:                                 False   LL-Null:                       -661.74
-# Covariance Type:                       nonrobust   LLR p-value:                       nan
-# ===================================================================================
-#                       coef    std err          z      P>|z|      [0.025      0.975]
-# -----------------------------------------------------------------------------------
-# inflate_const            0        nan        nan        nan         nan         nan
-# Intercept              nan        nan        nan        nan         nan         nan
-# park_area              nan        nan        nan        nan         nan         nan
-# Temp_max_upper         nan        nan        nan        nan         nan         nan
-# TotPop_weighted        nan        nan        nan        nan         nan         nan
-# alpha               0.0500        nan        nan        nan         nan         nan
-# ===================================================================================
 
 
