@@ -6,6 +6,10 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 import pandas as pd
 import os
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+
+# TO DO
+# what exactly is in amenity_diversity? just pts within parks or are some (like toilets) with X m of parks also included?
 
 
 # ABOUT THE DATA
@@ -79,8 +83,7 @@ BLOCK_1_base = [
 ]
 
 BLOCK_2_amenities = [
-    "amenity_diversity",             # diversity instead of all individual per ha variables, OBS! does not include FOOD_ESTABLISHMENTS
-    # "total_food_establishments"   # add food_establishments_per_ha instead? or include in amenity_diversity
+    "amenity_diversity",             # diversity instead of all individual amenity_X per ha
 ]
 
 BLOCK_3_environment = [
@@ -252,6 +255,28 @@ print(f"AIC: {best['AIC']:.2f}\n")
 print(best["model"].summary())
 
 
+# ===================================
+# === check collinearity with VIF ===
+
+print("\n=== VIF diagnostics (final model) ===\n")
+
+# Get names of regressors from the fitted model
+exog_names = best["model"].model.exog_names
+
+# Remove intercept and model-specific parameters
+exclude_terms = ["Intercept", "inflate_const", "alpha"]
+vif_vars = [v for v in exog_names if v not in exclude_terms]
+
+# Build design matrix from gdf
+X = gdf[vif_vars].dropna()
+
+# Compute VIF
+vif_df = pd.DataFrame({
+    "variable": X.columns,
+    "VIF": [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
+})
+
+print(vif_df.sort_values("VIF", ascending=False))
 
 
 # ================================

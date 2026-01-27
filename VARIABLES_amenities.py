@@ -1,13 +1,17 @@
 
-
 import geopandas as gpd
 import pandas as pd
+
+
+# *** THIS SCRIPT NOW CONTAINS 'AMENITIES' AND WHAT WAS PREVIOUSLY 'FOOD' AND 'TYPOLOGY' ***
+# and amenity_diversity is based on all 3 which includes: Dog park, Outdoor gym, Play ground, School yard, Sports field,
+# Skate park, Garden, Religious (like a church etc), Food establishment (incl café, restaurant, ice cream shop), Toilet,
+# Bench, BBQ, Drinking fountain, Waste paper bin, Picnic table
+
 
 input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
 
 layer2 = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
-
-
 
 # ========================================================
 # AMENITIES, previously "TYPOLOGY" (from sociotop and OSM)
@@ -91,6 +95,8 @@ def THEME_typology_to_layer2(layer2):
     # === typologies as amenities (for amenity diversity) ===
     typology_amenities = joined_typology[['index_right', 'typology']].copy()
     typology_amenities = typology_amenities.rename(columns={'typology': 'amenity'})
+    # Exclude "Park" from amenity diversity
+    typology_amenities = typology_amenities[typology_amenities['amenity'] != 'Park']
     ###########
 
     grouped_typology = (
@@ -293,7 +299,6 @@ def THEME_food_to_layer2(layer2):
 
     return layer2, food_amenities
 layer2, food_amenities = THEME_food_to_layer2(layer2)
-
 
 # ========================================
 # AMENITIES (from OSM and Stockholms stad)
