@@ -9,6 +9,7 @@ import os
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 
 # TO DO
+# change some variables normalized by area (_per_ha) to be standardized too or instead?
 # what exactly is in amenity_diversity? just pts within parks or are some (like toilets) with X m of parks also included?
 
 
@@ -50,7 +51,6 @@ for name, col in OUTCOMES.items():
     print(f"  Variance / Mean : {(var_y / mean_y) if mean_y > 0 else np.nan:.3f}")
     print(f"  Proportion zero : {prop_zero:.3f}\n")
 
-
 # =================================
 # === choose dependent variable ===
 
@@ -69,18 +69,13 @@ if kategori_input not in DEPENDENT_VARIABLE:
 dependent_var = DEPENDENT_VARIABLE[kategori_input]
 print(f"\n✓ Running model for: {dependent_var}\n")
 
-# ========================
-# === park area offset ===
-
-USE_OFFSET = False  # set False to study park size effect for ideas
-
 # =============================
 # === model specification ===
 
-BLOCK_1_base = [
-    #"park_area",                    # offset park_area or not? ***
-    "TotPop_weighted",
-]
+#BLOCK_1_base = [
+#    #"park_area",                   # offset park_area instead to avoid modelling park use
+#    "TotPop_weighted",              # moved to block socioeconomic
+#]
 
 BLOCK_2_amenities = [
     "amenity_diversity",             # diversity instead of all individual amenity_X per ha
@@ -100,77 +95,112 @@ BLOCK_4_safety = [
 ]
 
 BLOCK_5_socioeconomic = [
-    # use max 1-2 variables
-    "MedianInk_weighted",    # or "MedianInk_weighted_avg" or otherwise median income (standardized)
+    "MedianInk_weighted",     # or "MedianInk_weighted_avg" or otherwise median income (standardized)
     "AGG_Alder_0_15_per_ha",  # or get % children (0-15)?
-    # "AGG_Alder_65_per_ha"  # or get % elderly (+65)?
+    # "AGG_Alder_65_per_ha"   # or get % elderly (+65)?
+    #"TotPop_weighted",
 ]
 
 BLOCK_6_accessibility = [
-    # add this block last if at all
     "distance_to_city_center_km",  # change coordinates of city center? (in VARIABLES_accessibility)
-    "transport_points_per_ha",  # points represent subway entrances and bus stops
-    "transport_type_diversity",
-    # output: 0 = no public transport nearby; 1 = only bus or only subway; 2 = both bus + subway
+    "transport_points_per_ha",     # points represent subway entrances and bus stops
+    "transport_type_diversity",    # output: 0 = no public transport nearby; 1 = only bus or only subway; 2 = both bus + subway
 ]
 
-BLOCKS = [
-    ("Base", BLOCK_1_base),
-    ("Amenities", BLOCK_2_amenities),
-    ("Environment", BLOCK_3_environment),
-    ("Safety", BLOCK_4_safety),
-    ("Socioeconomic", BLOCK_5_socioeconomic),
-    ("Accessibility", BLOCK_6_accessibility)
-]
+# BLOCKS = [
+#     #("Base", BLOCK_1_base),
+#     ("Amenities", BLOCK_2_amenities),
+#     ("Environment", BLOCK_3_environment),
+#     ("Safety", BLOCK_4_safety),
+#     ("Socioeconomic", BLOCK_5_socioeconomic),
+#     ("Accessibility", BLOCK_6_accessibility)
+# ]
+
+BLOCKS_BY_CATEGORY = {
+    "praise": [
+        ("Amenities", BLOCK_2_amenities),
+        ("Socioeconomic", BLOCK_5_socioeconomic),
+        #("Socioeconomic", ["MedianInk_weighted"]),  # PS! såhär kan man även lägga till enstaka variable från ett block om man inte vill inkludera alla!
+    ],
+    "complaints": [
+        ("Amenities", BLOCK_2_amenities),
+        ("Safety", BLOCK_4_safety),
+        ("Environment", BLOCK_3_environment),
+    ],
+    "ideas": [
+        #("Accessibility", BLOCK_6_accessibility),
+        ("Socioeconomic", BLOCK_5_socioeconomic),
+        #("Amenities", BLOCK_2_amenities)
+    ]
+}
 
 # ===============
 # === scaling ===
 
-if kategori_input == "praise":
-    print("→ Scaling continuous predictors (required for ZINB)")
+continuous_vars = [
+    #"park_area",
+    "amenity_diversity",
+    "Temp_max_upper",
+    "max_noise",
+    "crime_per_hectare",
+    "avg_Unsafe_NBHD_density",
+    "lighting_coverage",
+    "MedianInk_weighted",
+    "AGG_Alder_0_15_per_ha",
+    #"TotPop_weighted",         # removed because it correlates with income
+    #"AGG_Alder_65_per_ha",
+    "distance_to_city_center_km",
+    "transport_points_per_ha"
+]
 
-    scale_cols = [
-        "park_area", "TotPop_weighted",
-        "Temp_max_upper", "max_noise",
-        "crime_per_hectare", "avg_Unsafe_NBHD_density",
-        "lighting_coverage",
-        "MedianInk_weighted",
-        "AGG_Alder_0_15_per_ha",
-        "AGG_Alder_65_per_ha",
-        "distance_to_city_center_km",
-        "transport_points_per_ha"
-    ]
+scale_cols = [v for v in continuous_vars if v in gdf.columns]
 
-    scaler = StandardScaler()
-    gdf[scale_cols] = scaler.fit_transform(gdf[scale_cols])
+scaler = StandardScaler()
+gdf[scale_cols] = scaler.fit_transform(gdf[scale_cols])
 
-if kategori_input == "complaints":
-    scale_cols = [
-        "TotPop_weighted",
-        "amenity_diversity",
-        "Temp_max_upper",
-        "max_noise",
-        "crime_per_hectare",
-        "avg_Unsafe_NBHD_density",
-        "lighting_coverage",
-        "MedianInk_weighted",
-        "AGG_Alder_0_15_per_ha",
-        "distance_to_city_center_km",
-        "transport_points_per_ha",
-    ]
+# ==========================================
+# === VIF diagnostics per block (pre-model)
+# ==========================================
 
-    scaler = StandardScaler()
-    gdf[scale_cols] = scaler.fit_transform(gdf[scale_cols])
+from statsmodels.stats.outliers_influence import variance_inflation_factor
 
+print("\n=== Pre-model VIF diagnostics per block ===\n")
 
-# =========================================
-# === offset (optional, OFF by default) ===
+def compute_vif(df, variables):
+    X = df[variables].dropna()
+    if X.shape[1] < 2:
+        return None
+    vif_data = pd.DataFrame({
+        "variable": X.columns,
+        "VIF": [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
+    })
+    return vif_data.sort_values("VIF", ascending=False)
 
-if USE_OFFSET:
-    gdf["log_park_area"] = np.log(gdf["park_area_raw"] + 1)
-    offset = gdf["log_park_area"]
-else:
-    offset = None
+BLOCKS = BLOCKS_BY_CATEGORY[kategori_input]
+for block_name, block_vars in BLOCKS:
+    print(f"\n--- {block_name} block ---")
+
+    # only keep variables that exist in the dataframe
+    vars_existing = [v for v in block_vars if v in gdf.columns]
+
+    if len(vars_existing) < 2:
+        print("Not enough variables for VIF.")
+        continue
+
+    vif_df = compute_vif(gdf, vars_existing)
+
+    if vif_df is not None:
+        print(vif_df)
+    else:
+        print("VIF not computed.")
+
+# ========================
+# === park area offset ===
+
+gdf["log_park_area"] = np.log(gdf["park_area"] + 1)
+#offset = gdf["log_park_area"]
+gdf["park_area_exposure"] = gdf["park_area"] + 1
+
 
 # ====================================
 # === block-by-block model fitting ===
@@ -184,46 +214,64 @@ for block_name, block_vars in BLOCKS:
 
     vars_for_formula = current_vars.copy()
 
-    if kategori_input in ["ideas", "praise"]:
-        vars_for_formula = ["park_area"] + vars_for_formula # this includes park_area as a regular variable for praise and ideas (but for complaints it is used as exposure)
-
     formula = dependent_var + " ~ " + " + ".join(vars_for_formula)
+    #formula_glm = dependent_var + " ~ " + " + ".join(vars_for_formula) + " + offset(log_park_area)"
+    #formula_zinb = (dependent_var + " ~ " + " + ".join(vars_for_formula))
 
     print(f"\n--- Fitting model with blocks: {current_vars} ---")
 
-    # -------------------------
+    # ==========
     # complaints
-    # -------------------------
+
     if kategori_input == "complaints":
-
-        exposure = gdf["park_area"] + 1  # must be > 0
-
-        model=sm.NegativeBinomial.from_formula(     # to fix issue with fixed alpha to default = 1
-            formula=formula,
-            data=gdf,
-            exposure = exposure
-        ).fit(maxiter=200, disp=False)
-
-    # -------------------------
-    # ideas
-    # -------------------------
-    elif kategori_input == "ideas":
+        #model = sm.NegativeBinomial.from_formula(    # sm. indicates that it is MLE   but   this does not work anymore, the model breaks so use glm instead
         model = smf.glm(
             formula=formula,
             data=gdf,
             family=sm.families.NegativeBinomial(),
-            offset=offset
-        ).fit()
+            offset=gdf["log_park_area"]
+        ).fit(maxiter=200, disp=False)
 
-    # -------------------------
-    # praise
-    # -------------------------
-    elif kategori_input == "praise":
-        model = sm.ZeroInflatedNegativeBinomialP.from_formula(
+    # =====
+    # ideas
+
+    elif kategori_input == "ideas":
+        model = smf.glm(                        # smf.glm indicates that it is GLM
             formula=formula,
             data=gdf,
-            inflation="logit"  # intercept-only zero process
-        ).fit(method="bfgs", maxiter=200, disp=False)
+            family=sm.families.NegativeBinomial(),
+            offset=gdf["log_park_area"]
+        ).fit()
+
+    # ======
+    # praise
+
+    elif kategori_input == "praise":
+        # model = sm.ZeroInflatedNegativeBinomialP.from_formula(
+        #     formula=formula,
+        #     data=gdf,
+        #     #exposure=gdf["park_area_exposure"],
+        #     inflation="logit",  # intercept-only zero process
+        #     #offset=offset
+        # ).fit(method="bfgs", maxiter=200, disp=False)
+
+        zinb_model = sm.ZeroInflatedNegativeBinomialP.from_formula(
+            formula=formula,
+            data=gdf,
+            inflation="logit"
+        )
+
+        # align exposure to rows actually used by the model
+        exposure_aligned = gdf.loc[
+            zinb_model.data.row_labels, "park_area_exposure"
+        ]
+
+        model = zinb_model.fit(
+            method="bfgs",
+            maxiter=200,
+            disp=False,
+            exposure=exposure_aligned
+        )
 
     print(f"AIC: {model.aic:.2f}")
 
@@ -234,18 +282,17 @@ for block_name, block_vars in BLOCKS:
         "model": model
     })
 
-# =============================
+# ============================
 # === compare models (AIC) ===
-# =============================
 
 aic_table = pd.DataFrame(results)[["block", "n_vars", "AIC"]]
 print("\nAIC comparison:")
 print(aic_table)
 
-# =============================
+# ==================================
 # === select and show best model ===
-# =============================
 
+valid_results = [r for r in results if np.isfinite(r["AIC"])]
 best = min(results, key=lambda x: x["AIC"])
 
 print("\n✓ Best model:")
@@ -253,7 +300,6 @@ print(f"Block: {best['block']}")
 print(f"AIC: {best['AIC']:.2f}\n")
 
 print(best["model"].summary())
-
 
 # ===================================
 # === check collinearity with VIF ===

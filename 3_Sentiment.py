@@ -64,7 +64,6 @@ subset_df = df_geo[
 output_folder = f"data/tycktill_output/sentiments"
 os.makedirs(output_folder, exist_ok=True)
 
-
 # ================================================================
 # ============ PRETRAINED LANGUAGE MODEL FOR SWEDISH =============
 # ========== KBLab/robust-swedish-sentiment-multiclass ===========
@@ -74,6 +73,16 @@ tokenizer = AutoTokenizer.from_pretrained("KBLab/robust-swedish-sentiment-multic
 
 model_name = "KBLab/robust-swedish-sentiment-multiclass"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+##############
+# check maximum token length
+from transformers import AutoConfig
+
+config = AutoConfig.from_pretrained(
+    "KBLab/robust-swedish-sentiment-multiclass"
+)
+print(config.max_position_embeddings)
+##############
 
 # load model
 model = pipeline(
