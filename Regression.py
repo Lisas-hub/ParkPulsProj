@@ -82,7 +82,7 @@ BLOCK_2_amenities = [
 ]
 
 BLOCK_3_environment = [
-    "Temp_max_upper",
+    #"Temp_max_upper",
     "max_noise",
     # % impervious surface           # (or % tree coverage but i don't think i have great data for the latter)
     # % of park area protected
@@ -140,7 +140,7 @@ BLOCKS_BY_CATEGORY = {
 continuous_vars = [
     #"park_area",
     "amenity_diversity",
-    "Temp_max_upper",
+    #"Temp_max_upper",
     "max_noise",
     "crime_per_hectare",
     "avg_Unsafe_NBHD_density",
