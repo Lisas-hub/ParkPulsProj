@@ -12,7 +12,7 @@ import pandas as pd
 # TO DO
 # ...
 
-points_path = r"C:/Users/lisajos/PycharmProjects/park_proj/data/tycktill_output/BERTopic_filtered/tycktill_filtered.gpkg"
+points_path = r"/data/tycktill_output/BERTopic_filtered/tycktill_filtered.gpkg"
 points_layername = "pts_in_parks_with_topics"
 
 boundary_path = r"C:/Users/lisajos/QGIS_Projects/Output/Stadsdelsomraden_Stadskartan.gpkg"
