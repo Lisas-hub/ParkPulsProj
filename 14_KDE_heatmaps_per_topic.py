@@ -10,6 +10,10 @@ from rasterio.mask import mask
 import pandas as pd
 
 
+# ****** UPDATE TO MATCH OUTPUT OF 12_KDE_heatmaps_for_QGIS_layout ********
+
+
+
 points_path = r"C:/Users/lisajos/PycharmProjects/park_proj/data/tycktill_output/BERTopic_filtered/tycktill_filtered.gpkg"
 points_layername = "pts_in_parks_with_topics"
 

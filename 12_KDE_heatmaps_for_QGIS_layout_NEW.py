@@ -12,7 +12,7 @@ import pandas as pd
 # TO DO
 # ...
 
-points_path = r"/data/tycktill_output/BERTopic_filtered/tycktill_filtered.gpkg"
+TYCKTILL_FILTERED_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg"
 points_layername = "pts_in_parks_with_topics"
 
 boundary_path = r"C:/Users/lisajos/QGIS_Projects/Output/Stadsdelsomraden_Stadskartan.gpkg"
@@ -29,7 +29,7 @@ COMPARABLE_TOTALS = False    # use TRUE to make total rasters that are comparabl
 # KDE parameters
 radius_m = 450        # KDE bandwidth in meters  # tidigare 250
 pixel_size = 50       # pixel size in meters
-gaussian_sigma = 5    # only applied to Praise + Ideas
+gaussian_sigma = 5
 nodata_val = -9999.0
 GLOBAL_KDE_MAX = {}
 
@@ -63,7 +63,7 @@ hour_groups = {
 # =========
 # load data
 
-points = gpd.read_file(points_path, layer=points_layername)
+points = gpd.read_file(TYCKTILL_FILTERED_GPKG, layer=points_layername)
 boundary = gpd.read_file(boundary_path, layer=boundary_layername)
 
 if points.crs != boundary.crs:
@@ -212,13 +212,13 @@ def run_kde(points, categories, time_groups, time_col, label_name, boundary, rad
             # normalize relative to total KDE
             Z_norm = Z_subset / GLOBAL_KDE_MAX[cat_name]
 
-            # optional Gaussian smoothing (apply to all categories, not just Praise/Ideas)
+            # optional Gaussian smoothing (apply to all categories, not just Praise/Ideas)    *** raises max value above 1 for at least one map ***
             if gaussian_sigma is not None:
                 Z_norm = gaussian_filter(Z_norm, sigma=gaussian_sigma)
 
             save_raster(
                 Z_norm, transform, shape,
-                os.path.join(output_folder, f"KDE_{cat_name}_{group_name}.tif"),
+                os.path.join(output_folder, f"KDE_{cat_name}_{group_name}_WITHOUT_EXTRA_SMOOTHING.tif"),
                 boundary,
                 nodata_val
             )

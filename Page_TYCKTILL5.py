@@ -660,6 +660,42 @@ def get_visible_topics(df, line_field):
     # return only topics that actually occur in this subset for each subpage
     return sorted(df[line_field].dropna().unique().tolist())
 
+# ========================
+# for top topics bar chart
+
+# def prepare_top_topics_df(prepped_vectors, category_choice, top_n=10):
+#     """
+#     Combine loc/key/sim datasets for selected category
+#     and return aggregated top N topic counts.
+#     """
+#
+#     category_map = {
+#         "Praise": "praise",
+#         "Ideas": "idea",
+#         "Error + Complaints": "error_complaint"
+#     }
+#
+#     prefix = category_map[category_choice]
+#
+#     dfs = [
+#         prepped_vectors[f"{prefix}_loc"],
+#         prepped_vectors[f"{prefix}_key"],
+#         prepped_vectors[f"{prefix}_sim"]
+#     ]
+#
+#     combined = pd.concat(dfs, ignore_index=True)
+#
+#     counts = (
+#         combined["topic_keywords_short"]
+#         .value_counts()
+#         .head(top_n)
+#         .reset_index()
+#     )
+#
+#     counts.columns = ["topic", "count"]
+#
+#     return counts
+
 # ==========================================
 # === UNIFIED PLOTTER FOR ANY ONE SUBSET ===
 
@@ -911,6 +947,59 @@ def make_plot(kind, category, view, temporal_scale, prepped_vectors, top_n=5):
 
     return charts
 
+# =========================
+# for top topics bar charts
+
+def make_plot_top_topics_compare_3_filters(datasets_dict, top_n=5):
+
+    plots = []
+
+    for title, df in datasets_dict.items():
+
+        # Get dataset-specific top topics
+        top_topics = get_top_n_topics(df, n=top_n)
+
+        df_plot = (
+            df[df["topic_keywords_short"].isin(top_topics)]
+            .groupby("topic_keywords_short")
+            .size()
+            .reset_index(name="count")
+        )
+
+        # Ensure sorting by count descending
+        df_plot = df_plot.sort_values("count", ascending=False)
+
+        chart = (
+            alt.Chart(df_plot, title=title)
+            .mark_bar(size=20)
+            .encode(
+                x=alt.X("count:Q", title="Tyck till entries"),
+                y=alt.Y(
+                    "topic_keywords_short:N",
+                    sort="-x",
+                    title="Topic label"
+                ),
+                color=alt.Color(
+                    "topic_keywords_short:N",
+                    scale=GLOBAL_TOPIC_COLOR_SCALE,
+                    #legend=None  # shared legend handled later
+                    legend=alt.Legend(
+                        orient="bottom",
+                        direction="vertical",
+                        labelLimit=500,
+                        title="Topic label"
+                    )
+                ),
+                tooltip=["topic_keywords_short", "count"]
+            )
+            .properties(height=250, width=300)
+        )
+
+        plots.append(chart)
+
+    return plots
+
+
 # =======================
 # save plots in streamlit
 
@@ -1020,6 +1109,32 @@ def plot_sentiment_cooccurrence_matrix(cooc_df):
     )
 
     return chart
+
+# ====================
+# top topics bar chart
+
+def plot_top_topics_bar(df, color_scale):
+    return (
+        alt.Chart(df)
+        .mark_bar()
+        .encode(
+            x=alt.X("count:Q", title="Number of comments"),
+            y=alt.Y(
+                "topic:N",
+                sort="-x",
+                title="Topic"
+            ),
+            color=alt.Color(
+                "topic:N",
+                scale=color_scale,
+                legend=alt.Legend(title="Topic")
+            ),
+            tooltip=["topic", "count"]
+        )
+        .properties(height=400)
+    )
+
+
 
 # ============
 # === MAPS ===
@@ -1487,6 +1602,44 @@ if section == "Topics":
 
     elif topic_question == "What are the top topics?":
         st.info("to be added")
+
+        category_choice = st.sidebar.pills(
+            "Select category:",
+            ["Praise", "Ideas", "Error + Complaints"],
+            selection_mode="single",
+            default="Praise"
+        )
+
+        top_n = 5
+
+        cat_key = CATEGORY_MAP[category_choice]
+
+        datasets_dict = {
+            "By location": prepped_vectors[f"{cat_key}_loc"],
+            "By keyword (strictly)": prepped_vectors[f"{cat_key}_key"],
+            "By keyword (similarity)": prepped_vectors[f"{cat_key}_sim"]
+        }
+
+        charts = make_plot_top_topics_compare_3_filters(
+            datasets_dict=datasets_dict,
+            top_n=top_n
+        )
+
+        combined_chart = alt.hconcat(*charts).resolve_scale(
+            y="independent",  # each filter has its own ranking
+            color="shared"
+        )
+
+        st.altair_chart(combined_chart, use_container_width=True)
+
+        png = altair_chart_to_png(combined_chart)
+
+        st.download_button(
+            label="Download full figure (PNG)",
+            data=png,
+            file_name=f"top_topics_compare_3_filters_{category_choice}.png",
+            mime="image/png"
+        )
 
     elif topic_question == "Topic co-occurence":
         st.subheader("Topic co-occurrence matrix")
