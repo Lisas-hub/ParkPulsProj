@@ -72,10 +72,6 @@ temporal_dims = {
 # For weekdays, to 'weekday' column
 # For seasons, to 'month' column
 
-import matplotlib.pyplot as plt
-import numpy as np
-from scipy.stats import chisquare, friedmanchisquare
-
 categories_dict = {
     "Praise": ["Beröm"],
     "Ideas": ["Idé"],
@@ -121,6 +117,28 @@ for cat_name, cat_values in categories_dict.items():
             # Equal expected counts for other dimensions
             expected_counts = np.repeat(obs_counts.sum() / len(obs_counts), len(obs_counts))
 
+
+        ##############
+        # ----- Assumption checks: Chi-square -----
+
+        # 1. Minimum expected count
+        min_expected = np.min(expected_counts)
+        small_expected = np.sum(expected_counts < 5)
+        percent_small = small_expected / len(expected_counts) * 100
+
+        print("\nChi-square assumption checks:")
+        print(f"Minimum expected count: {min_expected:.2f}")
+        print(f"Cells with expected < 5: {small_expected} "
+              f"({percent_small:.1f}%)")
+
+        if min_expected < 1:
+            print("⚠️ WARNING: Some expected counts < 1. Chi-square invalid.")
+
+        if percent_small > 20:
+            print("⚠️ WARNING: More than 20% of cells have expected < 5.")
+        ##############
+
+
         chi2_stat, chi2_p = chisquare(obs_counts, f_exp=expected_counts)
         df = len(obs_counts) - 1
         N = obs_counts.sum()
@@ -154,7 +172,6 @@ for cat_name, cat_values in categories_dict.items():
                 .unstack(fill_value=0)
         )
 
-
         for grp in temp_groups.keys():
             if grp not in park_grouped.columns:
                 park_grouped[grp] = 0
@@ -177,9 +194,37 @@ for cat_name, cat_values in categories_dict.items():
                 col1, col2 = park_grouped.columns
                 stat, p = wilcoxon(park_grouped[col1], park_grouped[col2])
 
-                # Simple effect size (rank-biserial style approximation)
-                r = stat / (N * (N + 1) / 2)
 
+                ##################
+                differences = park_grouped[col1] - park_grouped[col2]
+
+                differences_nonzero = differences[differences != 0]
+
+                # remove Zero Differences (Wilcoxon requirement)
+                if len(differences_nonzero) < 5:
+                    print("⚠️ Very few non-zero differences. Wilcoxon may be unstable.")
+
+                # check symmetry
+                skewness = differences_nonzero.skew()
+                print(f"Skewness of differences: {skewness:.2f}")
+
+                if abs(skewness) > 1:
+                    print("⚠️ Differences are strongly skewed. "
+                          "Wilcoxon assumption of symmetry may be violated.")
+
+                # visually check symmetry
+                plt.hist(differences_nonzero, bins=10)
+                plt.axvline(0, color='red', linestyle='--')
+                plt.title("Distribution of Paired Differences")
+                plt.show()
+                ##################
+
+
+                # Simple effect size (rank-biserial style approximation)
+                z = (stat - (N * (N + 1) / 4)) / np.sqrt(N * (N + 1) * (2 * N + 1) / 24)
+                r = z / np.sqrt(N)
+
+                print(f"Effect size r = {r:.3f}")
                 print(f"\n{cat_name} - {temp_name} Wilcoxon test")
                 print(f"W = {stat:.2f}, N = {N}, p = {p:.4f}, r = {r:.3f}")
 
@@ -190,6 +235,26 @@ for cat_name, cat_values in categories_dict.items():
                 plt.show()
 
             elif n_groups >= 3:
+
+
+                ################
+                if N < 5:
+                    print("⚠️ Very small number of parks (N < 5). "
+                          "Friedman test may lack power.")
+
+                zero_variance_rows = (park_grouped.var(axis=1) == 0).sum()
+
+                if zero_variance_rows > 0:
+                    print(f"⚠️ {zero_variance_rows} parks show no variation "
+                          "across groups (may weaken Friedman test).")
+
+                z_scores = (park_grouped - park_grouped.mean()) / park_grouped.std()
+
+                if (np.abs(z_scores) > 3).any().any():
+                    print("⚠️ Potential extreme outliers detected (|z| > 3).")
+                ################
+
+
                 # -----------------------------
                 # Friedman test
                 # -----------------------------
@@ -211,130 +276,5 @@ for cat_name, cat_values in categories_dict.items():
                 plt.title(f"{cat_name} - {temp_name} per park (Friedman)")
                 plt.show()
 
-            # if n_groups == 2:
-            #     # Wilcoxon signed-rank test for 2 paired groups
-            #     col1, col2 = park_grouped.columns
-            #     stat, p = wilcoxon(park_grouped[col1], park_grouped[col2])
-            #     print(f"{cat_name} - {temp_name} Wilcoxon signed-rank test")
-            #     print("Statistic:", stat, "p-value:", p)
-            #
-            #     # Optional: boxplot
-            #     park_grouped.boxplot()
-            #     plt.ylabel("Count per park")
-            #     plt.title(f"{cat_name} - {temp_name} per park (Wilcoxon)")
-            #     plt.show()
-            #
-            # elif n_groups >= 3:
-            #     # Friedman test for 3 or more groups
-            #     friedman_stat, friedman_p = friedmanchisquare(*[park_grouped[grp] for grp in park_grouped.columns])
-            #     print(f"{cat_name} - {temp_name} Friedman test")
-            #     print("Statistic:", friedman_stat, "p-value:", friedman_p)
-            #
-            #     # Optional: boxplot
-            #     park_grouped.boxplot()
-            #     plt.ylabel("Count per park")
-            #     plt.title(f"{cat_name} - {temp_name} per park (Friedman)")
-            #     plt.show()
-
-# # filter to complaints
-# complaints = points[points["Kategori"].isin(categories["Error_Complaints"])].copy()
-#
-# # Extract unique calendar days (for exposure adjustment)
-# points["date"] = points["Inkommet datum"].dt.date
-# days_df = pd.DataFrame({"date": pd.to_datetime(points["date"].dropna())})
-#
-# # Assign month and season
-# days_df["month"] = days_df["date"].dt.month
-#
-# # assign season
-# def assign_season(month):
-#     for season, months in seasons.items():
-#         if month in months:
-#             return season
-#
-# days_df["Season"] = days_df["month"].apply(assign_season)
-#
-# # Count number of unique days per season
-# season_day_counts = days_df["Season"].value_counts().sort_index()
-# print("Unique days per season (exposure):")
-# print(season_day_counts)
-#
-# complaints["Season"] = complaints["month"].apply(assign_season)
-#
-# ########
-# print(complaints["Inkommet datum"].min())
-# print(complaints["Inkommet datum"].max())
-# ########
-#
-# # =======================================================
-# # === (1) Are total complaints uneven across seasons? ===
-#
-# # Chi-Square test - compares total distribution across seasons (individual parks not involved)
-#
-# # Observed counts per season (instead of assuming 25% per season)
-# season_counts = complaints["Season"].value_counts().sort_index()
-# print("\nObserved complaints per season:")
-# print(season_counts)
-#
-# # Expected counts based on exposure
-# total_days = season_day_counts.sum()
-# expected_counts = (season_day_counts / total_days) * season_counts.sum()
-# print("\nExpected counts based on days observed per season:")
-# print(expected_counts)
-#
-# # Chi-square test
-# chi2_stat, p_value = chisquare(season_counts, f_exp=expected_counts)
-# print("\nCHI_SQUARE")
-# print("Chi-square statistic:", chi2_stat)
-# print("p-value:", p_value)
-#
-# # plot
-# x = np.arange(len(season_counts))
-# plt.bar(x - 0.2, season_counts.values, width=0.4, label="Observed")
-# plt.bar(x + 0.2, expected_counts.values, width=0.4, label="Expected")
-# plt.xticks(x, season_counts.index)
-# plt.ylabel("Number of complaints")
-# plt.title("Observed vs Expected Complaints by Season")
-# plt.legend()
-# plt.show()
-#
-#
-# # ==========================================================
-# # === (2) Do parks differ in seasonal complaint levels?  ===
-#
-# # Friedman test
-#
-# park_season = (
-#     complaints
-#     .groupby([park_id, "Season"])
-#     .size()
-#     .unstack(fill_value=0)
-# )
-#
-# for s in seasons.keys():
-#     if s not in park_season.columns:
-#         park_season[s] = 0
-#
-# park_season = park_season[["Winter", "Spring", "Summer", "Autumn"]]
-#
-# friedman_stat, friedman_p = friedmanchisquare(
-#     park_season["Winter"],
-#     park_season["Spring"],
-#     park_season["Summer"],
-#     park_season["Autumn"]
-# )
-#
-# print("\nFRIEDMAN")
-# print("Friedman statistic:", friedman_stat)
-# print("p-value:", friedman_p)
-#
-# # optionally remove parks with zero complaints across all seasons to clean up the boxplot
-# #park_season = park_season.loc[park_season.sum(axis=1) > 0]
-#
-# # plot
-# park_season.boxplot()
-# plt.ylabel("Complaint count per park")
-# plt.title("Seasonal distribution of complaints per park")
-# plt.show()
 
 

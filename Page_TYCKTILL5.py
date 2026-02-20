@@ -1601,7 +1601,6 @@ if section == "Topics":
         st.info("to be added")
 
     elif topic_question == "What are the top topics?":
-        st.info("to be added")
 
         category_choice = st.sidebar.pills(
             "Select category:",
