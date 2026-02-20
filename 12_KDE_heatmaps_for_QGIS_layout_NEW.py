@@ -22,14 +22,14 @@ output_folder = r"C:\Users\lisajos\PycharmProjects\park_proj\data\qgis_maps\TIFF
 os.makedirs(output_folder, exist_ok=True)
 
 # modes
-TEST_MODE = True            # use TRUE to run a subset and not the full script with totals and all combinations
+TEST_MODE = False            # use TRUE to run a subset and not the full script with totals and all combinations
 COMPARABLE_TOTALS = False    # use TRUE to make total rasters that are comparable to all other raster within the same category
 #SAVE_RAW = False
 
 # KDE parameters
 radius_m = 450        # KDE bandwidth in meters  # tidigare 250
 pixel_size = 50       # pixel size in meters
-gaussian_sigma = 5
+#gaussian_sigma = 5
 nodata_val = -9999.0
 GLOBAL_KDE_MAX = {}
 
@@ -94,11 +94,10 @@ print("Weekday Praise points:", len(points[
 # ======================
 
 # global storage for normalization
-GLOBAL_KDE_MAX = {}
+#GLOBAL_KDE_MAX = {}
 
 # ======================
 # KDE + raster functions
-# ======================
 
 def create_kde_raster(points_gdf, boundary_gdf, radius_m, pixel_size):
     coords = np.array([(pt.x, pt.y) for pt in points_gdf.geometry])
@@ -124,12 +123,81 @@ def create_kde_raster(points_gdf, boundary_gdf, radius_m, pixel_size):
 
     return Z_raw, transform, Z_raw.shape
 
+
 # ======================
-def save_raster(Z, transform, shape, out_path, boundary_gdf, nodata_val):
+# MASK ARRAY TO BOUNDARY
+
+def mask_array_to_boundary(Z, transform, boundary_gdf):
+    temp_meta = {
+        "driver": "GTiff",
+        "height": Z.shape[0],
+        "width": Z.shape[1],
+        "count": 1,
+        "dtype": "float32",
+        "crs": boundary_gdf.crs.to_string(),
+        "transform": transform,
+        "nodata": nodata_val
+    }
+
+    temp_path = "temp_kde.tif"
+
+    with rasterio.open(temp_path, "w", **temp_meta) as dst:
+        dst.write(Z.astype("float32"), 1)
+
+    with rasterio.open(temp_path) as src:
+        out_image, out_transform = mask(
+            src,
+            boundary_gdf.geometry,
+            crop=True,
+            nodata=nodata_val,
+            filled=True
+        )
+
+    os.remove(temp_path)
+
+    Z_masked = out_image[0]
+    Z_masked[Z_masked == nodata_val] = np.nan
+
+    return Z_masked, out_transform
+
+# ======================
+# def save_raster(Z, transform, shape, out_path, boundary_gdf, nodata_val):
+#
+#     out_meta = {
+#         "driver": "GTiff",
+#         "height": shape[0],
+#         "width": shape[1],
+#         "count": 1,
+#         "dtype": "float32",
+#         "crs": boundary_gdf.crs.to_string(),
+#         "transform": transform,
+#         "nodata": nodata_val
+#     }
+#
+#     with rasterio.open(out_path, "w", **out_meta) as dst:
+#         dst.write(Z.astype("float32"), 1)
+#
+#     # mask to boundary
+#     with rasterio.open(out_path) as src:
+#         out_image, out_transform = mask(src, boundary_gdf.geometry, crop=True, nodata=nodata_val, filled=True)
+#         out_meta_clipped = src.meta.copy()
+#         out_meta_clipped.update({"height": out_image.shape[1], "width": out_image.shape[2], "transform": out_transform})
+#
+#     with rasterio.open(out_path, "w", **out_meta_clipped) as dst:
+#         dst.write(out_image)
+
+# ======================
+# SAVE RASTER
+
+def save_raster(Z, transform, out_path, boundary_gdf):
+
+    Z_out = Z.copy()
+    Z_out[np.isnan(Z_out)] = nodata_val
+
     out_meta = {
         "driver": "GTiff",
-        "height": shape[0],
-        "width": shape[1],
+        "height": Z_out.shape[0],
+        "width": Z_out.shape[1],
         "count": 1,
         "dtype": "float32",
         "crs": boundary_gdf.crs.to_string(),
@@ -138,16 +206,7 @@ def save_raster(Z, transform, shape, out_path, boundary_gdf, nodata_val):
     }
 
     with rasterio.open(out_path, "w", **out_meta) as dst:
-        dst.write(Z.astype("float32"), 1)
-
-    # mask to boundary
-    with rasterio.open(out_path) as src:
-        out_image, out_transform = mask(src, boundary_gdf.geometry, crop=True, nodata=nodata_val, filled=True)
-        out_meta_clipped = src.meta.copy()
-        out_meta_clipped.update({"height": out_image.shape[1], "width": out_image.shape[2], "transform": out_transform})
-
-    with rasterio.open(out_path, "w", **out_meta_clipped) as dst:
-        dst.write(out_image)
+        dst.write(Z_out.astype("float32"), 1)
 
 # ======================
 def run_total_kde(points, categories, boundary, radius_m, pixel_size):
@@ -161,66 +220,143 @@ def run_total_kde(points, categories, boundary, radius_m, pixel_size):
         if Z_raw is None:
             continue
 
-        # store global max for normalization
-        GLOBAL_KDE_MAX[cat_name] = np.nanmax(Z_raw)
+        # Mask FIRST
+        Z_masked, transform_masked = mask_array_to_boundary(
+            Z_raw, transform, boundary
+        )
 
-        # save total raster
-        Z_norm = Z_raw / GLOBAL_KDE_MAX[cat_name]
+        # Compute max from masked raster
+        max_val = np.nanmax(Z_masked)
+
+        # store global max for normalization
+        #GLOBAL_KDE_MAX[cat_name] = np.nanmax(Z_raw)
+        GLOBAL_KDE_MAX[cat_name] = max_val
+
+        # Normalize total to 1
+        #Z_norm = Z_raw / GLOBAL_KDE_MAX[cat_name]
+        Z_norm = Z_masked / max_val
+
+        # # save total raster
+        # save_raster(
+        #     Z_norm, transform, shape,
+        #     os.path.join(output_folder, f"KDE_TOTAL_{cat_name}.tif"),
+        #     boundary,
+        #     nodata_val
+        # )
         save_raster(
-            Z_norm, transform, shape,
-            os.path.join(output_folder, f"KDE_TOTAL_{cat_name}.tif"),
-            boundary,
-            nodata_val
+            Z_norm,
+            transform_masked,
+            os.path.join(output_folder, f"KDE_TOTAL_{cat_name}_NEW.tif"),
+            boundary
         )
 
 # ======================
-def run_kde(points, categories, time_groups, time_col, label_name, boundary, radius_m, pixel_size, only_category=None, only_group=None):
-    """
-    Compute KDEs for subsets (weekdays/weekends, seasons, etc.)
-    Normalization is done relative to TOTAL category KDE
-    """
+# SUBSET KDE
+
+# def run_kde(points, categories, time_groups, time_col, label_name, boundary, radius_m, pixel_size, only_category=None, only_group=None):
+#     """
+#     Compute KDEs for subsets (weekdays/weekends, seasons, etc.)
+#     Normalization is done relative to TOTAL category KDE
+#     """
+#     summary = []
+#
+#     total_jobs = len(categories) * len(time_groups)
+#     job_counter = 0
+#
+#     print(f"\nStarting KDE run for: {label_name}")
+#     print(f"Total rasters to process: {total_jobs}\n")
+#
+#     for cat_name, cat_values in categories.items():
+#         if only_category and cat_name != only_category:
+#             continue
+#
+#         subset_cat = points[points["Kategori"].isin(cat_values)]
+#
+#         for group_name, group_values in time_groups.items():
+#             if only_group and group_name != only_group:
+#                 continue
+#
+#             job_counter += 1
+#             print(f"[{job_counter}/{total_jobs}] {label_name}: {group_name} | Category: {cat_name}")
+#
+#             subset = subset_cat[subset_cat[time_col].isin(group_values)]
+#
+#             if len(subset) == 0:
+#                 continue
+#
+#             Z_subset, transform, shape = create_kde_raster(subset, boundary, radius_m, pixel_size)
+#             if Z_subset is None:
+#                 continue
+#
+#             # normalize relative to total KDE
+#             Z_norm = Z_subset / GLOBAL_KDE_MAX[cat_name]
+#
+#             # optional Gaussian smoothing (apply to all categories, not just Praise/Ideas)    *** raises max value above 1 for multiple rasters ***
+#             #if gaussian_sigma is not None:
+#             #    Z_norm = gaussian_filter(Z_norm, sigma=gaussian_sigma)
+#
+#             save_raster(
+#                 Z_norm, transform, shape,
+#                 os.path.join(output_folder, f"KDE_{cat_name}_{group_name}_WITHOUT_EXTRA_SMOOTHING.tif"),
+#                 boundary,
+#                 nodata_val
+#             )
+#
+#             summary.append({
+#                 "Category": cat_name,
+#                 label_name: group_name,
+#                 "Points": len(subset)
+#             })
+#
+#     return pd.DataFrame(summary)
+
+def run_kde(points, categories, time_groups, time_col, label_name,
+            boundary, radius_m, pixel_size):
+
+    print(f"\nRunning subset KDE: {label_name}\n")
+
     summary = []
 
     total_jobs = len(categories) * len(time_groups)
     job_counter = 0
 
-    print(f"\nStarting KDE run for: {label_name}")
-    print(f"Total rasters to process: {total_jobs}\n")
-
     for cat_name, cat_values in categories.items():
-        if only_category and cat_name != only_category:
-            continue
 
         subset_cat = points[points["Kategori"].isin(cat_values)]
 
         for group_name, group_values in time_groups.items():
-            if only_group and group_name != only_group:
-                continue
-
-            job_counter += 1
-            print(f"[{job_counter}/{total_jobs}] {label_name}: {group_name} | Category: {cat_name}")
 
             subset = subset_cat[subset_cat[time_col].isin(group_values)]
 
             if len(subset) == 0:
                 continue
 
-            Z_subset, transform, shape = create_kde_raster(subset, boundary, radius_m, pixel_size)
-            if Z_subset is None:
+            Z_raw, transform, shape = create_kde_raster(
+                subset, boundary, radius_m, pixel_size
+            )
+
+            if Z_raw is None:
                 continue
 
-            # normalize relative to total KDE
-            Z_norm = Z_subset / GLOBAL_KDE_MAX[cat_name]
+            # Mask FIRST
+            Z_masked, transform_masked = mask_array_to_boundary(
+                Z_raw, transform, boundary
+            )
 
-            # optional Gaussian smoothing (apply to all categories, not just Praise/Ideas)    *** raises max value above 1 for at least one map ***
-            if gaussian_sigma is not None:
-                Z_norm = gaussian_filter(Z_norm, sigma=gaussian_sigma)
+            # Normalize using masked TOTAL max
+            Z_norm = Z_masked / GLOBAL_KDE_MAX[cat_name]
+
+            print(f"{cat_name} | {group_name} max after norm:",
+                  np.nanmax(Z_norm))
 
             save_raster(
-                Z_norm, transform, shape,
-                os.path.join(output_folder, f"KDE_{cat_name}_{group_name}_WITHOUT_EXTRA_SMOOTHING.tif"),
-                boundary,
-                nodata_val
+                Z_norm,
+                transform_masked,
+                os.path.join(
+                    output_folder,
+                    f"KDE_{cat_name}_{group_name}_NEW.tif"
+                ),
+                boundary
             )
 
             summary.append({
@@ -231,15 +367,61 @@ def run_kde(points, categories, time_groups, time_col, label_name, boundary, rad
 
     return pd.DataFrame(summary)
 
+
 # ======================
 # RUN SCRIPT
 # ======================
 
+# if TEST_MODE:
+#     test_category = "Error_Complaints"
+#     # TOTAL
+#     run_total_kde(points, {test_category: categories[test_category]}, boundary, radius_m, pixel_size)
+#     # SUBSET (Weekend)
+#     subset_summary = run_kde(
+#     #run_kde(
+#         points,
+#         {test_category: categories[test_category]},
+#         week_groups,
+#         "weekday",
+#         "WeekType",
+#         boundary,
+#         radius_m,
+#         pixel_size,
+#         only_category=test_category,
+#         only_group="Weekend"
+#     )
+# else:
+#     # TOTALS
+#     run_total_kde(points, categories, boundary, radius_m, pixel_size)
+#
+#     # SEASONS
+#     season_summary = run_kde(points, categories, seasons, "month", "Season", boundary, radius_m, pixel_size)
+#
+#     # WEEKDAY/WEEKEND
+#     weekday_summary = run_kde(points, categories, week_groups, "weekday", "WeekType", boundary, radius_m, pixel_size)
+#
+#     # TIME OF DAY
+#     hour_summary = run_kde(points, categories, hour_groups, "hour", "TimeOfDay", boundary, radius_m, pixel_size)
+#
+#     print("\nSeasonal KDE point counts:")
+#     print(season_summary.to_string(index=False))
+#     print("\nWeekday / Weekend KDE point counts:")
+#     print(weekday_summary.to_string(index=False))
+#     print("\nTime-of-day KDE point counts:")
+#     print(hour_summary.to_string(index=False))
+
 if TEST_MODE:
+
     test_category = "Error_Complaints"
-    # TOTAL
-    run_total_kde(points, {test_category: categories[test_category]}, boundary, radius_m, pixel_size)
-    # SUBSET (Weekend)
+
+    run_total_kde(
+        points,
+        {test_category: categories[test_category]},
+        boundary,
+        radius_m,
+        pixel_size
+    )
+
     subset_summary = run_kde(
         points,
         {test_category: categories[test_category]},
@@ -248,30 +430,32 @@ if TEST_MODE:
         "WeekType",
         boundary,
         radius_m,
-        pixel_size,
-        only_category=test_category,
-        only_group="Weekend"
+        pixel_size
     )
+
+    print("\nSubset KDE point counts:")
+    print(subset_summary.to_string(index=False))
+
 else:
-    # TOTALS
+
     run_total_kde(points, categories, boundary, radius_m, pixel_size)
 
-    # SEASONS
     season_summary = run_kde(points, categories, seasons, "month", "Season", boundary, radius_m, pixel_size)
-
-    # WEEKDAY/WEEKEND
     weekday_summary = run_kde(points, categories, week_groups, "weekday", "WeekType", boundary, radius_m, pixel_size)
-
-    # TIME OF DAY
     hour_summary = run_kde(points, categories, hour_groups, "hour", "TimeOfDay", boundary, radius_m, pixel_size)
 
     print("\nSeasonal KDE point counts:")
     print(season_summary.to_string(index=False))
+
     print("\nWeekday / Weekend KDE point counts:")
     print(weekday_summary.to_string(index=False))
+
     print("\nTime-of-day KDE point counts:")
     print(hour_summary.to_string(index=False))
 
+
+
+# OLD:
 # Seasonal KDE point counts:
 #         Category Season  Points
 #           Praise Winter      95
