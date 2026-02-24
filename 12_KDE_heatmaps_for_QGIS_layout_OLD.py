@@ -18,7 +18,7 @@ points_layername = "pts_in_parks_with_topics"
 boundary_path = r"C:/Users/lisajos/QGIS_Projects/Output/Stadsdelsomraden_Stadskartan.gpkg"
 boundary_layername = "stadsdelsnmnder"
 
-output_folder = r"C:\Users\lisajos\PycharmProjects\park_proj\data\qgis_maps\TIFFs\FINAL"
+output_folder = r"C:\Users\lisajos\PycharmProjects\park_proj\data\qgis_maps\TIFFs"
 os.makedirs(output_folder, exist_ok=True)
 
 # modes

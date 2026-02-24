@@ -88,11 +88,19 @@ TOPIC_COLOR_MAP = {
     "felparkerade, parkerade, gågata":              "#1F3A8A" # deep blue (finns bara i error_complaints, compare 2 years?) har samma som bastu! #4E79A7
 }
 
+TOPIC_ALIASES = {
+    "snöröjningen, beröm, tack": "snow ploughing, praise, thank you",
+    "blommor, tulpaner, påskliljor": "flowers, daffodils",
+    # "bastu, bastun, sauna": "sauna",
+    #"cykelbanan, cykelbana, asfalteringen": "",
+}
+
 TOPICS_TO_PLOT = {
     "praise": [
-        "bastu, bastun, sauna",
+        "snöröjningen, beröm, tack",
         "blommor, tulpaner, påskliljor",
-        "cykelbanan, cykelbana, asfalteringen",
+        # "bastu, bastun, sauna",
+        #"cykelbanan, cykelbana, asfalteringen",
     ],
     "idea": [
         "cyklisterna, cykelbanan, cykelbana",
@@ -207,13 +215,14 @@ def plot_line_png(df_agg, title, xlabel, outfile):
     plt.figure(figsize=(6, 5))
 
     for i, col in enumerate(df_agg.columns):
+        display_label = TOPIC_ALIASES.get(col, col)
         plt.plot(
             df_agg.index,
             df_agg[col],
             marker="o",
             linewidth=2,
             markersize=5,
-            label=col,
+            label=display_label,
             color=TOPIC_COLOR_MAP[col]
         )
 

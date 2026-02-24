@@ -10,17 +10,13 @@ from rasterio.mask import mask
 import pandas as pd
 
 
-# ****** UPDATE TO MATCH OUTPUT OF 12_KDE_heatmaps_for_QGIS_layout ********
-
-
-
 points_path = r"C:/Users/lisajos/PycharmProjects/park_proj/data/tycktill_output/BERTopic_filtered/tycktill_filtered.gpkg"
 points_layername = "pts_in_parks_with_topics"
 
 boundary_path = r"C:/Users/lisajos/QGIS_Projects/Output/Stadsdelsomraden_Stadskartan.gpkg"
 boundary_layername = "stadsdelsnmnder"
 
-output_folder = r"C:\Users\lisajos\PycharmProjects\park_proj\data\qgis_maps\TIFFs"
+output_folder = r"C:\Users\lisajos\PycharmProjects\park_proj\data\qgis_maps\TIFFs\FINAL"
 os.makedirs(output_folder, exist_ok=True)
 
 
@@ -39,17 +35,10 @@ points["Inkommet datum"] = pd.to_datetime(
     errors="coerce"
 )
 
-# =========
-# constants
-
 # KDE parameters
-radius_m = 250        # KDE bandwidth in meters
+radius_m = 450        # KDE bandwidth in meters
 pixel_size = 50       # pixel size in meters
-gaussian_sigma = 5    # only applied to Praise + Ideas
 nodata_val = -9999.0
-GLOBAL_KDE_MAX = {}
-
-SAVE_RAW = False
 
 topics_to_map = {    # *** använd meta-topics istället? ***
     "Praise": {
@@ -57,6 +46,7 @@ topics_to_map = {    # *** använd meta-topics istället? ***
         "blommor_tulpaner_påskliljor": [457],
         "cykelbanan_cykelbana_asfalteringen": [485],
         "snöröjningen_beröm_tack": [136],
+        "lekgatan, lekgata, barnen": [131],
     },
     "Ideas": {
         "cyklisterna_cykelbanan_cykelbana": [5],
@@ -75,53 +65,74 @@ categories = {
     "Error_Complaints": ["Felanmälan", "Klagomål"]
 }
 
-# ====================================
-# helper function to create KDE raster
+# =============
+# KDE FUNCTIONS
 
-def create_kde_raster(points_gdf, boundary_gdf, radius_m, pixel_size, gaussian_sigma=None):
+def create_kde_raster(points_gdf, boundary_gdf, radius_m, pixel_size):
 
     coords = np.array([(pt.x, pt.y) for pt in points_gdf.geometry])
 
     if len(coords) == 0:
-        return None, None, None, None
+        return None, None, None
 
-    # define raster extent (aligned to pixel grid)
     minx, miny, maxx, maxy = boundary_gdf.total_bounds
+
     x_grid = np.arange(minx, maxx + pixel_size, pixel_size)
     y_grid = np.arange(maxy, miny - pixel_size, -pixel_size)
-    X, Y = np.meshgrid(x_grid, y_grid)
 
+    X, Y = np.meshgrid(x_grid, y_grid)
     grid_coords = np.vstack([X.ravel(), Y.ravel()]).T
 
-    # KDE
-    kde = KernelDensity(bandwidth=radius_m, kernel='gaussian')
-    kde.fit(coords)
-
-    # normalise
     kde = KernelDensity(bandwidth=radius_m, kernel="gaussian")
     kde.fit(coords)
 
     Z_raw = np.exp(kde.score_samples(grid_coords)).reshape(X.shape)
 
-    # extra gaussian smoothing
-    Z_gauss = None
-    if gaussian_sigma is not None:
-        Z_gauss = gaussian_filter(Z_raw, sigma=gaussian_sigma)
+    # convert to intensity (MATCH CATEGORY SCRIPT)
+    Z_raw = Z_raw * len(coords)
 
-    # rasterio transform
     transform = from_origin(minx, maxy, pixel_size, pixel_size)
 
-    return Z_raw, Z_gauss, transform, Z_raw.shape
+    return Z_raw, transform, Z_raw.shape
 
+def mask_array_to_boundary(Z, transform, boundary_gdf):
 
-# =====================================
-# helper function to save + mask raster
+    with rasterio.io.MemoryFile() as memfile:
 
-def save_raster(Z, transform, shape, out_path, boundary_gdf, nodata_val):
+        meta = {
+            "driver": "GTiff",
+            "height": Z.shape[0],
+            "width": Z.shape[1],
+            "count": 1,
+            "dtype": "float32",
+            "crs": boundary_gdf.crs.to_string(),
+            "transform": transform,
+            "nodata": nodata_val
+        }
+
+        with memfile.open(**meta) as dataset:
+            dataset.write(Z.astype("float32"), 1)
+            out_image, out_transform = mask(
+                dataset,
+                boundary_gdf.geometry,
+                crop=True,
+                nodata=nodata_val
+            )
+
+    Z_masked = out_image[0]
+    Z_masked[Z_masked == nodata_val] = np.nan
+
+    return Z_masked, out_transform
+
+def save_raster(Z, transform, out_path, boundary_gdf):
+
+    Z_out = Z.copy()
+    Z_out[np.isnan(Z_out)] = nodata_val
+
     out_meta = {
         "driver": "GTiff",
-        "height": shape[0],
-        "width": shape[1],
+        "height": Z_out.shape[0],
+        "width": Z_out.shape[1],
         "count": 1,
         "dtype": "float32",
         "crs": boundary_gdf.crs.to_string(),
@@ -129,85 +140,104 @@ def save_raster(Z, transform, shape, out_path, boundary_gdf, nodata_val):
         "nodata": nodata_val
     }
 
-    # write full raster
     with rasterio.open(out_path, "w", **out_meta) as dst:
-        dst.write(Z.astype("float32"), 1)
+        dst.write(Z_out.astype("float32"), 1)
 
-    # reopen and mask
-    with rasterio.open(out_path) as src:
-        out_image, out_transform = mask(
-            src,
-            boundary_gdf.geometry,
-            crop=True,
-            nodata=nodata_val,
-            filled=True
-        )
+# ==================
+# COMPUTE GLOBAL MAX
 
-        out_meta_clipped = src.meta.copy()
-        out_meta_clipped.update({
-            "height": out_image.shape[1],
-            "width": out_image.shape[2],
-            "transform": out_transform
-        })
+def compute_topic_global_max(points, topics_by_category, topic_col):
 
-    # overwrite with clipped raster
-    with rasterio.open(out_path, "w", **out_meta_clipped) as dst:
-        dst.write(out_image)
+    global_max = {}
 
-# ======================
-# helper function to run
+    for cat_name, topics_dict in topics_by_category.items():
 
-def run_topic_kde(points, topics_by_category, topic_col="topic", normalize=False):
+        cat_values = categories[cat_name]
+        subset_cat = points[points["Kategori"].isin(cat_values)]
 
-    global GLOBAL_KDE_MAX
-    if not normalize:
-        GLOBAL_KDE_MAX = {}
+        max_val = 0
+
+        for topic_ids in topics_dict.values():
+
+            subset = subset_cat[subset_cat[topic_col].isin(topic_ids)]
+
+            if subset.empty:
+                continue
+
+            Z_raw, transform, _ = create_kde_raster(
+                subset, boundary, radius_m, pixel_size
+            )
+
+            Z_masked, _ = mask_array_to_boundary(
+                Z_raw, transform, boundary
+            )
+
+            max_val = max(max_val, np.nanmax(Z_masked))
+
+        global_max[cat_name] = max_val
+        print(f"{cat_name} topic global max: {max_val:.3f}")
+
+    return global_max
+
+# =======================
+# RUN SUBSET KDE (TOPICS)
+
+def run_topic_kde(points, topics_by_category, topic_col="topic"):
 
     summary = []
 
-    total_jobs = sum(len(v) for v in topics_by_category.values())
-    job_counter = 0
-
-    print(f"\nStarting TOPIC KDE run")
-    print(f"Total rasters to process: {total_jobs}\n")
+    print("\nRunning TOPIC KDEs\n")
 
     for cat_name, topics_dict in topics_by_category.items():
+
         cat_values = categories[cat_name]
+        subset_cat = points[points["Kategori"].isin(cat_values)]
 
         for short_name, topic_ids in topics_dict.items():
-            job_counter += 1
-            print(
-                f"[{job_counter}/{total_jobs}] "
-                f"Topic: {cat_name} | Category: {short_name}"
-            )
 
-            subset = points[
-                points["Kategori"].isin(cat_values) &
-                points[topic_col].isin(topic_ids)
+            subset = subset_cat[
+                subset_cat[topic_col].isin(topic_ids)
             ]
 
             if subset.empty:
                 continue
 
-            Z_raw, Z_gauss, transform, shape = create_kde_raster(
-                subset,
-                boundary,
-                radius_m,
-                pixel_size,
-                gaussian_sigma=gaussian_sigma if cat_name != "Error_Complaints" else None
+            Z_raw, transform, _ = create_kde_raster(
+                subset, boundary, radius_m, pixel_size
             )
 
-            if Z_raw is None:
-                continue
+            Z_masked, transform_masked = mask_array_to_boundary(
+                Z_raw, transform, boundary
+            )
 
-            Z_out = Z_gauss if Z_gauss is not None else Z_raw
+            # ---- SAVE RAW ----
+            save_raster(
+                Z_masked,
+                transform_masked,
+                os.path.join(
+                    output_folder,
+                    f"KDE_TOPIC_{short_name}_{cat_name}_RAW.tif"
+                ),
+                boundary
+            )
 
-            # update global max per category
-            local_max = np.nanmax(Z_out)
+            # ---- SAVE RELATIVE ----
+            Z_norm = Z_masked / GLOBAL_KDE_MAX[cat_name]
 
-            GLOBAL_KDE_MAX[cat_name] = max(
-                GLOBAL_KDE_MAX.get(cat_name, 0),
-                local_max
+            save_raster(
+                Z_norm,
+                transform_masked,
+                os.path.join(
+                    output_folder,
+                    f"KDE_TOPIC_{short_name}_{cat_name}_RELATIVE.tif"
+                ),
+                boundary
+            )
+
+            print(
+                f"{cat_name} | {short_name} "
+                f"max raw: {np.nanmax(Z_masked):.3f} | "
+                f"max relative: {np.nanmax(Z_norm):.3f}"
             )
 
             summary.append({
@@ -216,53 +246,57 @@ def run_topic_kde(points, topics_by_category, topic_col="topic", normalize=False
                 "Points": len(subset)
             })
 
-            if SAVE_RAW and not normalize:
-                save_raster(
-                    Z_out,
-                    transform,
-                    shape,
-                    os.path.join(
-                        output_folder,
-                        f"KDE_TOPIC_{short_name}_{cat_name}_RAW.tif"
-                    ),
-                    boundary,
-                    nodata_val
-                )
-
-            if normalize:
-                Z_norm = Z_out / GLOBAL_KDE_MAX[cat_name]
-
-                save_raster(
-                    Z_norm,
-                    transform,
-                    shape,
-                    os.path.join(
-                        output_folder,
-                        f"KDE_TOPIC_{short_name}_{cat_name}_NORM.tif"
-                    ),
-                    boundary,
-                    nodata_val
-                )
-
     return pd.DataFrame(summary)
 
+# ==========
+# RUN SCRIPT
+
+# compute global max across all topics per category
+GLOBAL_KDE_MAX = compute_topic_global_max(
+    points,
+    topics_to_map,
+    topic_col="topic"
+)
+
+# run topic KDE
 topic_summary = run_topic_kde(
     points,
     topics_to_map,
-    topic_col="topic",   # <-- adjust to your column name
-    normalize=False
-)
-
-print("Topic KDE max per category:")
-print(GLOBAL_KDE_MAX)
-
-# Normalized run
-run_topic_kde(
-    points,
-    topics_to_map,
-    topic_col="topic",
-    normalize=True
+    topic_col="topic"
 )
 
 print("\nTopic KDE point counts:")
 print(topic_summary.to_string(index=False))
+
+# === OUTPUT ===
+#
+# Praise topic global max: 0.000
+# Ideas topic global max: 0.000
+# Error_Complaints topic global max: 0.000
+#
+# Running TOPIC KDEs
+#
+# Praise | bastu_bastun_sauna max raw: 0.000 | max relative: 1.000
+# Praise | blommor_tulpaner_påskliljor max raw: 0.000 | max relative: 0.406
+# Praise | cykelbanan_cykelbana_asfalteringen max raw: 0.000 | max relative: 0.268
+# Praise | snöröjningen_beröm_tack max raw: 0.000 | max relative: 0.403
+# Ideas | cyklisterna_cykelbanan_cykelbana max raw: 0.000 | max relative: 1.000
+# Ideas | parkeringsplatser_boendeparkering_parkerar max raw: 0.000 | max relative: 0.862
+# Ideas | köer_lindhagensgatan_trafiken max raw: 0.000 | max relative: 0.790
+# Error_Complaints | klotter_klotters_hammarbyklotter max raw: 0.000 | max relative: 1.000
+# Error_Complaints | översvämning_vattenansamling_vattensamling max raw: 0.000 | max relative: 0.857
+#
+# Topic KDE point counts:
+#         Category                                      Topic  Points
+#           Praise                         bastu_bastun_sauna      12
+#           Praise                blommor_tulpaner_påskliljor      26
+#           Praise         cykelbanan_cykelbana_asfalteringen      13
+#           Praise                    snöröjningen_beröm_tack      26
+#           Praise                  lekgatan, lekgata, barnen      11
+#            Ideas           cyklisterna_cykelbanan_cykelbana      98
+#            Ideas parkeringsplatser_boendeparkering_parkerar      27
+#            Ideas              köer_lindhagensgatan_trafiken      29
+# Error_Complaints           klotter_klotters_hammarbyklotter    1551
+# Error_Complaints översvämning_vattenansamling_vattensamling    1933
+#
+# Process finished with exit code 0

@@ -8,14 +8,11 @@ from rasterio.transform import from_origin
 from rasterio.mask import mask
 from sklearn.neighbors import KernelDensity
 
-# ======================
-# PATHS AND PARAMETERS
-# ======================
 TYCKTILL_FILTERED_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg"
 points_layername = "pts_in_parks_with_topics"
 boundary_path = r"C:/Users/lisajos/QGIS_Projects/Output/Stadsdelsomraden_Stadskartan.gpkg"
 boundary_layername = "stadsdelsnmnder"
-output_folder = r"C:\Users\lisajos\PycharmProjects\park_proj\data\qgis_maps\TIFFs"
+output_folder = r"C:\Users\lisajos\PycharmProjects\park_proj\data\qgis_maps\TIFFs\FINAL"
 os.makedirs(output_folder, exist_ok=True)
 
 TEST_MODE = False
@@ -50,9 +47,9 @@ hour_groups = {
     "Evening": list(range(18, 23))
 }
 
-# ======================
+# =========
 # LOAD DATA
-# ======================
+
 points = gpd.read_file(TYCKTILL_FILTERED_GPKG, layer=points_layername)
 boundary = gpd.read_file(boundary_path, layer=boundary_layername)
 
@@ -63,9 +60,8 @@ points["Inkommet datum"] = pd.to_datetime(
     points["Inkommet datum"], format="mixed", errors="coerce"
 )
 
-# ======================
+# =============
 # KDE FUNCTIONS
-# ======================
 
 def create_kde_raster(points_gdf, boundary_gdf, radius_m, pixel_size):
     coords = np.array([(pt.x, pt.y) for pt in points_gdf.geometry])
@@ -78,14 +74,13 @@ def create_kde_raster(points_gdf, boundary_gdf, radius_m, pixel_size):
     grid_coords = np.vstack([X.ravel(), Y.ravel()]).T
     kde = KernelDensity(bandwidth=radius_m, kernel='gaussian')
     kde.fit(coords)
-    #Z_raw = np.exp(kde.score_samples(grid_coords)).reshape(X.shape)
     Z_raw = np.exp(kde.score_samples(grid_coords)).reshape(X.shape)
     Z_raw = Z_raw * len(coords)  # convert to intensity
     transform = from_origin(minx, maxy, pixel_size, pixel_size)
     return Z_raw, transform, Z_raw.shape
 
 def mask_array_to_boundary(Z, transform, boundary_gdf):
-    # Mask in-memory
+    # mask in-memory
     with rasterio.io.MemoryFile() as memfile:
         meta = {
             "driver": "GTiff",
@@ -120,9 +115,8 @@ def save_raster(Z, transform, out_path, boundary_gdf):
     with rasterio.open(out_path, "w", **out_meta) as dst:
         dst.write(Z_out.astype("float32"), 1)
 
-# ======================
+# ==================
 # COMPUTE GLOBAL MAX
-# ======================
 
 def compute_category_global_max(points, cat_values, subsets_list):
     subset_total = points[points["Kategori"].isin(cat_values)]
@@ -139,9 +133,8 @@ def compute_category_global_max(points, cat_values, subsets_list):
             max_val = max(max_val, np.nanmax(Z_sub_masked))
     return max_val
 
-# ======================
+# =============
 # RUN TOTAL KDE
-# ======================
 
 def run_total_kde(points, categories, boundary):
     print("\nRunning TOTAL KDEs\n")
@@ -170,9 +163,8 @@ def run_total_kde(points, categories, boundary):
             ),
             boundary)
 
-# ======================
+# ==============
 # RUN SUBSET KDE
-# ======================
 
 def run_kde(points, categories, time_groups, time_col, label_name, boundary):
     print(f"\nRunning subset KDE: {label_name}\n")
@@ -227,15 +219,15 @@ subsets_list = [
     (hour_groups, "hour")
 ]
 
-# Compute global max for each category
+# compute global max for each category
 for cat_name, cat_values in categories.items():
     GLOBAL_KDE_MAX[cat_name] = compute_category_global_max(points, cat_values, subsets_list)
     print(f"{cat_name} global max across TOTAL + subsets: {GLOBAL_KDE_MAX[cat_name]:.3f}")
 
-# Run TOTAL
+# run TOTAL
 run_total_kde(points, categories, boundary)
 
-# Run subsets and print summaries
+# run subsets and print summaries
 season_summary = run_kde(points, categories, seasons, "month", "Season", boundary)
 weekday_summary = run_kde(points, categories, week_groups, "weekday", "WeekType", boundary)
 hour_summary = run_kde(points, categories, hour_groups, "hour", "TimeOfDay", boundary)
@@ -248,3 +240,93 @@ print(weekday_summary.to_string(index=False))
 
 print("\nTime-of-day KDE point counts:")
 print(hour_summary.to_string(index=False))
+
+
+# === OUTPUT ====
+#
+# Praise global max across TOTAL + subsets: 0.000
+# Ideas global max across TOTAL + subsets: 0.000
+# Error_Complaints global max across TOTAL + subsets: 0.002
+#
+# Running TOTAL KDEs
+#
+#
+# Running subset KDE: Season
+#
+# Praise | Winter max raw: 0.000 | max relative: 0.433
+# Praise | Spring max raw: 0.000 | max relative: 0.300
+# Praise | Summer max raw: 0.000 | max relative: 0.523
+# Praise | Autumn max raw: 0.000 | max relative: 0.216
+# Ideas | Winter max raw: 0.000 | max relative: 0.396
+# Ideas | Spring max raw: 0.000 | max relative: 0.427
+# Ideas | Summer max raw: 0.000 | max relative: 0.419
+# Ideas | Autumn max raw: 0.000 | max relative: 0.427
+# Error_Complaints | Winter max raw: 0.000 | max relative: 0.142
+# Error_Complaints | Spring max raw: 0.000 | max relative: 0.243
+# Error_Complaints | Summer max raw: 0.001 | max relative: 0.414
+# Error_Complaints | Autumn max raw: 0.000 | max relative: 0.241
+#
+# Running subset KDE: WeekType
+#
+# Praise | Weekday max raw: 0.000 | max relative: 0.579
+# Praise | Weekend max raw: 0.000 | max relative: 0.472
+# Ideas | Weekday max raw: 0.000 | max relative: 0.540
+# Ideas | Weekend max raw: 0.000 | max relative: 0.480
+# Error_Complaints | Weekday max raw: 0.001 | max relative: 0.501
+# Error_Complaints | Weekend max raw: 0.001 | max relative: 0.402
+#
+# Running subset KDE: TimeOfDay
+#
+# Praise | Night max raw: 0.000 | max relative: 0.074
+# Praise | Morning max raw: 0.000 | max relative: 0.325
+# Praise | Midday max raw: 0.000 | max relative: 0.659
+# Praise | Evening max raw: 0.000 | max relative: 0.371
+# Ideas | Night max raw: 0.000 | max relative: 0.140
+# Ideas | Morning max raw: 0.000 | max relative: 0.337
+# Ideas | Midday max raw: 0.000 | max relative: 0.444
+# Ideas | Evening max raw: 0.000 | max relative: 0.327
+# Error_Complaints | Night max raw: 0.000 | max relative: 0.020
+# Error_Complaints | Morning max raw: 0.000 | max relative: 0.287
+# Error_Complaints | Midday max raw: 0.001 | max relative: 0.411
+# Error_Complaints | Evening max raw: 0.000 | max relative: 0.152
+#
+# Seasonal KDE point counts:
+#         Category Season  Points
+#           Praise Winter      95
+#           Praise Spring      83
+#           Praise Summer      85
+#           Praise Autumn      38
+#            Ideas Winter     152
+#            Ideas Spring     223
+#            Ideas Summer     235
+#            Ideas Autumn     219
+# Error_Complaints Winter   12153
+# Error_Complaints Spring   20412
+# Error_Complaints Summer   25187
+# Error_Complaints Autumn   19572
+#
+# Weekday / Weekend KDE point counts:
+#         Category WeekType  Points
+#           Praise  Weekday     153
+#           Praise  Weekend     110
+#            Ideas  Weekday     368
+#            Ideas  Weekend     338
+# Error_Complaints  Weekday   34637
+# Error_Complaints  Weekend   29871
+#
+# Time-of-day KDE point counts:
+#         Category TimeOfDay  Points
+#           Praise     Night       5
+#           Praise   Morning      80
+#           Praise    Midday     108
+#           Praise   Evening      67
+#            Ideas     Night       9
+#            Ideas   Morning     225
+#            Ideas    Midday     269
+#            Ideas   Evening     206
+# Error_Complaints     Night     584
+# Error_Complaints   Morning   22673
+# Error_Complaints    Midday   29330
+# Error_Complaints   Evening   13004
+#
+# Process finished with exit code 0
