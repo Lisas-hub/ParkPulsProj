@@ -91,7 +91,7 @@ TOPIC_COLOR_MAP = {
 TOPIC_ALIASES = {
     "snöröjningen, beröm, tack": "snow ploughing, praise, thank you",
     "blommor, tulpaner, påskliljor": "flowers, daffodils",
-    # "bastu, bastun, sauna": "sauna",
+    "bastu, bastun, sauna": "sauna",
     #"cykelbanan, cykelbana, asfalteringen": "",
 }
 
@@ -99,7 +99,7 @@ TOPICS_TO_PLOT = {
     "praise": [
         "snöröjningen, beröm, tack",
         "blommor, tulpaner, påskliljor",
-        # "bastu, bastun, sauna",
+        "bastu, bastun, sauna",
         #"cykelbanan, cykelbana, asfalteringen",
     ],
     "idea": [
