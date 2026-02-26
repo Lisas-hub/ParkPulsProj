@@ -1134,7 +1134,34 @@ def plot_top_topics_bar(df, color_scale):
         .properties(height=400)
     )
 
+# ========================
+# === ALL TOPICS TABLE ===
 
+def get_all_topics_table(df, topic_col="topic_keywords_short"):
+    """
+    Aggregate all topics in a dataframe and return
+    a sorted table with topic + count + rank.
+    """
+
+    if df.empty:
+        return pd.DataFrame(columns=["Rank", "Topic_keywords", "count"])
+
+    table = (
+        df[topic_col]
+        .dropna()
+        .value_counts()
+        .reset_index()
+    )
+
+    table.columns = ["Topic_keywords", "count"]
+
+    # Sort largest → smallest
+    table = table.sort_values("count", ascending=False).reset_index(drop=True)
+
+    # Add ranking (1 = largest)
+    table.insert(0, "Rank", table.index + 1)
+
+    return table
 
 # ============
 # === MAPS ===
@@ -1531,6 +1558,7 @@ if section == "Topics":
         ["Do topics vary over time?",
          "What are the top 5 topics per park (by location)?",
          "What are the top topics?",
+         "All topics",
          "Topic co-occurence",
          "Meta topic co-occurence"]
     )
@@ -1640,6 +1668,69 @@ if section == "Topics":
             mime="image/png"
         )
 
+
+    elif topic_question == "All topics":
+
+        st.subheader("All topics (largest to smallest)")
+
+        category_choice = st.sidebar.pills(
+            "Select category:",
+            ["Praise", "Ideas", "Error + Complaints"],
+            selection_mode="single",
+            default="Praise",
+            key="all_topics_cat"
+        )
+
+        cat_key = CATEGORY_MAP[category_choice]
+
+        df_loc = prepped_vectors[f"{cat_key}_loc"]
+        df_key = prepped_vectors[f"{cat_key}_key"]
+        df_sim = prepped_vectors[f"{cat_key}_sim"]
+
+        datasets_dict = {
+            "By location": df_loc,
+            "By keyword (strictly)": df_key,
+            "By keyword (similarity)": df_sim,
+            "All filters": pd.concat([df_loc, df_key, df_sim], ignore_index=True)
+        }
+
+        filter_choice = st.sidebar.pills(
+            "Select filter:",
+            list(datasets_dict.keys()),
+            selection_mode="single",
+            default="By location",
+            key="all_topics_filter"
+        )
+
+        df_selected = datasets_dict[filter_choice]
+
+        if filter_choice == "All filters":
+            # Remove duplicate comments across filters (becuase some comments are in multiple filters - avoid double counting)
+            df_selected = (
+                df_selected
+                    .drop_duplicates(subset="Ärendenummer")
+            )
+
+        table = get_all_topics_table(df_selected)
+
+        if table.empty:
+            st.warning("No topics available for this selection.")
+        else:
+            st.dataframe(
+                table,
+                use_container_width=True,
+                hide_index=True
+            )
+
+            csv = table.to_csv(index=False).encode("utf-8")
+
+            st.download_button(
+                "Download table as CSV",
+                csv,
+                file_name=f"all_topics_{cat_key}_{filter_choice}.csv",
+                mime="text/csv"
+            )
+
     elif topic_question == "Topic co-occurence":
         st.subheader("Topic co-occurrence matrix")
 
@@ -1716,16 +1807,16 @@ if section == "Topics":
 # ==============
 # === THEMES ===
 
-if section == "Themes":
-    theme_question = st.sidebar.radio(
-        "Choose a question:",
-        ["Theme question 1", "Theme question 2"]
-    )
-
-    if theme_question == "Theme question 1":
-        st.info("add top themes bar chart")
-
-    elif theme_question == "Theme question 2":
-        st.info("add co-occurence matrix")
+# if section == "Themes":
+#     theme_question = st.sidebar.radio(
+#         "Choose a question:",
+#         ["Theme question 1", "Theme question 2"]
+#     )
+#
+#     if theme_question == "Theme question 1":
+#         st.info("add top themes bar chart")
+#
+#     elif theme_question == "Theme question 2":
+#         st.info("add co-occurence matrix")
 
 
