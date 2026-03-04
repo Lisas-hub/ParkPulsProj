@@ -56,6 +56,9 @@ topics_to_map = {    # *** använd meta-topics istället? ***
     "Error_Complaints": {
         "klotter_klotters_hammarbyklotter": [1],
         "översvämning_vattenansamling_vattensamling": [0],
+        "droger_missbrukare_narkomaner": [82],
+        "kanyler_sprutor_kanyl": [183],
+        "droger_kanyler_combined": [82, 183],
     }
 }
 
@@ -276,15 +279,19 @@ print(topic_summary.to_string(index=False))
 #
 # Running TOPIC KDEs
 #
-# Praise | bastu_bastun_sauna max raw: 0.000 | max relative: 1.000
-# Praise | blommor_tulpaner_påskliljor max raw: 0.000 | max relative: 0.406
-# Praise | cykelbanan_cykelbana_asfalteringen max raw: 0.000 | max relative: 0.268
-# Praise | snöröjningen_beröm_tack max raw: 0.000 | max relative: 0.403
+# Praise | bastu_bastun_sauna max raw: 0.000 | max relative: 0.981
+# Praise | blommor_tulpaner_påskliljor max raw: 0.000 | max relative: 0.505
+# Praise | cykelbanan_cykelbana_asfalteringen max raw: 0.000 | max relative: 0.251
+# Praise | snöröjningen_beröm_tack max raw: 0.000 | max relative: 0.377
+# Praise | lekgatan, lekgata, barnen max raw: 0.000 | max relative: 1.000
 # Ideas | cyklisterna_cykelbanan_cykelbana max raw: 0.000 | max relative: 1.000
-# Ideas | parkeringsplatser_boendeparkering_parkerar max raw: 0.000 | max relative: 0.862
-# Ideas | köer_lindhagensgatan_trafiken max raw: 0.000 | max relative: 0.790
+# Ideas | parkeringsplatser_boendeparkering_parkerar max raw: 0.000 | max relative: 0.793
+# Ideas | köer_lindhagensgatan_trafiken max raw: 0.000 | max relative: 0.746
 # Error_Complaints | klotter_klotters_hammarbyklotter max raw: 0.000 | max relative: 1.000
-# Error_Complaints | översvämning_vattenansamling_vattensamling max raw: 0.000 | max relative: 0.857
+# Error_Complaints | översvämning_vattenansamling_vattensamling max raw: 0.000 | max relative: 0.862
+# Error_Complaints | droger_missbrukare_narkomaner max raw: 0.000 | max relative: 0.494
+# Error_Complaints | kanyler_sprutor_kanyl max raw: 0.000 | max relative: 0.078
+# Error_Complaints | droger_kanyler_combined max raw: 0.000 | max relative: 0.530
 #
 # Topic KDE point counts:
 #         Category                                      Topic  Points
@@ -298,5 +305,8 @@ print(topic_summary.to_string(index=False))
 #            Ideas              köer_lindhagensgatan_trafiken      29
 # Error_Complaints           klotter_klotters_hammarbyklotter    1551
 # Error_Complaints översvämning_vattenansamling_vattensamling    1933
+# Error_Complaints              droger_missbrukare_narkomaner     168
+# Error_Complaints                      kanyler_sprutor_kanyl     125
+# Error_Complaints                    droger_kanyler_combined     293
 #
 # Process finished with exit code 0

@@ -4,12 +4,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
 import geopandas as gpd
+from matplotlib.ticker import MaxNLocator
 
 tycktill_filtered_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg"
 
 df = gpd.read_file(tycktill_filtered_GPKG, layer="pts_in_parks_with_topics")
 
-outdir = Path(r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\plots\LINE_GRAPHS_FOR_ARTICLE")
+outdir = Path(r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\plots\GRAPHS_FOR_ARTICLE")
 outdir.mkdir(exist_ok=True)
 
 
@@ -92,7 +93,18 @@ TOPIC_ALIASES = {
     "snöröjningen, beröm, tack": "snow ploughing, praise, thank you",
     "blommor, tulpaner, påskliljor": "flowers, daffodils",
     "bastu, bastun, sauna": "sauna",
-    #"cykelbanan, cykelbana, asfalteringen": "",
+    "cykelbanan, cykelbana, asfalteringen": "bicycle path, asphalt",
+    "tack, beröm, städat": "thank you, praise, well maintained",
+    "cyklisterna, cykelbanan, cykelbana": "cyclists, bicycle path",
+    "stockholm, stockholms, stockholmare": "stockholm",
+    "köer, lindhagensgatan, trafiken": "traffic jam, lindhagensgatan, traffic",
+    "hastigheten, farthinder, hastighet": "speed, speedbump",
+    "parkeringsplatser, boendeparkering, parkerar": "parkingspaces, residential parking",
+    "översvämning, vattenansamling, vattensamling": "flooding",
+    "klotter, klotters, hammarbyklotter": "graffiti",
+    "bänk, bänkar, brädor": "bench, benches, planks",
+    "lyktstolpe, staketstolpe, reservats": "lamppost, fencepost",
+    "papperskorgar, lekplatsen, soptunnor": "wastepaper bins, playground",
 }
 
 TOPICS_TO_PLOT = {
@@ -181,7 +193,6 @@ def aggregate_months(df, topics):
     )
     return out
 
-
 def aggregate_weekdays(df, topics):
     df = df[df["topic_keywords_short"].isin(topics)].copy()
 
@@ -192,7 +203,6 @@ def aggregate_weekdays(df, topics):
           .reindex(WEEKDAY_ORDER, fill_value=0)
     )
     return out
-
 
 def aggregate_hours(df, topics):
     df = df[df["topic_keywords_short"].isin(topics)].copy()
@@ -205,11 +215,19 @@ def aggregate_hours(df, topics):
     )
     return out
 
+def aggregate_totals(df, topics):
+    df = df[df["topic_keywords_short"].isin(topics)].copy()
 
+    out = (
+        df["topic_keywords_short"]
+        .value_counts()
+        .reindex(topics, fill_value=0)
+    )
+
+    return out
 
 # ========
 # PLOTTING
-from matplotlib.ticker import MaxNLocator
 
 def plot_line_png(df_agg, title, xlabel, outfile):
     plt.figure(figsize=(6, 5))
@@ -245,6 +263,29 @@ def plot_line_png(df_agg, title, xlabel, outfile):
     plt.savefig(outfile, dpi=150)
     plt.close()
 
+def plot_bar_totals_png(series, title, outfile):
+    plt.figure(figsize=(4, 5))
+
+    topics = series.index.tolist()
+    values = series.values.tolist()
+
+    display_labels = [TOPIC_ALIASES.get(t, t) for t in topics]
+    #colors = [TOPIC_COLOR_MAP[t] for t in topics]
+    colors = [TOPIC_COLOR_MAP.get(t, "#999999") for t in topics]
+
+    plt.bar(display_labels, values, color=colors, width=0.8)
+
+    plt.title(title, fontsize=12)
+    plt.ylabel("Tycktill entries", fontsize=12)
+    plt.xticks(rotation=40, ha="right", fontsize=11)
+    plt.yticks(fontsize=12)
+
+    plt.gca().yaxis.set_major_locator(MaxNLocator(integer=True))
+    plt.tight_layout()
+
+    plt.savefig(outfile, dpi=150)
+    plt.close()
+
 # =====================
 def main(df):
 
@@ -253,11 +294,20 @@ def main(df):
     categories = split_by_category(df)
 
     for cat_name, df_cat in categories.items():
-        #top_topics = get_top_n_topics(df_cat, n=5)
+        # ========= BAR CHART: TOP 5 TOTALS =========
+        top5_topics = get_top_n_topics(df_cat, n=5)
+        totals = aggregate_totals(df_cat, top5_topics)
+
+        plot_bar_totals_png(
+            totals,
+            title=f"{cat_name.capitalize()} – Top 5 Topics (Total)",
+            outfile=outdir / f"{cat_name}_top5_totals.png"
+        )
+
+        # ========= LINE PLOTS =========
         topics = TOPICS_TO_PLOT[cat_name]
 
         # MONTHS
-        #m = aggregate_months(df_cat, top_topics)
         m = aggregate_months(df_cat, topics)
         plot_line_png(
             m,
@@ -267,7 +317,6 @@ def main(df):
         )
 
         # WEEKDAYS
-        #w = aggregate_weekdays(df_cat, top_topics)
         w = aggregate_weekdays(df_cat, topics)
         plot_line_png(
             w,
@@ -277,7 +326,6 @@ def main(df):
         )
 
         # HOURS
-        #h = aggregate_hours(df_cat, top_topics)
         h = aggregate_hours(df_cat, topics)
         plot_line_png(
             h,
@@ -285,22 +333,8 @@ def main(df):
             xlabel="Hour of day",
             outfile=outdir / f"{cat_name}_topics_hours.png"
         )
-
 main(df)
 
-###################
-# ALL_TOPICS_USED = (
-#     df["topic_keywords_short"]
-#     .dropna()
-#     .unique()
-#     .tolist()
-# )
-#
-# ALL_TOPICS_USED = sorted(ALL_TOPICS_USED)
-#
-# print("\nALL TOPICS USED IN ANY FIGURE:\n")
-# for t in ALL_TOPICS_USED:
-#     print(t)
 
 
 
