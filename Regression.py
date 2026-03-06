@@ -7,6 +7,8 @@ from sklearn.preprocessing import StandardScaler
 import pandas as pd
 import os
 from statsmodels.stats.outliers_influence import variance_inflation_factor
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # TO DO
 # change some variables normalized by area (_per_ha) to be standardized too or instead?
@@ -26,13 +28,20 @@ os.makedirs(OUTPUT_PATH, exist_ok=True)
 
 gdf = gpd.read_file("data/regression_output/VARIABLES_regression.gpkg", layer="VARIABLES_regression")
 
+gdf["total_count"] = (
+    gdf["error_complaint_count"]
+    + gdf["idea_count"]
+    + gdf["praise_count"]
+)
+
 # ===========================
 # === outcome diagnostics ===
 
 OUTCOMES = {
     "complaints": "error_complaint_count",
     "ideas": "idea_count",
-    "praise": "praise_count"
+    "praise": "praise_count",
+    "total": "total_count"
 }
 
 print("\n=== Count outcome diagnostics ===\n")
@@ -51,19 +60,94 @@ for name, col in OUTCOMES.items():
     print(f"  Variance / Mean : {(var_y / mean_y) if mean_y > 0 else np.nan:.3f}")
     print(f"  Proportion zero : {prop_zero:.3f}\n")
 
+# ========================================
+# === model diagnostics (Poisson / NB) ===
+
+print("\n=== Model diagnostics (Poisson vs NB vs ZINB) ===\n")
+
+for name, col in OUTCOMES.items():
+
+    print(f"\n--- {name.upper()} ---")
+
+    formula_diag = f"{col} ~ 1"
+
+    # ---------- Poisson ----------
+    poisson_model = smf.glm(
+        formula=formula_diag,
+        data=gdf,
+        family=sm.families.Poisson(),
+        offset=np.log(gdf["park_area"] + 1)
+    ).fit()
+
+    poisson_dispersion = poisson_model.pearson_chi2 / poisson_model.df_resid
+
+    # predicted zeros
+    mu_pois = poisson_model.predict()
+    pred_zero_pois = np.exp(-mu_pois).mean()
+
+    # ---------- Negative Binomial ----------
+    nb_model = smf.glm(
+        formula=formula_diag,
+        data=gdf,
+        family=sm.families.NegativeBinomial(),
+        offset=np.log(gdf["park_area"] + 1)
+    ).fit()
+
+    mu_nb = nb_model.predict()
+
+    # approximate predicted zeros (NB)
+    alpha = nb_model.scale if hasattr(nb_model, "scale") else 1
+    pred_zero_nb = (1 / (1 + alpha * mu_nb)) ** (1 / alpha)
+    pred_zero_nb = pred_zero_nb.mean()
+
+    # observed zeros
+    observed_zero = (gdf[col] == 0).mean()
+
+    print(f"Observed zero proportion : {observed_zero:.3f}")
+    print(f"Predicted zeros Poisson  : {pred_zero_pois:.3f}")
+    print(f"Predicted zeros NB       : {pred_zero_nb:.3f}")
+
+    print(f"\nPoisson dispersion (χ²/df): {poisson_dispersion:.2f}")
+
+    print(f"\nAIC comparison:")
+    print(f"Poisson AIC : {poisson_model.aic:.2f}")
+    print(f"NB AIC      : {nb_model.aic:.2f}")
+
+    # ---------- ZINB if zero inflation suspected ----------
+    if observed_zero > pred_zero_nb + 0.1:
+
+        print("\nTesting Zero-Inflated NB...")
+
+        zinb_model = sm.ZeroInflatedNegativeBinomialP.from_formula(
+            formula_diag,
+            gdf,
+            inflation="logit"
+        ).fit(method="bfgs", maxiter=200, disp=False)
+
+        print(f"ZINB AIC    : {zinb_model.aic:.2f}")
+
+        if zinb_model.aic < nb_model.aic:
+            print("→ ZINB provides better fit than NB")
+        else:
+            print("→ NB adequate (no strong zero inflation)")
+
+    else:
+        print("\n→ No strong indication of zero inflation")
+
 # =================================
 # === choose dependent variable ===
 
 DEPENDENT_VARIABLE = {
     "complaints": "error_complaint_count",
     "ideas": "idea_count",
-    "praise": "praise_count"
+    "praise": "praise_count",
+    "total": "total_count"
 }
 
-kategori_input = input("☆☆☆ Enter Kategori (complaints, ideas or praise): ").strip().lower()
+kategori_input = input("☆☆☆ Enter Kategori (complaints, ideas, praise or total): ").strip().lower()
 
 if kategori_input not in DEPENDENT_VARIABLE:
-    print("❌ Invalid category. Choose complaints, ideas, or praise. ❌")
+    print("❌ Invalid category. Choose complaints, ideas, praise or total. ❌")
     exit()
 
 dependent_var = DEPENDENT_VARIABLE[kategori_input]
@@ -126,11 +210,20 @@ BLOCKS_BY_CATEGORY = {
         ("Amenities", BLOCK_2_amenities),
         ("Safety", BLOCK_4_safety),
         ("Environment", BLOCK_3_environment),
+        # ("Accessibility", BLOCK_6_accessibility),
+
     ],
     "ideas": [
-        #("Accessibility", BLOCK_6_accessibility),
+        # ("Amenities", BLOCK_2_amenities)
         ("Socioeconomic", BLOCK_5_socioeconomic),
-        #("Amenities", BLOCK_2_amenities)
+        # ("Accessibility", BLOCK_6_accessibility),
+    ],
+    "total": [
+        ("Amenities", BLOCK_2_amenities),
+        ("Environment", BLOCK_3_environment),
+        ("Safety", BLOCK_4_safety),
+        ("Socioeconomic", BLOCK_5_socioeconomic),
+        ("Accessibility", BLOCK_6_accessibility),
     ]
 }
 
@@ -158,9 +251,8 @@ scale_cols = [v for v in continuous_vars if v in gdf.columns]
 scaler = StandardScaler()
 gdf[scale_cols] = scaler.fit_transform(gdf[scale_cols])
 
-# ==========================================
-# === VIF diagnostics per block (pre-model)
-# ==========================================
+# =============================================
+# === VIF diagnostics per block (pre-model) ===
 
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 
@@ -215,16 +307,70 @@ for block_name, block_vars in BLOCKS:
     vars_for_formula = current_vars.copy()
 
     formula = dependent_var + " ~ " + " + ".join(vars_for_formula)
-    #formula_glm = dependent_var + " ~ " + " + ".join(vars_for_formula) + " + offset(log_park_area)"
-    #formula_zinb = (dependent_var + " ~ " + " + ".join(vars_for_formula))
 
     print(f"\n--- Fitting model with blocks: {current_vars} ---")
 
-    # ==========
-    # complaints
+    # # ==========
+    # # complaints
+    #
+    # if kategori_input == "complaints":
+    #     model = smf.glm(
+    #         formula=formula,
+    #         data=gdf,
+    #         family=sm.families.NegativeBinomial(),
+    #         offset=gdf["log_park_area"]
+    #     ).fit(maxiter=200, disp=False)
+    #
+    # # =====
+    # # ideas
+    #
+    # elif kategori_input == "ideas":
+    #     model = smf.glm(
+    #         formula=formula,
+    #         data=gdf,
+    #         family=sm.families.NegativeBinomial(),
+    #         offset=gdf["log_park_area"]
+    #     ).fit()
+    #
+    # # ======
+    # # praise
+    #
+    # elif kategori_input == "praise":
+    #     model = smf.glm(
+    #         formula=formula,
+    #         data=gdf,
+    #         family=sm.families.NegativeBinomial(),
+    #         offset=gdf["log_park_area"]
+    #     ).fit()
+    #     zinb_model = sm.ZeroInflatedNegativeBinomialP.from_formula(
+    #         formula=formula,
+    #         data=gdf,
+    #         inflation="logit"
+    #     )
+    #
+    #     # align exposure to rows actually used by the model
+    #     exposure_aligned = gdf.loc[
+    #         zinb_model.data.row_labels, "park_area_exposure"
+    #     ]
+    #
+    #     model = zinb_model.fit(
+    #         method="bfgs",
+    #         maxiter=200,
+    #         disp=False,
+    #         exposure=exposure_aligned
+    #     )
+    #
+    # print(f"AIC: {model.aic:.2f}")
+    #
+    # results.append({
+    #     "block": block_name,
+    #     "n_vars": len(current_vars),
+    #     "AIC": model.aic,
+    #     "model": model
+    # })      # removed zero-inflated because observed zeros were not bigger than predicted zeros with negative binomial, aka no zero-inflation
+              # BUT, take back ZINB if NB keeps failing! 85% could be a lot for the NB to handle even if it is statistically sound to use NB
+    try:
 
-    if kategori_input == "complaints":
-        #model = sm.NegativeBinomial.from_formula(    # sm. indicates that it is MLE   but   this does not work anymore, the model breaks so use glm instead
         model = smf.glm(
             formula=formula,
             data=gdf,
@@ -232,55 +378,18 @@ for block_name, block_vars in BLOCKS:
             offset=gdf["log_park_area"]
         ).fit(maxiter=200, disp=False)
 
-    # =====
-    # ideas
+        print(f"AIC: {model.aic:.2f}")
 
-    elif kategori_input == "ideas":
-        model = smf.glm(                        # smf.glm indicates that it is GLM
-            formula=formula,
-            data=gdf,
-            family=sm.families.NegativeBinomial(),
-            offset=gdf["log_park_area"]
-        ).fit()
+        results.append({
+            "block": block_name,
+            "n_vars": len(current_vars),
+            "AIC": model.aic,
+            "model": model
+        })
 
-    # ======
-    # praise
+    except Exception as e:
 
-    elif kategori_input == "praise":
-        # model = sm.ZeroInflatedNegativeBinomialP.from_formula(
-        #     formula=formula,
-        #     data=gdf,
-        #     #exposure=gdf["park_area_exposure"],
-        #     inflation="logit",  # intercept-only zero process
-        #     #offset=offset
-        # ).fit(method="bfgs", maxiter=200, disp=False)
-
-        zinb_model = sm.ZeroInflatedNegativeBinomialP.from_formula(
-            formula=formula,
-            data=gdf,
-            inflation="logit"
-        )
-
-        # align exposure to rows actually used by the model
-        exposure_aligned = gdf.loc[
-            zinb_model.data.row_labels, "park_area_exposure"
-        ]
-
-        model = zinb_model.fit(
-            method="bfgs",
-            maxiter=200,
-            disp=False,
-            exposure=exposure_aligned
-        )
-
-    print(f"AIC: {model.aic:.2f}")
-
-    results.append({
-        "block": block_name,
-        "n_vars": len(current_vars),
-        "AIC": model.aic,
-        "model": model
-    })
+        print("Model failed:", e)
 
 # ============================
 # === compare models (AIC) ===
@@ -293,6 +402,10 @@ print(aic_table)
 # === select and show best model ===
 
 valid_results = [r for r in results if np.isfinite(r["AIC"])]
+#best = min(results, key=lambda x: x["AIC"])
+if len(results) == 0:
+    print("No models successfully fitted.")
+    exit()
 best = min(results, key=lambda x: x["AIC"])
 
 print("\n✓ Best model:")
@@ -306,17 +419,17 @@ print(best["model"].summary())
 
 print("\n=== VIF diagnostics (final model) ===\n")
 
-# Get names of regressors from the fitted model
+# get names of regressors from the fitted model
 exog_names = best["model"].model.exog_names
 
-# Remove intercept and model-specific parameters
+# remove intercept and model-specific parameters
 exclude_terms = ["Intercept", "inflate_const", "alpha"]
 vif_vars = [v for v in exog_names if v not in exclude_terms]
 
-# Build design matrix from gdf
+# build design matrix from gdf
 X = gdf[vif_vars].dropna()
 
-# Compute VIF
+# compute VIF
 vif_df = pd.DataFrame({
     "variable": X.columns,
     "VIF": [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
@@ -324,23 +437,18 @@ vif_df = pd.DataFrame({
 
 print(vif_df.sort_values("VIF", ascending=False))
 
+# ===================================
+# === plot significant predictors ===
 
-# ================================
-# === Plot significant predictors (robust) ===
-# ================================
-
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-# Get coefficients and p-values depending on model type
+# get coefficients and p-values depending on model type
 coefs = best["model"].params
 pvals = best["model"].pvalues
 
-# Remove intercept and alpha
+# remove intercept and alpha
 coefs = coefs.drop(["Intercept", "alpha"], errors="ignore")
 pvals = pvals.drop(["Intercept", "alpha"], errors="ignore")
 
-# Filter significant predictors
+# filter significant predictors
 sig_predictors = pvals[pvals < 0.05].index
 
 if len(sig_predictors) == 0:
@@ -368,9 +476,4 @@ else:
         plt.tight_layout()
         plt.savefig(f"{OUTPUT_PATH}/{kategori_input}_{var}.png", dpi=300, bbox_inches="tight")
         plt.show()
-
-
-
-
-
 
