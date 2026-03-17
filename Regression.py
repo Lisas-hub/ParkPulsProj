@@ -9,6 +9,8 @@ import os
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 import matplotlib.pyplot as plt
 import seaborn as sns
+from libpysal.weights import DistanceBand, W, KNN, lag_spatial
+from esda.moran import Moran
 
 # TO DO
 # change some variables normalized by area (_per_ha) to be standardized too or instead?
@@ -33,6 +35,66 @@ gdf["total_count"] = (
     + gdf["idea_count"]
     + gdf["praise_count"]
 )
+
+# ============================
+# === ensure projected CRS ===
+
+if gdf.crs.is_geographic:
+    gdf = gdf.to_crs(epsg=3006)  # SWEREF99 TM (meters)
+
+# # ============================
+# # === spatial weights setup ===
+#
+# print("\n=== Building spatial weights ===\n")
+#
+# # ----------------------------
+# # 1. Distance band (centroids)
+#
+# w_dist = DistanceBand.from_dataframe(
+#     gdf,
+#     threshold=1000, # meters (adjust if needed)
+#     binary=True,
+#     silence_warnings=True
+# )
+#
+# # --------------------------------------
+# # 2. Buffer-based neighbors (edge-aware)
+#
+# gdf["buffer_geom"] = gdf.geometry.buffer(500) # meters
+#
+# neighbors = {}
+# for i, geom in enumerate(gdf["buffer_geom"]):
+#     neighbors[i] = list(gdf[gdf.geometry.intersects(geom)].index)
+#     if i in neighbors[i]:
+#         neighbors[i].remove(i)  # remove self
+#
+# w_buffer = W(neighbors)
+#
+# # --------------------------------------------
+# # 3. Handle islands (parks without neighbours)
+#
+# def fix_islands(w, gdf, k=3):
+#     if len(w.islands) == 0:
+#         return w
+#
+#     print(f"⚠️ Found {len(w.islands)} islands → fixing with KNN fallback")
+#
+#     knn = KNN.from_dataframe(gdf, k=k)
+#     for island in w.islands:
+#         w.neighbors[island] = knn.neighbors[island]
+#
+#     return w
+#
+# w_dist = fix_islands(w_dist, gdf)
+# w_buffer = fix_islands(w_buffer, gdf)
+#
+# # row-standardize
+# w_dist.transform = "R"
+# w_buffer.transform = "R"
+#
+# W_USED = w_buffer
+#
+# print("✓ Spatial weights ready (distance + buffer)")
 
 # ===========================
 # === outcome diagnostics ===
@@ -153,6 +215,107 @@ if kategori_input not in DEPENDENT_VARIABLE:
 dependent_var = DEPENDENT_VARIABLE[kategori_input]
 print(f"\n✓ Running model for: {dependent_var}\n")
 
+# ============================
+# === create model dataset ===
+
+all_vars = [
+    dependent_var,
+    "amenity_diversity",
+    "max_noise",
+    "crime_per_hectare",
+    "avg_Unsafe_NBHD_density",
+    "lighting_coverage",
+    "MedianInk_weighted",
+    "AGG_Alder_0_15_per_ha",
+    "distance_to_city_center_km",
+    "transport_points_per_ha",
+    "transport_type_diversity",
+    "park_area"
+]
+
+gdf_model = gdf.dropna(subset=all_vars).copy()
+gdf_model = gdf_model.reset_index(drop=True)
+
+print(f"\nOriginal N: {len(gdf)}")
+print(f"Model N   : {len(gdf_model)}")
+
+# =======================
+# === spatial weights ===
+
+print("\n=== Building spatial weights ===\n")
+
+from libpysal.weights import DistanceBand, W, KNN, lag_spatial
+from esda.moran import Moran
+
+# --- Distance band ---
+w_dist = DistanceBand.from_dataframe(
+    gdf_model,
+    threshold=1000,
+    binary=True,
+    silence_warnings=True
+)
+
+# --- Buffer neighbors ---
+gdf_model["buffer_geom"] = gdf_model.geometry.buffer(500)
+
+neighbors = {}
+for i, geom in enumerate(gdf_model["buffer_geom"]):
+    neigh = list(gdf_model[gdf_model.geometry.intersects(geom)].index)
+    if i in neigh:
+        neigh.remove(i)
+    neighbors[i] = neigh
+
+w_buffer = W(neighbors)
+
+# --- Fix islands ---
+def fix_islands(w, gdf, k=3):
+    if len(w.islands) == 0:
+        return w
+
+    print(f"⚠️ Found {len(w.islands)} islands → fixing")
+
+    knn = KNN.from_dataframe(gdf, k=k)
+    for island in w.islands:
+        w.neighbors[island] = knn.neighbors[island]
+
+    return w
+
+w_dist = fix_islands(w_dist, gdf_model)
+w_buffer = fix_islands(w_buffer, gdf_model)
+
+w_dist.transform = "R"
+w_buffer.transform = "R"
+
+# ✅ choose weights
+W_USED = w_buffer
+
+print("✓ Spatial weights ready")
+
+# sanity check
+print("W size:", W_USED.n)
+print("Data size:", len(gdf_model))
+
+# =========================
+# === moran on raw data ===
+
+print("\n=== Moran's I on raw outcomes ===\n")
+
+for name, col in OUTCOMES.items():
+    y = gdf_model[col].fillna(0).values
+    mi = Moran(y, W_USED)
+
+    print(f"{name.upper()}")
+    print(f"  Moran's I : {mi.I:.4f}")
+    print(f"  p-value   : {mi.p_sim:.4f}\n")
+
+# ============================
+# === spatial lag variable ===
+
+gdf_model["spatial_lag_y"] = lag_spatial(
+    W_USED,
+    gdf_model[dependent_var].fillna(0)
+)
+
 # =============================
 # === model specification ===
 
@@ -203,20 +366,26 @@ BLOCK_6_accessibility = [
 BLOCKS_BY_CATEGORY = {
     "praise": [
         ("Amenities", BLOCK_2_amenities),
+        ("Environment", BLOCK_3_environment),
+        ("Safety", BLOCK_4_safety),
         ("Socioeconomic", BLOCK_5_socioeconomic),
+        ("Accessibility", BLOCK_6_accessibility),
         #("Socioeconomic", ["MedianInk_weighted"]),  # PS! såhär kan man även lägga till enstaka variable från ett block om man inte vill inkludera alla!
     ],
     "complaints": [
         ("Amenities", BLOCK_2_amenities),
-        ("Safety", BLOCK_4_safety),
         ("Environment", BLOCK_3_environment),
-        # ("Accessibility", BLOCK_6_accessibility),
+        ("Safety", BLOCK_4_safety),
+        ("Socioeconomic", BLOCK_5_socioeconomic),
+        ("Accessibility", BLOCK_6_accessibility),
 
     ],
     "ideas": [
-        # ("Amenities", BLOCK_2_amenities)
+        ("Amenities", BLOCK_2_amenities),
+        ("Environment", BLOCK_3_environment),
+        ("Safety", BLOCK_4_safety),
         ("Socioeconomic", BLOCK_5_socioeconomic),
-        # ("Accessibility", BLOCK_6_accessibility),
+        ("Accessibility", BLOCK_6_accessibility),
     ],
     "total": [
         ("Amenities", BLOCK_2_amenities),
@@ -246,10 +415,10 @@ continuous_vars = [
     "transport_points_per_ha"
 ]
 
-scale_cols = [v for v in continuous_vars if v in gdf.columns]
+scale_cols = [v for v in continuous_vars if v in gdf_model.columns]
 
 scaler = StandardScaler()
-gdf[scale_cols] = scaler.fit_transform(gdf[scale_cols])
+gdf_model[scale_cols] = scaler.fit_transform(gdf_model[scale_cols])
 
 # =============================================
 # === VIF diagnostics per block (pre-model) ===
@@ -273,13 +442,13 @@ for block_name, block_vars in BLOCKS:
     print(f"\n--- {block_name} block ---")
 
     # only keep variables that exist in the dataframe
-    vars_existing = [v for v in block_vars if v in gdf.columns]
+    vars_existing = [v for v in block_vars if v in gdf_model.columns]
 
     if len(vars_existing) < 2:
         print("Not enough variables for VIF.")
         continue
 
-    vif_df = compute_vif(gdf, vars_existing)
+    vif_df = compute_vif(gdf_model, vars_existing)
 
     if vif_df is not None:
         print(vif_df)
@@ -289,10 +458,8 @@ for block_name, block_vars in BLOCKS:
 # ========================
 # === park area offset ===
 
-gdf["log_park_area"] = np.log(gdf["park_area"] + 1)
-#offset = gdf["log_park_area"]
-gdf["park_area_exposure"] = gdf["park_area"] + 1
-
+gdf_model["log_park_area"] = np.log(gdf_model["park_area"] + 1)
+gdf_model["park_area_exposure"] = gdf_model["park_area"] + 1
 
 # ====================================
 # === block-by-block model fitting ===
@@ -306,76 +473,19 @@ for block_name, block_vars in BLOCKS:
 
     vars_for_formula = current_vars.copy()
 
+    vars_for_formula = ["spatial_lag_y"] + current_vars
+
     formula = dependent_var + " ~ " + " + ".join(vars_for_formula)
 
-    print(f"\n--- Fitting model with blocks: {current_vars} ---")
+    #print(f"\n--- Fitting model with blocks: {current_vars} ---")
+    print(f"\n--- {block_name} ---")
 
-    # # ==========
-    # # complaints
-    #
-    # if kategori_input == "complaints":
-    #     model = smf.glm(
-    #         formula=formula,
-    #         data=gdf,
-    #         family=sm.families.NegativeBinomial(),
-    #         offset=gdf["log_park_area"]
-    #     ).fit(maxiter=200, disp=False)
-    #
-    # # =====
-    # # ideas
-    #
-    # elif kategori_input == "ideas":
-    #     model = smf.glm(
-    #         formula=formula,
-    #         data=gdf,
-    #         family=sm.families.NegativeBinomial(),
-    #         offset=gdf["log_park_area"]
-    #     ).fit()
-    #
-    # # ======
-    # # praise
-    #
-    # elif kategori_input == "praise":
-    #     model = smf.glm(
-    #         formula=formula,
-    #         data=gdf,
-    #         family=sm.families.NegativeBinomial(),
-    #         offset=gdf["log_park_area"]
-    #     ).fit()
-    #     zinb_model = sm.ZeroInflatedNegativeBinomialP.from_formula(
-    #         formula=formula,
-    #         data=gdf,
-    #         inflation="logit"
-    #     )
-    #
-    #     # align exposure to rows actually used by the model
-    #     exposure_aligned = gdf.loc[
-    #         zinb_model.data.row_labels, "park_area_exposure"
-    #     ]
-    #
-    #     model = zinb_model.fit(
-    #         method="bfgs",
-    #         maxiter=200,
-    #         disp=False,
-    #         exposure=exposure_aligned
-    #     )
-    #
-    # print(f"AIC: {model.aic:.2f}")
-    #
-    # results.append({
-    #     "block": block_name,
-    #     "n_vars": len(current_vars),
-    #     "AIC": model.aic,
-    #     "model": model
-    # })      # removed zero-inflated because observed zeros were not bigger than predicted zeros with negative binomial, aka no zero-inflation
-              # BUT, take back ZINB if NB keeps failing! 85% could be a lot for the NB to handle even if it is statistically sound to use NB
     try:
-
         model = smf.glm(
             formula=formula,
-            data=gdf,
+            data=gdf_model,
             family=sm.families.NegativeBinomial(),
-            offset=gdf["log_park_area"]
+            offset=gdf_model["log_park_area"]
         ).fit(maxiter=200, disp=False)
 
         print(f"AIC: {model.aic:.2f}")
@@ -388,7 +498,6 @@ for block_name, block_vars in BLOCKS:
         })
 
     except Exception as e:
-
         print("Model failed:", e)
 
 # ============================
@@ -402,7 +511,7 @@ print(aic_table)
 # === select and show best model ===
 
 valid_results = [r for r in results if np.isfinite(r["AIC"])]
-#best = min(results, key=lambda x: x["AIC"])
+
 if len(results) == 0:
     print("No models successfully fitted.")
     exit()
@@ -413,6 +522,18 @@ print(f"Block: {best['block']}")
 print(f"AIC: {best['AIC']:.2f}\n")
 
 print(best["model"].summary())
+
+# ==============================
+# === Moran's I on residuals ===
+
+print("\n=== Moran's I on model residuals ===\n")
+
+residuals = best["model"].resid_response
+
+mi_resid = Moran(residuals, W_USED)
+
+print(f"Moran's I (residuals): {mi_resid.I:.4f}")
+print(f"p-value              : {mi_resid.p_sim:.4f}")
 
 # ===================================
 # === check collinearity with VIF ===
@@ -427,7 +548,7 @@ exclude_terms = ["Intercept", "inflate_const", "alpha"]
 vif_vars = [v for v in exog_names if v not in exclude_terms]
 
 # build design matrix from gdf
-X = gdf[vif_vars].dropna()
+X = gdf_model[vif_vars].dropna()
 
 # compute VIF
 vif_df = pd.DataFrame({
@@ -460,13 +581,13 @@ else:
     for var in sig_predictors:
         plt.figure(figsize=(6,4))
         sns.scatterplot(
-            x=gdf[var],
-            y=gdf[dependent_var],
+            x=gdf_model[var],
+            y=gdf_model[dependent_var],
             alpha=0.6
         )
         sns.regplot(
-            x=gdf[var],
-            y=gdf[dependent_var],
+            x=gdf_model[var],
+            y=gdf_model[dependent_var],
             scatter=False,
             color="red"
         )
