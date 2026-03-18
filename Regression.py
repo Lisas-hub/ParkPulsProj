@@ -42,60 +42,6 @@ gdf["total_count"] = (
 if gdf.crs.is_geographic:
     gdf = gdf.to_crs(epsg=3006)  # SWEREF99 TM (meters)
 
-# # ============================
-# # === spatial weights setup ===
-#
-# print("\n=== Building spatial weights ===\n")
-#
-# # ----------------------------
-# # 1. Distance band (centroids)
-#
-# w_dist = DistanceBand.from_dataframe(
-#     gdf,
-#     threshold=1000, # meters (adjust if needed)
-#     binary=True,
-#     silence_warnings=True
-# )
-#
-# # --------------------------------------
-# # 2. Buffer-based neighbors (edge-aware)
-#
-# gdf["buffer_geom"] = gdf.geometry.buffer(500) # meters
-#
-# neighbors = {}
-# for i, geom in enumerate(gdf["buffer_geom"]):
-#     neighbors[i] = list(gdf[gdf.geometry.intersects(geom)].index)
-#     if i in neighbors[i]:
-#         neighbors[i].remove(i)  # remove self
-#
-# w_buffer = W(neighbors)
-#
-# # --------------------------------------------
-# # 3. Handle islands (parks without neighbours)
-#
-# def fix_islands(w, gdf, k=3):
-#     if len(w.islands) == 0:
-#         return w
-#
-#     print(f"⚠️ Found {len(w.islands)} islands → fixing with KNN fallback")
-#
-#     knn = KNN.from_dataframe(gdf, k=k)
-#     for island in w.islands:
-#         w.neighbors[island] = knn.neighbors[island]
-#
-#     return w
-#
-# w_dist = fix_islands(w_dist, gdf)
-# w_buffer = fix_islands(w_buffer, gdf)
-#
-# # row-standardize
-# w_dist.transform = "R"
-# w_buffer.transform = "R"
-#
-# W_USED = w_buffer
-#
-# print("✓ Spatial weights ready (distance + buffer)")
-
 # ===========================
 # === outcome diagnostics ===
 
@@ -473,7 +419,8 @@ for block_name, block_vars in BLOCKS:
 
     vars_for_formula = current_vars.copy()
 
-    vars_for_formula = ["spatial_lag_y"] + current_vars
+    #vars_for_formula = ["spatial_lag_y"] + current_vars    # *** use this if Moran's I on raw outcomes significant (but currently they are not)
+    vars_for_formula = current_vars
 
     formula = dependent_var + " ~ " + " + ".join(vars_for_formula)
 
@@ -561,16 +508,18 @@ print(vif_df.sort_values("VIF", ascending=False))
 # ===================================
 # === plot significant predictors ===
 
-# get coefficients and p-values depending on model type
 coefs = best["model"].params
 pvals = best["model"].pvalues
 
-# remove intercept and alpha
+# remove intercept and alpha if present
 coefs = coefs.drop(["Intercept", "alpha"], errors="ignore")
 pvals = pvals.drop(["Intercept", "alpha"], errors="ignore")
 
-# filter significant predictors
-sig_predictors = pvals[pvals < 0.05].index
+# get significant predictors
+sig_predictors = pvals[pvals < 0.05].index.tolist()
+
+# remove spatial lag if present (optional but recommended)
+sig_predictors = [v for v in sig_predictors if v != "spatial_lag_y"]
 
 if len(sig_predictors) == 0:
     print("No significant predictors to plot.")
@@ -578,23 +527,97 @@ else:
     print("\n✓ Significant predictors to plot:")
     print(sig_predictors)
 
+    model = best["model"]
+
+    # variables used in model (excluding intercept)
+    model_vars = [v for v in model.model.exog_names if v != "Intercept"]
+
     for var in sig_predictors:
-        plt.figure(figsize=(6,4))
+
+        # --- create range for focal variable ---
+        x_min = gdf_model[var].min()
+        x_max = gdf_model[var].max()
+        x_vals = np.linspace(x_min, x_max, 100)
+
+        # --- create prediction dataframe ---
+        pred_dict = {}
+
+        for v in model_vars:
+            if v == var:
+                pred_dict[v] = x_vals
+            else:
+                # use mean for all other variables
+                if v in gdf_model.columns:
+                    pred_dict[v] = np.full(100, gdf_model[v].mean())
+                else:
+                    # fallback safety (should rarely happen)
+                    pred_dict[v] = np.zeros(100)
+
+        pred_df = pd.DataFrame(pred_dict)
+
+        # --- handle offset explicitly ---
+        if "log_park_area" in gdf_model.columns:
+            offset_vals = np.full(100, gdf_model["log_park_area"].mean())
+        else:
+            offset_vals = None
+
+        # --- predict ---
+        try:
+            preds = model.predict(pred_df, offset=offset_vals)
+        except Exception as e:
+            print(f"❌ Prediction failed for {var}: {e}")
+            continue
+
+        # --- debug check ---
+        print("Any NaNs in preds?", np.isnan(preds).any())
+        print("Preds min/max:", np.nanmin(preds), np.nanmax(preds))
+
+        if np.isnan(preds).all():
+            print("❌ All predictions are NaN — skipping plot")
+            continue
+
+        ###########
+        print("\nAll p-values in final model:")
+        print(pvals.sort_values())
+
+        print("\nSignificant predictors (p < 0.05):")
+        print(sig_predictors)
+        ###########
+
+        # --- plot ---
+        plt.figure(figsize=(6, 4))
+
+        # raw data
         sns.scatterplot(
             x=gdf_model[var],
             y=gdf_model[dependent_var],
-            alpha=0.6
+            alpha=0.25,
+            edgecolor=None
         )
-        sns.regplot(
-            x=gdf_model[var],
-            y=gdf_model[dependent_var],
-            scatter=False,
-            color="red"
+
+        # model line
+        plt.plot(
+            x_vals,
+            preds,
+            color="red",
+            linewidth=2,
+            label="Model prediction",
+            zorder=10
         )
+
+        # log scale
+        #plt.yscale("log")
+
         plt.xlabel(var)
         plt.ylabel(dependent_var)
-        plt.title(f"{dependent_var} vs {var} (significant)")
+        plt.title(f"{dependent_var} vs {var} (model-based)")
+        plt.legend()
+
         plt.tight_layout()
-        plt.savefig(f"{OUTPUT_PATH}/{kategori_input}_{var}.png", dpi=300, bbox_inches="tight")
+        plt.savefig(
+            f"{OUTPUT_PATH}/{kategori_input}_{var}_model_based.png",
+            dpi=300,
+            bbox_inches="tight"
+        )
         plt.show()
 
