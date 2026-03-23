@@ -7,7 +7,6 @@ input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
 layer2 = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
 
 # TO DO
-# LIGHTING - filter out underground lighting (tunnels)??
 # LIGHTING - calculate point density of street lights?
 # SAFETY SURVEY - use buffered parks? to catch the area next to parks too?
 
@@ -66,7 +65,12 @@ def THEME_safety_to_layer2(layer2):
     # Unsafe_NBHD = Share that feel unsafe/very unsafe in their neighborhood/residential area
     # Unsafe_Residential = Share that feel unsafe in one or more places in their residential building
 
-    parks_and_safety = gpd.overlay(layer2, safety_survey, how='intersection')
+    ##################
+    # use service area of parks instead of just parks
+    service_area_of_parks = gpd.read_file(r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\network_analysis\service_area_of_parks.gpkg")
+    ##################
+    #parks_and_safety = gpd.overlay(layer2, safety_survey, how='intersection')
+    parks_and_safety = gpd.overlay(service_area_of_parks, safety_survey, how='intersection')
     parks_and_safety['intersect_area'] = parks_and_safety.geometry.area
 
     parks_and_safety = parks_and_safety.dropna(subset=['CrimVictim', 'UnsafeNBHD']) # dropping nulls because otherwise these become 0 in the weighing section
@@ -119,6 +123,6 @@ def THEME_safety_to_layer2(layer2):
     return layer2
 layer2 = THEME_safety_to_layer2(layer2)
 
-layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_safety", driver="GPKG", mode="w")
+layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_safety_NEW", driver="GPKG", mode="w")
 
 

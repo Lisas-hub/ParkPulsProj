@@ -36,15 +36,20 @@ def THEME_accessibility_to_layer2(layer2):
     layer2_buffered = layer2.copy()
     layer2_buffered['geometry'] = layer2_buffered.geometry.buffer(200)
 
+    ##################
+    # use service area of parks instead of buffered parks
+    service_area_of_parks = gpd.read_file(r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\network_analysis\service_area_of_parks.gpkg")
+    ##################
+
     # join
     joined_transport = gpd.sjoin(
         transport_points[['geometry', 'transport_type']],
-        layer2_buffered[['geometry']],
+        #layer2_buffered[['geometry']],
+        service_area_of_parks[['geometry']],
         how='inner',
         predicate='intersects'
     )
 
-    ########
     # transport type diversity (output: 0 = no public transport nearby; 1 = only bus or only subway; 2 = both bus + subway)
     transport_type_diversity = (
         joined_transport
@@ -72,9 +77,9 @@ def THEME_accessibility_to_layer2(layer2):
             layer2['transport_points_count'] / (layer2['park_area'] / 10000)
     )
     layer2['transport_points_per_ha'] = layer2['transport_points_per_ha'].fillna(0)
-    ########
 
-    # Group by polygon and list transport type
+
+    # group by polygon and list transport type
     grouped_transport = (
         joined_transport.groupby('index_right')['transport_type']
             .apply(lambda x: ", ".join(sorted(set(x.dropna()))))
@@ -85,36 +90,37 @@ def THEME_accessibility_to_layer2(layer2):
         grouped_transport.set_index('index_right')['transport_type']
     ).fillna('None')
 
-    # walking distance by road
-    road1 = gpd.read_file(
-        f"{input_directory}\\Input\\STHLM_stad\\Stadskarta_Stockholm_SHP\\Vaegutbredning_area.shp").to_crs(layer2.crs)
-    road2 = gpd.read_file(
-        f"{input_directory}\\Input\\STHLM_stad\\Stadskarta_Stockholm_SHP\\Trafik_area.shp").to_crs(layer2.crs)
+    ############################
+    # # walking distance by road
+    # road1 = gpd.read_file(
+    #     f"{input_directory}\\Input\\STHLM_stad\\Stadskarta_Stockholm_SHP\\Vaegutbredning_area.shp").to_crs(layer2.crs)
+    # road2 = gpd.read_file(
+    #     f"{input_directory}\\Input\\STHLM_stad\\Stadskarta_Stockholm_SHP\\Trafik_area.shp").to_crs(layer2.crs)
+    #
+    # merged = road1.overlay(road2, how="union") # see dropped beometries by adding `keep_geom_type=True`, but dropped geometries have attribute info but don't show up when using zoom to location,
+    #
+    # merged["area"] = merged.geometry.area
+    # merged = merged[merged.area >=1] # drop slivers
+    #
+    # # roads from sthlm stad
+    # merged.to_file("data/VARIABLES_NEW.gpkg", layer="roads_from_sthlm_stad", driver="GPKG", mode="w")
+    #
+    # # fix geometries
+    # #merged['geometry'] = merged['geometry'].buffer(0)
+    # #merged['geometry'] = merged['geometry'].buffer(0.1)
+    #
+    # dissolved = merged.dissolve(by=None, as_index=False)
+    #
+    # # Reduce buffer to go back to original size again (after fix earlier)
+    # #dissolved['geometry'] = dissolved['geometry'].buffer(-0.1)
+    #
+    # # *** TEMP FILE - can be removed ***
+    # dissolved.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_roads2", driver="GPKG", mode="w")
+    #
+    # # Save
+    # #dissolved.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_roads3", driver="GPKG", mode="w")
+    ##############################
 
-    merged = road1.overlay(road2, how="union") # see dropped beometries by adding `keep_geom_type=True`, but dropped geometries have attribute info but don't show up when using zoom to location,
-
-    merged["area"] = merged.geometry.area
-    merged = merged[merged.area >=1] # drop slivers
-
-    # roads from sthlm stad
-    merged.to_file("data/VARIABLES_NEW.gpkg", layer="roads_from_sthlm_stad", driver="GPKG", mode="w")
-
-    # fix geometries
-    #merged['geometry'] = merged['geometry'].buffer(0)
-    #merged['geometry'] = merged['geometry'].buffer(0.1)
-
-    dissolved = merged.dissolve(by=None, as_index=False)
-
-    # Reduce buffer to go back to original size again (after fix earlier)
-    #dissolved['geometry'] = dissolved['geometry'].buffer(-0.1)
-
-    # *** TEMP FILE - can be removed ***
-    dissolved.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_roads2", driver="GPKG", mode="w")
-
-    # Save
-    #dissolved.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_roads3", driver="GPKG", mode="w")
-
-    ##########
     # distance to city center (Euclidean)
 
     # Stockholm Central Station (city center)
@@ -131,15 +137,9 @@ def THEME_accessibility_to_layer2(layer2):
 
     # optional: distance in km (often nicer for regression coefficients)
     layer2['distance_to_city_center_km'] = layer2['distance_to_city_center_m'] / 1000
-    ##########
 
     return layer2
 layer2 = THEME_accessibility_to_layer2(layer2)
 
 
-
-layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_accessibility", driver="GPKG", mode="w")
-
-
-
-# roads from OSM *** bättre än sthlm stads? i osm finns väl stigar och sånt ju?? vilket ju är toppen om man ska kolla på gångavstånd
+layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_accessibility_NEW", driver="GPKG", mode="w")

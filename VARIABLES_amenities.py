@@ -91,13 +91,11 @@ def THEME_typology_to_layer2(layer2):
         predicate='intersects'
     )
 
-    ###########
     # === typologies as amenities (for amenity diversity) ===
     typology_amenities = joined_typology[['index_right', 'typology']].copy()
     typology_amenities = typology_amenities.rename(columns={'typology': 'amenity'})
     # Exclude "Park" from amenity diversity
     typology_amenities = typology_amenities[typology_amenities['amenity'] != 'Park']
-    ###########
 
     grouped_typology = (
         joined_typology.groupby('index_right')['typology']
@@ -107,7 +105,7 @@ def THEME_typology_to_layer2(layer2):
 
     layer2['typology'] = layer2.index.map(grouped_typology.set_index('index_right')['typology']).fillna('None')
 
-    # == total playgrounds including outside of parks ==
+    # == total playgrounds per stadsdelsområde including outside of parks ==
     stadsdelsomraden = gpd.read_file(f"{input_directory}\\Output\\Stadsdelsomraden_Stadskartan.gpkg").to_crs(layer2.crs)
     # drop all columns except stadsdelsområden
     columns_to_keep_stadsdelsomraden = ["geometry", "Omrade"]
@@ -215,19 +213,23 @@ def THEME_food_to_layer2(layer2):
     # *** TEMP FILE - can be removed ***
     layer2_buffered.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_park_buffer200", driver="GPKG", mode="w")
 
+    ##################
+    # use service area of parks instead of buffered parks
+    service_area_of_parks = gpd.read_file(r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\network_analysis\service_area_of_parks.gpkg")
+    ##################
+
     # join
     joined_amenity_food = gpd.sjoin(
         food_establishments[['geometry', 'amenity_food']],
-        layer2_buffered[['geometry']],
+        #layer2_buffered[['geometry']],
+        service_area_of_parks[['geometry']],
         how='inner',
         predicate='intersects'
     )
 
-    ############
     # === food as a single amenity category ===
     food_amenities = joined_amenity_food[['index_right']].copy()
     food_amenities['amenity'] = 'Food'
-    ############
 
     # group by polygon and list food establishment type
     grouped_amenity_food = (
@@ -262,10 +264,11 @@ def THEME_food_to_layer2(layer2):
 
     ice_cream_within_buffer_join = gpd.sjoin(
         ice_cream_all[['geometry', 'amenity']],
-        layer2_buffer_dissolve,
+        #layer2_buffer_dissolve,
+        service_area_of_parks[['geometry']],
         how='inner',
         predicate='within'
-    ) # this output results in 42 pts, 1 will be dropped later because here it is within the buffer layer but not within stadsdelsområden
+    ) # the output (with buffered parks) results in 42 pts, 1 will be dropped later because here it is within the buffer layer but not within stadsdelsområden
 
     FINAL_ice_cream_pts = ice_cream_within_buffer_join
     FINAL_ice_cream_pts.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_ice_cream_within_buffer_pts", driver="GPKG", mode="w")
@@ -343,11 +346,20 @@ def THEME_amenities_to_layer2(layer2, typolgy_amenities, food_amenities):
     )
 
     # === buffered WC ===
-    layer2_buffered = layer2.copy()
-    layer2_buffered['geometry'] = layer2_buffered.geometry.buffer(50)
+
+    #layer2_buffered = layer2.copy()
+    #layer2_buffered['geometry'] = layer2_buffered.geometry.buffer(50)
+
+    ##################
+    # use service area of parks instead of buffered parks
+    service_area_of_parks = gpd.read_file(
+        r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\network_analysis\service_area_of_parks.gpkg")
+    ##################
+
     joined_buffered_WC = gpd.sjoin(
         toilet[['geometry', 'amenity']],
-        layer2_buffered[['geometry']],
+        #layer2_buffered[['geometry']],
+        service_area_of_parks[['geometry']],
         how='inner',
         predicate='intersects'
     )
@@ -355,18 +367,6 @@ def THEME_amenities_to_layer2(layer2, typolgy_amenities, food_amenities):
 
     # combine toilets with other amenities
     combined_amenities = pd.concat([joined_amenities, joined_buffered_WC], ignore_index=True)
-
-    #############
-    # === amenity diversity (number of unique amenity types per park) ===
-    # amenity_diversity = (
-    #     combined_amenities
-    #         .groupby('index_right')['amenity']
-    #         .nunique()
-    #         .rename('amenity_diversity')
-    # )
-    #
-    # layer2 = layer2.join(amenity_diversity, how='left')
-    # layer2['amenity_diversity'] = layer2['amenity_diversity'].fillna(0)
 
     # === combine ALL amenity-like things ===
     all_amenities_for_diversity = pd.concat(
@@ -387,8 +387,6 @@ def THEME_amenities_to_layer2(layer2, typolgy_amenities, food_amenities):
 
     layer2 = layer2.join(amenity_diversity, how='left')
     layer2['amenity_diversity'] = layer2['amenity_diversity'].fillna(0)
-
-    #############
 
     grouped_amenities = (
         combined_amenities.groupby('index_right')['amenity']
@@ -428,4 +426,4 @@ def THEME_amenities_to_layer2(layer2, typolgy_amenities, food_amenities):
     return layer2
 layer2 = THEME_amenities_to_layer2(layer2, typology_amenities, food_amenities)
 
-layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_amenities", driver="GPKG", mode="w")
+layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_amenities_NEW", driver="GPKG", mode="w")

@@ -51,7 +51,13 @@ def THEME_socioeconomic_to_layer2(layer2):
     layer2_buffered.to_file("data/VARIABLES_NEW.gpkg", layer="TEMP_FILE_park_buffer500", driver="GPKG", mode="w")
 
     # == aggregated columns ==
-    parks_and_deso = gpd.sjoin(layer2_buffered, deso_all, how='left', predicate='intersects')
+    ##################
+    # use service area of parks instead of just parks
+    service_area_of_parks = gpd.read_file(
+        r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\network_analysis\service_area_of_parks.gpkg")
+    ##################
+    #parks_and_deso = gpd.sjoin(layer2_buffered, deso_all, how='left', predicate='intersects')
+    parks_and_deso = gpd.sjoin(service_area_of_parks, deso_all, how='left', predicate='intersects')
 
     agg_columns = ['Alder_0_6', # from deso_befolning_age
                    'Alder_7_15',
@@ -100,7 +106,6 @@ def THEME_socioeconomic_to_layer2(layer2):
                  'Tot_Bef': "AGG_migr_Tot_Bef"
                  })
 
-    #########
     # AGE: combined children 0-15
     layer2['AGG_Alder_0_15'] = (
             layer2['AGG_Alder_0_6'] +
@@ -121,12 +126,12 @@ def THEME_socioeconomic_to_layer2(layer2):
     for col in age_columns:
         layer2[f"{col}_per_ha"] = layer2[col] / (layer2['park_area'] / 10000)
         layer2[f"{col}_per_ha"] = layer2[f"{col}_per_ha"].fillna(0)
-    #########
 
     # == weighted columns ==
     deso_all['deso_area'] = deso_all.geometry.area
 
-    parks_deso_intersection = gpd.overlay(layer2_buffered, deso_all, how='intersection')
+    #parks_deso_intersection = gpd.overlay(layer2_buffered, deso_all, how='intersection')
+    parks_deso_intersection = gpd.overlay(service_area_of_parks, deso_all, how='intersection')
     parks_deso_intersection['intersect_area'] = parks_deso_intersection.geometry.area
     parks_deso_intersection['MedianInk_weighted'] = (
             parks_deso_intersection['MedianInk'] *
@@ -154,4 +159,4 @@ def THEME_socioeconomic_to_layer2(layer2):
     return layer2
 layer2 = THEME_socioeconomic_to_layer2(layer2)
 
-layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_socioeconomic", driver="GPKG", mode="w")
+layer2.to_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_socioeconomic_NEW", driver="GPKG", mode="w")

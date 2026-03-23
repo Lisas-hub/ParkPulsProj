@@ -2,14 +2,25 @@
 import geopandas as gpd
 
 
-accessibility = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_accessibility")
-amenities = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_amenities")
+#accessibility = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_accessibility")    # with 200 m park buffer
+accessibility = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_accessibility_NEW") # with service_area_of_parks
+
+#amenities = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_amenities")            # with 200 m and 20 m buffers
+amenities = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_amenities_NEW")         # with service_area_of_parks
+
 environment = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_environment")
-food = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_food")
+
+food = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_food")                       # this one is old-ish? (not used in regressions?)
+
 #noise_pollution = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_noise_pollution") - added to environment instead
-safety = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_safety")
-socioeconomic = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_socioeconomic")
-typology = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_typology")
+
+# safety = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_safety")                 # with no buffer
+safety = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_safety_NEW")               # with service_area_of_parks
+
+#socioeconomic = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_socioeconomic")    # with 500 m park buffer
+socioeconomic = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_socioeconomic_NEW") # with service_area_of_parks
+
+typology = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_typology")               # this one is old-ish? (not used in regressions?)
 
 layers = [accessibility, amenities, environment, food, safety, socioeconomic, typology] # noise pollution borttagen
 
