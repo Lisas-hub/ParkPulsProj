@@ -14,13 +14,6 @@ from esda.moran import Moran
 
 # TO DO
 # change some variables normalized by area (_per_ha) to be standardized too or instead?
-# what exactly is in amenity_diversity? just pts within parks or are some (like toilets) with X m of parks also included?
-
-
-# ABOUT THE DATA
-# PRAISE:       mean =  0.278   variance =     0.896   proportion of zeros = 84.8%   (lots of zeros -> zero-inflated -> Zero-Inflated Negative Binomial (ZINB))
-# COMPLAINTS:   mean = 71.464   variance = 30608.41    proportion of zeros =  3.9%   (variance is higher than mean = overdispersion -> negative binomial regression)
-# IDEAS:        mean =  0.766   variance =     3.815   proportion of zeros = 70.6%   (overdispersion + zero-inflated -> Negative Binomial, then Zero-Inflated NB as comparison)
 
 OUTPUT_PATH = "data/regression_output/plots"
 os.makedirs(OUTPUT_PATH, exist_ok=True)
@@ -40,7 +33,7 @@ gdf["total_count"] = (
 # === ensure projected CRS ===
 
 if gdf.crs.is_geographic:
-    gdf = gdf.to_crs(epsg=3006)  # SWEREF99 TM (meters)
+    gdf = gdf.to_crs(epsg=3006)
 
 # ===========================
 # === outcome diagnostics ===
@@ -79,7 +72,7 @@ for name, col in OUTCOMES.items():
 
     formula_diag = f"{col} ~ 1"
 
-    # ---------- Poisson ----------
+    # ---------- poisson ----------
     poisson_model = smf.glm(
         formula=formula_diag,
         data=gdf,
@@ -93,7 +86,7 @@ for name, col in OUTCOMES.items():
     mu_pois = poisson_model.predict()
     pred_zero_pois = np.exp(-mu_pois).mean()
 
-    # ---------- Negative Binomial ----------
+    # ---------- negative binomial ----------
     nb_model = smf.glm(
         formula=formula_diag,
         data=gdf,
@@ -193,7 +186,7 @@ print("\n=== Building spatial weights ===\n")
 from libpysal.weights import DistanceBand, W, KNN, lag_spatial
 from esda.moran import Moran
 
-# --- Distance band ---
+# --- distance band ---
 w_dist = DistanceBand.from_dataframe(
     gdf_model,
     threshold=1000,
@@ -201,7 +194,7 @@ w_dist = DistanceBand.from_dataframe(
     silence_warnings=True
 )
 
-# --- Buffer neighbors ---
+# --- buffer neighbors ---
 gdf_model["buffer_geom"] = gdf_model.geometry.buffer(500)
 
 neighbors = {}
@@ -213,7 +206,7 @@ for i, geom in enumerate(gdf_model["buffer_geom"]):
 
 w_buffer = W(neighbors)
 
-# --- Fix islands ---
+# --- fix islands ---
 def fix_islands(w, gdf, k=3):
     if len(w.islands) == 0:
         return w
@@ -232,7 +225,7 @@ w_buffer = fix_islands(w_buffer, gdf_model)
 w_dist.transform = "R"
 w_buffer.transform = "R"
 
-# ✅ choose weights
+# choose weights
 W_USED = w_buffer
 
 print("✓ Spatial weights ready")
@@ -262,7 +255,7 @@ gdf_model["spatial_lag_y"] = lag_spatial(
     gdf_model[dependent_var].fillna(0)
 )
 
-# =============================
+# ===========================
 # === model specification ===
 
 #BLOCK_1_base = [
@@ -291,7 +284,7 @@ BLOCK_5_socioeconomic = [
     "MedianInk_weighted",     # or "MedianInk_weighted_avg" or otherwise median income (standardized)
     "AGG_Alder_0_15_per_ha",  # or get % children (0-15)?
     # "AGG_Alder_65_per_ha"   # or get % elderly (+65)?
-    #"TotPop_weighted",
+    "TotPop_weighted",
 ]
 
 BLOCK_6_accessibility = [
@@ -316,7 +309,6 @@ BLOCKS_BY_CATEGORY = {
         ("Safety", BLOCK_4_safety),
         ("Socioeconomic", BLOCK_5_socioeconomic),
         ("Accessibility", BLOCK_6_accessibility),
-        #("Socioeconomic", ["MedianInk_weighted"]),  # PS! såhär kan man även lägga till enstaka variable från ett block om man inte vill inkludera alla!
     ],
     "complaints": [
         ("Amenities", BLOCK_2_amenities),
@@ -324,7 +316,6 @@ BLOCKS_BY_CATEGORY = {
         ("Safety", BLOCK_4_safety),
         ("Socioeconomic", BLOCK_5_socioeconomic),
         ("Accessibility", BLOCK_6_accessibility),
-
     ],
     "ideas": [
         ("Amenities", BLOCK_2_amenities),
@@ -355,7 +346,7 @@ continuous_vars = [
     "lighting_coverage",
     "MedianInk_weighted",
     "AGG_Alder_0_15_per_ha",
-    #"TotPop_weighted",         # removed because it correlates with income
+    "TotPop_weighted",         # correlates with income
     #"AGG_Alder_65_per_ha",
     "distance_to_city_center_km",
     "transport_points_per_ha"
@@ -419,7 +410,7 @@ for block_name, block_vars in BLOCKS:
 
     vars_for_formula = current_vars.copy()
 
-    #vars_for_formula = ["spatial_lag_y"] + current_vars    # *** use this if Moran's I on raw outcomes significant (but currently they are not)
+    #vars_for_formula = ["spatial_lag_y"] + current_vars    # *** use this if Moran's I on raw outcomes significant
     vars_for_formula = current_vars
 
     formula = dependent_var + " ~ " + " + ".join(vars_for_formula)
