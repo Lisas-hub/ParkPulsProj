@@ -25,11 +25,11 @@ POLYGON_LAYERS = [
     "VARIABLES_accessibility",
     "VARIABLES_amenities",
     "VARIABLES_environment",
-    #"VARIABLES_food",               # not relevant anymore, noise is handled within VARIABLES_amenities
-    #"VARIABLES_noise_pollution",    # not relevant anymore, noise is handled within VARIABLES_environment
+    #"VARIABLES_food",               # not relevant anymore, handled within VARIABLES_amenities
+    #"VARIABLES_noise_pollution",    # not relevant anymore, handled within VARIABLES_environment
     "VARIABLES_safety",
     "VARIABLES_socioeconomic",
-    #"VARIABLES_typology"            # not relevant anymore, noise is handled within VARIABLES_amenities
+    #"VARIABLES_typology"            # not relevant anymore, handled within VARIABLES_amenities
 ]
 
 ID_COL = "group"

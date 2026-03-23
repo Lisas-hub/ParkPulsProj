@@ -20,7 +20,7 @@ os.makedirs(OUTPUT_PATH, exist_ok=True)
 NETWORK_GRAPHML = f"{OUTPUT_PATH}\\walk_network.graphml"
 SERVICE_AREAS_GPKG = f"{OUTPUT_PATH}\\service_area_of_parks.gpkg"
 
-TIME_CUTOFF = 600
+TIME_CUTOFF = 600         # 600 sec = 10 min
 WALK_SPEED_KPH = 5
 EDGE_BUFFER = 25
 BOUNDARY_SAMPLE_DISTANCE = 50

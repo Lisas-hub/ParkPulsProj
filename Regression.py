@@ -45,6 +45,111 @@ OUTCOMES = {
     "total": "total_count"
 }
 
+BASE_VARS = [
+    #dependent_var,
+    "amenity_diversity",
+    "max_noise",
+    "crime_per_hectare",
+    "avg_Unsafe_NBHD_density",
+    "lighting_coverage",
+    "MedianInk_weighted",
+    "AGG_Alder_0_15_per_ha",
+    "distance_to_city_center_km",
+    "transport_points_per_ha",
+    "transport_type_diversity",
+    "park_area"
+]
+
+gdf_base = gdf.dropna(subset=BASE_VARS).copy()
+gdf_base = gdf_base.reset_index(drop=True)
+print(f"\nBase dataset N: {len(gdf_base)}")
+
+# =======================================
+# === CORRELATION MATRIX (PREDICTORS) ===
+
+print("\n=== Correlation matrix (predictors only) ===\n")
+
+corr_df = gdf_base[BASE_VARS].corr()
+print(corr_df.round(3))
+
+#corr_df.to_csv(f"{OUTPUT_PATH}/correlation_matrix_predictors.csv")
+
+plt.figure(figsize=(10, 8))
+sns.heatmap(corr_df, annot=True, fmt=".2f", cmap="coolwarm", center=0)
+plt.title("Correlation Matrix (Predictors)")
+plt.tight_layout()
+plt.savefig(f"{OUTPUT_PATH}/correlation_matrix_predictors.png", dpi=300)
+plt.show()
+
+# =======================
+# === spatial weights ===
+
+print("\n=== Building spatial weights ===\n")
+
+# --- distance band ---
+w_dist = DistanceBand.from_dataframe(
+    gdf_base,
+    threshold=1000,
+    binary=True,
+    silence_warnings=True
+)
+
+# --- buffer neighbors ---
+gdf_base["buffer_geom"] = gdf_base.geometry.buffer(500)
+
+neighbors = {}
+for i, geom in enumerate(gdf_base["buffer_geom"]):
+    neigh = list(gdf_base[gdf_base.geometry.intersects(geom)].index)
+    if i in neigh:
+        neigh.remove(i)
+    neighbors[i] = neigh
+
+w_buffer = W(neighbors)
+
+# --- fix islands ---
+def fix_islands(w, gdf, k=3):
+    if len(w.islands) == 0:
+        return w
+
+    print(f"⚠️ Found {len(w.islands)} islands → fixing")
+
+    knn = KNN.from_dataframe(gdf, k=k)
+    for island in w.islands:
+        w.neighbors[island] = knn.neighbors[island]
+
+    return w
+
+w_dist = fix_islands(w_dist, gdf_base)
+w_buffer = fix_islands(w_buffer, gdf_base)
+
+w_dist.transform = "R"
+w_buffer.transform = "R"
+
+# choose weights
+W_USED = w_buffer
+
+print("✓ Spatial weights ready")
+
+# sanity check
+print("W size:", W_USED.n)
+print("Data size:", len(gdf_base))
+
+# =========================
+# === moran on raw data ===
+
+print("\n=== Moran's I on raw outcomes ===\n")
+
+for name, col in OUTCOMES.items():
+    y = gdf_base[col].fillna(0).values
+    mi = Moran(y, W_USED)
+
+    print(f"{name.upper()}")
+    print(f"  Moran's I : {mi.I:.4f}")
+    print(f"  p-value   : {mi.p_sim:.4f}\n")
+
+# ===========================
+# === outcome diagnostics ===
+
 print("\n=== Count outcome diagnostics ===\n")
 
 for name, col in OUTCOMES.items():
@@ -157,103 +262,12 @@ print(f"\n✓ Running model for: {dependent_var}\n")
 # ============================
 # === create model dataset ===
 
-all_vars = [
-    dependent_var,
-    "amenity_diversity",
-    "max_noise",
-    "crime_per_hectare",
-    "avg_Unsafe_NBHD_density",
-    "lighting_coverage",
-    "MedianInk_weighted",
-    "AGG_Alder_0_15_per_ha",
-    "distance_to_city_center_km",
-    "transport_points_per_ha",
-    "transport_type_diversity",
-    "park_area"
-]
-
+all_vars = [dependent_var] + BASE_VARS
 gdf_model = gdf.dropna(subset=all_vars).copy()
 gdf_model = gdf_model.reset_index(drop=True)
 
-print(f"\nOriginal N: {len(gdf)}")
-print(f"Model N   : {len(gdf_model)}")
-
-# =======================
-# === spatial weights ===
-
-print("\n=== Building spatial weights ===\n")
-
-from libpysal.weights import DistanceBand, W, KNN, lag_spatial
-from esda.moran import Moran
-
-# --- distance band ---
-w_dist = DistanceBand.from_dataframe(
-    gdf_model,
-    threshold=1000,
-    binary=True,
-    silence_warnings=True
-)
-
-# --- buffer neighbors ---
-gdf_model["buffer_geom"] = gdf_model.geometry.buffer(500)
-
-neighbors = {}
-for i, geom in enumerate(gdf_model["buffer_geom"]):
-    neigh = list(gdf_model[gdf_model.geometry.intersects(geom)].index)
-    if i in neigh:
-        neigh.remove(i)
-    neighbors[i] = neigh
-
-w_buffer = W(neighbors)
-
-# --- fix islands ---
-def fix_islands(w, gdf, k=3):
-    if len(w.islands) == 0:
-        return w
-
-    print(f"⚠️ Found {len(w.islands)} islands → fixing")
-
-    knn = KNN.from_dataframe(gdf, k=k)
-    for island in w.islands:
-        w.neighbors[island] = knn.neighbors[island]
-
-    return w
-
-w_dist = fix_islands(w_dist, gdf_model)
-w_buffer = fix_islands(w_buffer, gdf_model)
-
-w_dist.transform = "R"
-w_buffer.transform = "R"
-
-# choose weights
-W_USED = w_buffer
-
-print("✓ Spatial weights ready")
-
-# sanity check
-print("W size:", W_USED.n)
-print("Data size:", len(gdf_model))
-
-# =========================
-# === moran on raw data ===
-
-print("\n=== Moran's I on raw outcomes ===\n")
-
-for name, col in OUTCOMES.items():
-    y = gdf_model[col].fillna(0).values
-    mi = Moran(y, W_USED)
-
-    print(f"{name.upper()}")
-    print(f"  Moran's I : {mi.I:.4f}")
-    print(f"  p-value   : {mi.p_sim:.4f}\n")
-
-# ============================
-# === spatial lag variable ===
-
-gdf_model["spatial_lag_y"] = lag_spatial(
-    W_USED,
-    gdf_model[dependent_var].fillna(0)
-)
+#print(f"\nOriginal N: {len(gdf)}")
+#print(f"Model N   : {len(gdf_model)}")
 
 # ===========================
 # === model specification ===
@@ -357,10 +371,29 @@ scale_cols = [v for v in continuous_vars if v in gdf_model.columns]
 scaler = StandardScaler()
 gdf_model[scale_cols] = scaler.fit_transform(gdf_model[scale_cols])
 
+# =======================
+# === rebuild weights ===
+
+w_model = DistanceBand.from_dataframe(
+    gdf_model,
+    threshold=1000,
+    binary=True,
+    silence_warnings=True
+)
+
+w_model = fix_islands(w_model, gdf_model)
+w_model.transform = "R"
+
+# ============================
+# === spatial lag variable ===
+
+gdf_model["spatial_lag_y"] = lag_spatial(
+    W_USED,
+    gdf_model[dependent_var].fillna(0)
+)
+
 # =============================================
 # === VIF diagnostics per block (pre-model) ===
-
-from statsmodels.stats.outliers_influence import variance_inflation_factor
 
 print("\n=== Pre-model VIF diagnostics per block ===\n")
 
@@ -596,7 +629,7 @@ else:
             zorder=10
         )
 
-        # log scale
+        # log scale (optional, looked better not log scaled)
         #plt.yscale("log")
 
         plt.xlabel(var)

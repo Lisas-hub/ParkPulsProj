@@ -1,6 +1,7 @@
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 
 input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
 
@@ -65,6 +66,23 @@ def THEME_safety_to_layer2(layer2):
     # Unsafe_NBHD = Share that feel unsafe/very unsafe in their neighborhood/residential area
     # Unsafe_Residential = Share that feel unsafe in one or more places in their residential building
 
+    # === add in social cohesion ===
+    social_cohesion = pd.read_excel(f"{input_directory}\\Input\\Safety\\survey_socialcohesion_2020.xlsx")
+
+    print(safety_survey.columns)
+    print(social_cohesion.columns)
+    # Geo_basområde is the same as BasOmr_kod (och TIDIGARE_N i andra safety-datasetet) ??
+
+    safety_survey = safety_survey.merge(
+        social_cohesion[["Geo_basområde", "soc_coh_index"]],
+        left_on="BasOmr_kod",
+        right_on="Geo_basområde",
+        how="left"
+    )
+
+    # drop one of the id columns
+    #safety_survey = safety_survey.drop(columns=["Geo_basområde"])
+
     ##################
     # use service area of parks instead of just parks
     service_area_of_parks = gpd.read_file(r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\network_analysis\service_area_of_parks.gpkg")
@@ -73,26 +91,31 @@ def THEME_safety_to_layer2(layer2):
     parks_and_safety = gpd.overlay(service_area_of_parks, safety_survey, how='intersection')
     parks_and_safety['intersect_area'] = parks_and_safety.geometry.area
 
-    parks_and_safety = parks_and_safety.dropna(subset=['CrimVictim', 'UnsafeNBHD']) # dropping nulls because otherwise these become 0 in the weighing section
+    parks_and_safety = parks_and_safety.dropna(subset=['CrimVictim', 'UnsafeNBHD', 'soc_coh_index']) # dropping nulls because otherwise these become 0 in the weighing section
 
     parks_and_safety['Unsafe_NBHD_weighted_density'] = parks_and_safety['UnsafeNBHD'] * parks_and_safety['intersect_area']
     parks_and_safety['Crime_victim_weighted_density'] = parks_and_safety['CrimVictim'] * parks_and_safety['intersect_area']
+    parks_and_safety['soc_coh_weighted_density'] = parks_and_safety['soc_coh_index'] * parks_and_safety['intersect_area']
 
     safety_weighted = parks_and_safety.groupby('group').agg({
         'Unsafe_NBHD_weighted_density': 'sum',
         'Crime_victim_weighted_density': 'sum',
+        'soc_coh_weighted_density': 'sum',
         'intersect_area': 'sum'
     }).reset_index()
 
     safety_weighted['avg_Unsafe_NBHD_density'] = safety_weighted['Unsafe_NBHD_weighted_density'] / safety_weighted['intersect_area']
     safety_weighted['avg_Crime_victim_density'] = safety_weighted['Crime_victim_weighted_density'] / safety_weighted['intersect_area']
+    safety_weighted['avg_soc_coh_density'] = safety_weighted['soc_coh_weighted_density'] / safety_weighted['intersect_area']
 
-    layer2 = layer2.merge(safety_weighted[['group', 'avg_Unsafe_NBHD_density', 'avg_Crime_victim_density']], on='group', how='left')
+    layer2 = layer2.merge(safety_weighted[['group', 'avg_Unsafe_NBHD_density', 'avg_Crime_victim_density', 'avg_soc_coh_density']], on='group', how='left')
 
     layer2['avg_Unsafe_NBHD_density_LOG'] = np.log(layer2['avg_Unsafe_NBHD_density'])
     layer2['avg_Unsafe_NBHD_density_LOG'] = np.log(layer2['avg_Unsafe_NBHD_density'].replace(0, np.nan)) # to avoid -inf in some rows
     layer2['avg_Crime_victim_density_LOG'] = np.log(layer2['avg_Crime_victim_density'])
     layer2['avg_Crime_victim_density_LOG'] = np.log(layer2['avg_Crime_victim_density'].replace(0, np.nan))
+    layer2['avg_soc_coh_density_LOG'] = np.log(layer2['avg_soc_coh_density'])
+    layer2['avg_soc_coh_density_LOG'] = np.log(layer2['avg_soc_coh_density'].replace(0, np.nan))
 
     # =================================
     # === safety - committed crimes ===
