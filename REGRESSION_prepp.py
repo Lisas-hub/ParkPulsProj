@@ -22,13 +22,13 @@ POINT_LAYER = "pts_in_parks_with_topics" # (has sentiment and topic columns and 
 
 POLYGON_LAYERS = [
     "VARIABLES_base",
-    "VARIABLES_accessibility",
-    "VARIABLES_amenities",
+    "VARIABLES_accessibility_NEW",
+    "VARIABLES_amenities_NEW",
     "VARIABLES_environment",
     #"VARIABLES_food",               # not relevant anymore, handled within VARIABLES_amenities
     #"VARIABLES_noise_pollution",    # not relevant anymore, handled within VARIABLES_environment
-    "VARIABLES_safety",
-    "VARIABLES_socioeconomic",
+    "VARIABLES_safety_NEW",
+    "VARIABLES_socioeconomic_NEW",
     #"VARIABLES_typology"            # not relevant anymore, handled within VARIABLES_amenities
 ]
 

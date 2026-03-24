@@ -15,8 +15,10 @@ from esda.moran import Moran
 # TO DO
 # change some variables normalized by area (_per_ha) to be standardized too or instead?
 
-OUTPUT_PATH = "data/regression_output/plots"
-os.makedirs(OUTPUT_PATH, exist_ok=True)
+OUTPUT_PATH_PLOTS = "data/regression_output/plots"
+OUTPUT_PATH_GPKG = "data/regression_output"
+os.makedirs(OUTPUT_PATH_PLOTS, exist_ok=True)
+os.makedirs(OUTPUT_PATH_GPKG, exist_ok=True)
 
 # =================
 # === load data ===
@@ -49,6 +51,7 @@ BASE_VARS = [
     #dependent_var,
     "amenity_diversity",
     "max_noise",
+    "avg_soc_coh_density",
     "crime_per_hectare",
     "avg_Unsafe_NBHD_density",
     "lighting_coverage",
@@ -72,13 +75,13 @@ print("\n=== Correlation matrix (predictors only) ===\n")
 corr_df = gdf_base[BASE_VARS].corr()
 print(corr_df.round(3))
 
-#corr_df.to_csv(f"{OUTPUT_PATH}/correlation_matrix_predictors.csv")
+#corr_df.to_csv(f"{OUTPUT_PATH_PLOTS}/correlation_matrix_predictors.csv")
 
 plt.figure(figsize=(10, 8))
 sns.heatmap(corr_df, annot=True, fmt=".2f", cmap="coolwarm", center=0)
 plt.title("Correlation Matrix (Predictors)")
 plt.tight_layout()
-plt.savefig(f"{OUTPUT_PATH}/correlation_matrix_predictors.png", dpi=300)
+plt.savefig(f"{OUTPUT_PATH_PLOTS}/correlation_matrix_predictors.png", dpi=300)
 plt.show()
 
 # =======================
@@ -266,8 +269,8 @@ all_vars = [dependent_var] + BASE_VARS
 gdf_model = gdf.dropna(subset=all_vars).copy()
 gdf_model = gdf_model.reset_index(drop=True)
 
-#print(f"\nOriginal N: {len(gdf)}")
-#print(f"Model N   : {len(gdf_model)}")
+print(f"\nOriginal N: {len(gdf)}")
+print(f"Model N   : {len(gdf_model)}")
 
 # ===========================
 # === model specification ===
@@ -289,16 +292,18 @@ BLOCK_3_environment = [
 ]
 
 BLOCK_4_safety = [
+    "lighting_coverage",  # same as % of park area within lit zones?
     "crime_per_hectare",  # change to crimes per ha per year? or per 1000 nearby residents
     "avg_Unsafe_NBHD_density",  # change to mean safety survey score (standardized)?
-    "lighting_coverage",  # same as % of park area within lit zones?
+    "avg_soc_coh_density",
 ]
 
 BLOCK_5_socioeconomic = [
     "MedianInk_weighted",     # or "MedianInk_weighted_avg" or otherwise median income (standardized)
+    "TotPop_weighted",
     "AGG_Alder_0_15_per_ha",  # or get % children (0-15)?
     # "AGG_Alder_65_per_ha"   # or get % elderly (+65)?
-    "TotPop_weighted",
+
 ]
 
 BLOCK_6_accessibility = [
@@ -355,12 +360,13 @@ continuous_vars = [
     "amenity_diversity",
     #"Temp_max_upper",
     "max_noise",
+    "lighting_coverage",
     "crime_per_hectare",
     "avg_Unsafe_NBHD_density",
-    "lighting_coverage",
+    "avg_soc_coh_density",
     "MedianInk_weighted",
+    "TotPop_weighted",  # correlates with income
     "AGG_Alder_0_15_per_ha",
-    "TotPop_weighted",         # correlates with income
     #"AGG_Alder_65_per_ha",
     "distance_to_city_center_km",
     "transport_points_per_ha"
@@ -639,9 +645,119 @@ else:
 
         plt.tight_layout()
         plt.savefig(
-            f"{OUTPUT_PATH}/{kategori_input}_{var}_model_based.png",
+            f"{OUTPUT_PATH_PLOTS}/{kategori_input}_{var}_model_based.png",
             dpi=300,
             bbox_inches="tight"
         )
-        plt.show()
+        #plt.show()
 
+# =====================================
+# === observed vs predicted scatter ===
+
+print("\n=== Observed vs Predicted Plot ===\n")
+
+# observed values
+y_obs = gdf_model[dependent_var]
+
+# predicted values
+y_pred = best["model"].predict(offset=gdf_model["log_park_area"])
+
+# residuals
+residuals = y_obs - y_pred
+
+# add to dataframe (useful for mapping later)
+gdf_model["predicted"] = y_pred
+gdf_model["residual"] = residuals
+
+# --- scatterplot ---
+plt.figure(figsize=(6, 6))
+
+sns.scatterplot(
+    x=y_obs,
+    y=y_pred,
+    alpha=0.6
+)
+
+# 45-degree line
+max_val = max(y_obs.max(), y_pred.max())
+plt.plot([0, max_val], [0, max_val], color="red", linestyle="--", label="Perfect fit")
+
+plt.xlabel("Observed counts")
+plt.ylabel("Predicted counts")
+plt.title(f"Observed vs Predicted ({kategori_input})")
+plt.legend()
+
+plt.tight_layout()
+plt.savefig(
+            f"{OUTPUT_PATH_PLOTS}/{kategori_input}_observed_vs_predicted.png",
+            dpi=300,
+            bbox_inches="tight"
+        )
+plt.show()
+
+# ==============================
+# === identify outlier parks ===
+
+# standardized residuals (approx)
+gdf_model["std_residual"] = (
+    (residuals - residuals.mean()) / residuals.std()
+)
+
+# threshold (common rule: > |2| or |3|)
+outliers = gdf_model[np.abs(gdf_model["std_residual"]) > 2]
+
+print(f"\nNumber of outlier parks: {len(outliers)}")
+
+# show top extreme ones
+print(outliers[["group", dependent_var, "predicted", "residual", "std_residual"]]
+      .sort_values("std_residual", key=np.abs, ascending=False)
+      .head(39))
+
+# =========================================
+
+# predictions
+gdf_model["predicted"] = best["model"].predict(
+    offset=gdf_model["log_park_area"]
+)
+
+# residuals
+gdf_model["residual"] = (
+    gdf_model[dependent_var] - gdf_model["predicted"]
+)
+
+# standardized residuals
+gdf_model["std_residual"] = (
+    (gdf_model["residual"] - gdf_model["residual"].mean()) /
+    gdf_model["residual"].std()
+)
+
+# outlier flag
+gdf_model["outlier"] = np.abs(gdf_model["std_residual"]) > 2
+
+cols_to_keep = [
+    "group",  # your park ID
+    "predicted",
+    "residual",
+    "std_residual",
+    "outlier"
+]
+
+outlier_info = gdf_model[cols_to_keep].copy()
+
+gdf_output = gdf.merge(
+    outlier_info,
+    on="group",
+    how="left"
+)
+
+gdf_output["outlier"] = gdf_output["outlier"].fillna(False)
+
+# save
+OUTPUT_GPKG = f"{OUTPUT_PATH_GPKG}/REGRESSION_output.gpkg"
+layer_name = f"regression_output_{kategori_input}"
+
+gdf_output.to_file(
+    OUTPUT_GPKG,
+    layer=layer_name,
+    driver="GPKG"
+)
