@@ -7,11 +7,11 @@ from shapely.geometry import Point
 import numpy as np
 import math
 
-VARIABLES_GPKG_PATH = "data/VARIABLES_NEW.gpkg"
+VARIABLES_GPKG_PATH = "../data/VARIABLES_NEW.gpkg"
 PARK_LAYER = "VARIABLES_base"
 ID_COL = "group"
 
-OUTPUT_PATH = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\network_analysis"
+OUTPUT_PATH = r"/data/tycktill_output/network_analysis"
 os.makedirs(OUTPUT_PATH, exist_ok=True)
 
 SERVICE_AREAS_GPKG = f"{OUTPUT_PATH}\\service_area_of_parks.gpkg"

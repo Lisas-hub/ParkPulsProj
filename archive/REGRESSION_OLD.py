@@ -37,7 +37,7 @@ print(" ")
 # =============================
 # === load and prepare data ===
 
-gdf = gpd.read_file("data/regression_output/VARIABLES_regression.gpkg", layer="VARIABLES_regression")
+gdf = gpd.read_file("../data/regression_output/VARIABLES_regression.gpkg", layer="VARIABLES_regression")
 
 # consider using log area instead of raw, if yes, change all park_area to log_area
 gdf["log_area"] = np.log(gdf["park_area"])
