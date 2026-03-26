@@ -9,7 +9,6 @@ layer2 = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
 
 # TO DO
 # LIGHTING - calculate point density of street lights?
-# SAFETY SURVEY - use buffered parks? to catch the area next to parks too?
 
 # lighting
 def THEME_lighting_to_layer2(layer2):

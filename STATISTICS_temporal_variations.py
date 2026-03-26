@@ -68,10 +68,6 @@ temporal_dims = {
     "Hour": hour_groups
 }
 
-# For hours, we’ll apply assign_group to 'hour' column
-# For weekdays, to 'weekday' column
-# For seasons, to 'month' column
-
 categories_dict = {
     "Praise": ["Beröm"],
     "Ideas": ["Idé"],
