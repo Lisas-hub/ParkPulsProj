@@ -58,7 +58,7 @@ BASE_VARS = [
     "MedianInk_weighted",
     "AGG_Alder_0_15_per_ha",
     "distance_to_city_center_km",
-    "transport_points_per_ha",
+    #"transport_points_per_ha",       # correlates with AGG_Alder_0_15_per_ha
     "transport_type_diversity",
     "park_area"
 ]
@@ -308,7 +308,7 @@ BLOCK_5_socioeconomic = [
 
 BLOCK_6_accessibility = [
     "distance_to_city_center_km",  # change coordinates of city center? (in VARIABLES_accessibility)
-    "transport_points_per_ha",     # points represent subway entrances and bus stops
+    #"transport_points_per_ha",     # points represent subway entrances and bus stops
     "transport_type_diversity",    # output: 0 = no public transport nearby; 1 = only bus or only subway; 2 = both bus + subway
 ]
 
@@ -369,7 +369,7 @@ continuous_vars = [
     "AGG_Alder_0_15_per_ha",
     #"AGG_Alder_65_per_ha",
     "distance_to_city_center_km",
-    "transport_points_per_ha"
+    #"transport_points_per_ha"
 ]
 
 scale_cols = [v for v in continuous_vars if v in gdf_model.columns]
@@ -449,8 +449,8 @@ for block_name, block_vars in BLOCKS:
 
     vars_for_formula = current_vars.copy()
 
-    #vars_for_formula = ["spatial_lag_y"] + current_vars    # *** use this if Moran's I on raw outcomes significant
-    vars_for_formula = current_vars
+    vars_for_formula = ["spatial_lag_y"] + current_vars    # *** use this if Moran's I on raw outcomes significant
+    #vars_for_formula = current_vars                       # *** use this if Moran's I on raw outcomes NOT significant
 
     formula = dependent_var + " ~ " + " + ".join(vars_for_formula)
 
