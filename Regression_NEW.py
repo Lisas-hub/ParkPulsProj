@@ -71,7 +71,7 @@ if gdf.crs.is_geographic:
 # === VARIABLES SETUP ===
 
 OUTCOMES = {
-    "complaints": "error_complaint_count",
+    "maintenance_request_complaints": "error_complaint_count",
     "ideas": "idea_count",
     "praise": "praise_count",
     "total": "total_count"
@@ -87,8 +87,9 @@ BASE_VARS = [
     "MedianInk_weighted",
     "AGG_Alder_0_15_per_ha",
     "distance_to_city_center_km",
+    "TotPop_weighted",                # offset
     "transport_type_diversity",
-    "park_area"
+    "park_area"                       # offset
 ]
 
 # ==============
@@ -105,7 +106,7 @@ BLOCKS = [
     ]),
     ("Socioeconomic", [
         "MedianInk_weighted",
-        "TotPop_weighted",
+        #"TotPop_weighted",
         "AGG_Alder_0_15_per_ha"
     ]),
     ("Accessibility", [
@@ -202,7 +203,7 @@ for kategori, col in OUTCOMES.items():
         formula=formula,
         data=gdf,
         family=sm.families.Poisson(),
-        offset=np.log(gdf["park_area"] + 1)
+        offset = np.log(gdf["park_area"] + 1) + np.log(gdf["TotPop_weighted"] + 1)
     ).fit()
 
     dispersion = poisson_model.pearson_chi2 / poisson_model.df_resid
@@ -215,7 +216,7 @@ for kategori, col in OUTCOMES.items():
         formula=formula,
         data=gdf,
         family=sm.families.NegativeBinomial(),
-        offset=np.log(gdf["park_area"] + 1)
+        offset = np.log(gdf["park_area"] + 1) + np.log(gdf["TotPop_weighted"] + 1)
     ).fit()
 
     mu_nb = nb_model.predict()
@@ -296,10 +297,10 @@ for kategori, dep in OUTCOMES.items():
         gdf_model[["spatial_lag_y"]]
     )
 
-    # ==============
-    # === OFFSET ===
+    # =======================
+    # === COMBINED OFFSET ===
 
-    gdf_model["log_park_area"] = np.log(gdf_model["park_area"] + 1)
+    gdf_model["log_offset"] = np.log(gdf_model["park_area"] + 1) + np.log(gdf_model["TotPop_weighted"] + 1)
 
     # ==================
     # === MODEL RUNS ===
@@ -315,12 +316,10 @@ for kategori, dep in OUTCOMES.items():
 
         # condition number
         cn = condition_number(gdf_model[current_vars])
-        print(f"Condition number: {cn:.2f}")
 
-        ####################
         X_block = gdf_model[block_vars]
         cn = condition_number(X_block)
-        print(f"{block_name} condition number: {cn:.2f}")
+        print(f"{block_name} condition number: {cn:.2f}")   # within the block
 
         # if high (> 1000), print correlations and VIF
         if cn > 1000:
@@ -354,7 +353,6 @@ for kategori, dep in OUTCOMES.items():
                 'VIF': [variance_inflation_factor(X_block.values, i) for i in range(X_block.shape[1])]
             })
             print(f"VIF for {block_name}:\n", vif_data)
-        ####################
 
         for spatial in [False, True]:
 
@@ -372,7 +370,7 @@ for kategori, dep in OUTCOMES.items():
                     formula=formula,
                     data=gdf_model,
                     family=sm.families.NegativeBinomial(),
-                    offset=gdf_model["log_park_area"]
+                    offset=gdf_model["log_offset"]
                 ).fit(maxiter=200, disp=False)
 
                 # store results only if fit succeeds
@@ -391,7 +389,8 @@ for kategori, dep in OUTCOMES.items():
             #     model = smf.negativebinomial(
             #         formula=formula,
             #         data=gdf_model,
-            #         offset=gdf_model["log_park_area"]
+            #         #offset=gdf_model["log_park_area"]
+            #         offset=gdf_model["log_offset"]
             #     ).fit(maxiter=200, disp=False)
             #
             #     if not np.isfinite(model.aic):
@@ -415,8 +414,43 @@ for kategori, dep in OUTCOMES.items():
             print("No valid models found!")
             best = None
 
-    # ==================
-    # === BEST MODEL ===
+    # TOTAL CONDITION NUMBER (all blocks together)
+    cn_total = condition_number(gdf_model[current_vars])
+    print(f"\nTOTAL condition number (all blocks): {cn_total:.2f}")
+
+
+
+    # =========================
+    # === FULL MODEL SUMMARY (all blocks) ===
+
+    all_vars = [v for block in BLOCKS for v in block[1]]  # all variables in all blocks
+
+    for spatial in [False, True]:
+        label = "Spatial" if spatial else "No Spatial"
+        vars_used = all_vars.copy()
+        if spatial:
+            vars_used = ["spatial_lag_y"] + vars_used
+
+        formula_full = dep + " ~ " + " + ".join(vars_used)
+
+        try:
+            full_model = smf.glm(
+                formula=formula_full,
+                data=gdf_model,
+                family=sm.families.NegativeBinomial(),
+                offset=gdf_model["log_offset"]
+            ).fit(maxiter=200, disp=False)
+
+            print(f"\nFULL MODEL ({label}) summary — all blocks included:\n")
+            print(full_model.summary())
+
+        except Exception as e:
+            print(f"FULL MODEL ({label}) failed: {e}")
+
+
+
+    # ==========================
+    # === BEST MODEL SUMMARY ===
 
     # AIC table
     if results:  # check for valid models
@@ -428,44 +462,78 @@ for kategori, dep in OUTCOMES.items():
         aic_pivot = aic_pivot.reindex([b[0] for b in BLOCKS])
         print(f"\nAIC table for {kategori.upper()}:\n", aic_pivot)
 
-        # # save CSV
-        # aic_pivot.to_csv(f"{PATH}/AIC_table_{kategori}.csv")
-
     # summary of best model
     best = min(results, key=lambda x: x["AIC"])
     print(f"\nBEST: {best['block']} ({'spatial' if best['spatial'] else 'no spatial'})")
-
     model = best["model"]
 
-    # print regression table for best model
-    print(f"\nBest model for {kategori.upper()}: {best['block']} ({'Spatial' if best['spatial'] else 'No Spatial'})\n")
-    print(best['model'].summary())
+    # # print regression table for best model
+    # print(f"\nBest model for {kategori.upper()}: {best['block']} ({'Spatial' if best['spatial'] else 'No Spatial'})\n")
+    # print(best['model'].summary())
 
-    # # optionally save text summary to file
-    # with open(f"{PATH}/regression_summary_{kategori}.txt", "w") as f:
-    #     f.write(str(best['model'].summary()))
+    # collect AICs of both full models
+    full_model_aics = []
 
-    # ==========================
-    # === MORAN ON RESIDUALS ===
+    for spatial in [False, True]:
+        vars_used = all_vars.copy()
+        if spatial:
+            vars_used = ["spatial_lag_y"] + vars_used
 
-    resid = pd.Series(model.resid_response, index=gdf_model.index)
-    df_resid = gdf_model.loc[~np.isnan(resid)].copy()
-    df_resid = df_resid.reset_index(drop=True)
+        formula_full = dep + " ~ " + " + ".join(vars_used)
 
+        try:
+            fm = smf.glm(
+                formula=formula_full,
+                data=gdf_model,
+                family=sm.families.NegativeBinomial(),
+                offset=gdf_model["log_offset"]
+            ).fit(maxiter=200, disp=False)
+
+            full_model_aics.append(fm.aic)
+
+        except:
+            pass
+
+    # print best model only if different from BOTH full models
+    if best and best["model"].aic not in full_model_aics:
+        print(f"\nBEST MODEL summary (lowest AIC):\n")
+        print(best["model"].summary())
+
+
+    # ==============================================================
+    # === Moran's I on residuals & predictions (combined offset) ===
+
+    # 1. get indices actually used in the model fit
+    model_rows = model.model.data.row_labels  # these are the rows actually used
+
+    # 2. subset gdf_model to just those rows
+    gdf_fit = gdf_model.loc[model_rows].copy()
+    log_offset_used = gdf_fit["log_offset"]
+    y_obs_used = gdf_fit[dep]
+
+    # 3. predicted values
+    y_pred = model.predict(offset=log_offset_used)
+
+    # 4. standardized residuals
+    resid = y_obs_used - y_pred
+    gdf_fit["std_resid"] = (resid - resid.mean()) / resid.std()
+
+    # 5. Moran's I on residuals
     w_resid = DistanceBand.from_dataframe(
-        df_resid,
+        gdf_fit,
         threshold=1000,
         binary=True,
         silence_warnings=True
     )
-
-    w_resid = fix_islands(w_resid, df_resid)
+    w_resid = fix_islands(w_resid, gdf_fit)
     w_resid.transform = "R"
 
-    resid_clean = df_resid["std_resid"] if "std_resid" in df_resid else resid.loc[df_resid.index]
-    mi = Moran(resid_clean.values, w_resid)
-
+    mi = Moran(gdf_fit["std_resid"].values, w_resid)
     print(f"Moran residuals: I={mi.I:.3f}, p={mi.p_sim:.4f}")
+
+    # 6. update main gdf_model with residuals & outliers
+    gdf_model.loc[model_rows, "std_resid"] = gdf_fit["std_resid"]
+    gdf_model.loc[model_rows, "outlier"] = np.abs(gdf_fit["std_resid"]) > 2
 
     # =========================
     # === SIGNIFICANT PLOTS ===
@@ -490,8 +558,7 @@ for kategori, dep in OUTCOMES.items():
             if v not in ["Intercept", "alpha"]
         })
 
-        preds = model.predict(pred_df,
-                              offset=np.full(100, gdf_model["log_park_area"].mean()))
+        preds = model.predict(pred_df, offset=np.full(100, gdf_model["log_offset"].mean()))
 
         plt.figure()
 
@@ -509,28 +576,10 @@ for kategori, dep in OUTCOMES.items():
         plt.savefig(f"{OUTPUT_PATH_PLOTS}/{kategori}_{var}.png")
         plt.close()
 
-    # ===========================
-    # === OBS VS PRED SCATtER ===
-
-    y_obs = gdf_model[dep]
-    y_pred = model.predict(offset=gdf_model["log_park_area"])
-
-    plt.figure()
-    sns.scatterplot(x=y_obs, y=y_pred)
-
-    m = max(y_obs.max(), y_pred.max())
-    plt.plot([0,m],[0,m],'r--')
-
-    plt.xlabel("Observed")
-    plt.ylabel("Predicted")
-
-    plt.savefig(f"{OUTPUT_PATH_PLOTS}/{kategori}_obs_pred.png")
-    plt.close()
-
     # ================
     # === OUTLIERS ===
 
-    resid = y_obs - y_pred
+    resid = y_obs_used - y_pred
 
     gdf_model["std_resid"] = (resid - resid.mean()) / resid.std()
     gdf_model["outlier"] = np.abs(gdf_model["std_resid"]) > 2
