@@ -87,6 +87,7 @@ BASE_VARS = [
     "MedianInk_weighted",
     "AGG_Alder_0_15_per_ha",
     "distance_to_city_center_km",
+    # "transport_points_per_ha",      # correlates with AGG_Alder_0_15_per_ha
     "TotPop_weighted",                # offset
     "transport_type_diversity",
     "park_area"                       # offset
@@ -111,6 +112,7 @@ BLOCKS = [
     ]),
     ("Accessibility", [
         "distance_to_city_center_km",
+        # "transport_points_per_ha",      # correlates with AGG_Alder_0_15_per_ha
         "transport_type_diversity"
     ])
 ]
