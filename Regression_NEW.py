@@ -138,6 +138,36 @@ def fix_islands(w, gdf, k=3):
         w.weights[island] = [1] * len(neighbors)
     return w
 
+# =====================================
+# === MORAN'S I ON RESIDUALS HELPER ===
+
+def moran_on_residuals(model, gdf_model, dep, label):
+
+    # rows used in model
+    model_rows = model.model.data.row_labels
+
+    gdf_fit = gdf_model.loc[model_rows].copy()
+
+    y_obs = gdf_fit[dep]
+    y_pred = model.predict(offset=gdf_fit["log_offset"])
+
+    resid = y_obs - y_pred
+    std_resid = (resid - resid.mean()) / resid.std()
+
+    # spatial weights
+    w = DistanceBand.from_dataframe(
+        gdf_fit,
+        threshold=1000,
+        binary=True,
+        silence_warnings=True
+    )
+    w = fix_islands(w, gdf_fit)
+    w.transform = "R"
+
+    mi = Moran(std_resid.values, w)
+
+    print(f"{label} Moran residuals: I={mi.I:.3f}, p={mi.p_sim:.4f}")
+
 # ==========================
 # === CORRELATION MATRIX ===
 
@@ -418,9 +448,7 @@ for kategori, dep in OUTCOMES.items():
     cn_total = condition_number(gdf_model[current_vars])
     print(f"\nTOTAL condition number (all blocks): {cn_total:.2f}")
 
-
-
-    # =========================
+    # =======================================
     # === FULL MODEL SUMMARY (all blocks) ===
 
     all_vars = [v for block in BLOCKS for v in block[1]]  # all variables in all blocks
@@ -443,6 +471,8 @@ for kategori, dep in OUTCOMES.items():
 
             print(f"\nFULL MODEL ({label}) summary — all blocks included:\n")
             print(full_model.summary())
+
+            moran_on_residuals(full_model, gdf_model, dep, f"FULL {label}")
 
         except Exception as e:
             print(f"FULL MODEL ({label}) failed: {e}")
