@@ -36,7 +36,7 @@ if parks.crs is None:
 parks_3006 = parks.to_crs(epsg=3006)
 parks_wgs = parks.to_crs(epsg=4326)
 
-# ==========================
+# ==================
 # === STUDY AREA ===
 
 study_area_3006 = parks_3006.union_all().buffer(2000)
@@ -45,7 +45,7 @@ study_area_poly = gpd.GeoSeries(
     [study_area_3006], crs=3006
 ).to_crs(epsg=4326).iloc[0]
 
-# ==========================
+# ===========================
 # === LOAD OR BUILD GRAPH ===
 
 if os.path.exists(NETWORK_GRAPHML):
@@ -105,14 +105,14 @@ print("Final graph size:")
 print("Nodes:", len(G.nodes))
 print("Edges:", len(G.edges))
 
-# =============================
+# =======================
 # === ADD TRAVEL TIME ===
 
 for u, v, k, data in G.edges(keys=True, data=True):
     data["speed_kph"] = WALK_SPEED_KPH
     data["travel_time"] = data["length"] / (WALK_SPEED_KPH * 1000 / 3600)
 
-# ===========================================
+# ==============================
 # === SAMPLE BOUNDARY POINTS ===
 
 def sample_boundary(geom, spacing):
@@ -120,7 +120,7 @@ def sample_boundary(geom, spacing):
     distances = np.arange(0, length, spacing)
     return [geom.interpolate(d) for d in distances]
 
-# =============================================
+# ===============================
 # === FAST ISOCHRONE FUNCTION ===
 
 def make_isochrone(G, points, time_cutoff):
@@ -167,7 +167,7 @@ def make_isochrone(G, points, time_cutoff):
 
     return polygon
 
-# =======================================
+# ==============================
 # === GENERATE SERVICE AREAS ===
 
 service_geoms = []

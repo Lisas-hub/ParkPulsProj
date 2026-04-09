@@ -479,8 +479,6 @@ for kategori, dep in OUTCOMES.items():
         except Exception as e:
             print(f"FULL MODEL ({label}) failed: {e}")
 
-
-
     # ==========================
     # === BEST MODEL SUMMARY ===
 
@@ -498,10 +496,6 @@ for kategori, dep in OUTCOMES.items():
     best = min(results, key=lambda x: x["AIC"])
     print(f"\nBEST: {best['block']} ({'spatial' if best['spatial'] else 'no spatial'})")
     model = best["model"]
-
-    # # print regression table for best model
-    # print(f"\nBest model for {kategori.upper()}: {best['block']} ({'Spatial' if best['spatial'] else 'No Spatial'})\n")
-    # print(best['model'].summary())
 
     # collect AICs of both full models
     full_model_aics = []
@@ -544,16 +538,12 @@ for kategori, dep in OUTCOMES.items():
     y_obs_used = gdf_fit[dep]
 
     # predicted values
-    #y_pred = model.predict(offset=log_offset_used)
-
-    # standardized residuals
-    #resid = y_obs_used - y_pred
-    #gdf_fit["std_resid"] = (resid - resid.mean()) / resid.std()
-
-    ######################
-    # predicted values
     y_pred = model.predict(offset=log_offset_used)
     gdf_fit["predicted"] = y_pred
+
+    # observed values
+    #y_obs_used = model.predict(offset=log_offset_used)
+    gdf_fit["observed"] = y_obs_used
 
     # residuals
     resid = y_obs_used - y_pred
@@ -561,7 +551,6 @@ for kategori, dep in OUTCOMES.items():
 
     # standardized residuals
     gdf_fit["std_resid"] = (resid - resid.mean()) / resid.std()
-    #######################
 
     # Moran's I on residuals
     w_resid = DistanceBand.from_dataframe(
@@ -576,12 +565,9 @@ for kategori, dep in OUTCOMES.items():
     mi = Moran(gdf_fit["std_resid"].values, w_resid)
     print(f"Moran residuals: I={mi.I:.3f}, p={mi.p_sim:.4f}")
 
-    # update main gdf_model with residuals & outliers
-    #gdf_model.loc[model_rows, "std_resid"] = gdf_fit["std_resid"]
-    #gdf_model.loc[model_rows, "outlier"] = np.abs(gdf_fit["std_resid"]) > 2
-
     # update main gdf_model with residuals
     gdf_model.loc[model_rows, "std_resid"] = gdf_fit["std_resid"]
+    gdf_model.loc[model_rows, "observed"] = gdf_fit["observed"]
     gdf_model.loc[model_rows, "predicted"] = gdf_fit["predicted"]
     gdf_model.loc[model_rows, "residual"] = gdf_fit["residual"]
 
@@ -635,16 +621,10 @@ for kategori, dep in OUTCOMES.items():
     # ================
     # === OUTLIERS ===
 
-    #resid = y_obs_used - y_pred
-
-    #gdf_model["std_resid"] = (resid - resid.mean()) / resid.std()
-    #gdf_model["outlier"] = np.abs(gdf_model["std_resid"]) > 2
-
-    #print(f"Outliers: {gdf_model['outlier'].sum()}")
-
     gdf_output = gdf.merge(
         gdf_model[[
             "group",
+            "observed",
             "predicted",
             "residual",
             "std_resid",
