@@ -9,11 +9,6 @@ import os
 # add public transport count or similar
 # add distance to city center
 
-###########
-# might need to join other layers to this one to get like meta topics, themes or whatever
-# calculate number or proportion of pts within the park polygons (VARIABLES_) per sentiment, kategori, ...
-# spara ett lager med en rad för varje park och ett lager med en rad för varje punkt? (i den senare kan alltså park id förekomma mer än en gång)
-###########
 
 VARIABLES_GPKG_PATH = "data/VARIABLES_NEW.gpkg"
 TYCKTILL_FILTERED_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg"
