@@ -38,7 +38,7 @@ def THEME_accessibility_to_layer2(layer2):
 
     ##################
     # use service area of parks instead of buffered parks
-    service_area_of_parks = gpd.read_file(r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\network_analysis\service_area_of_parks.gpkg")
+    service_area_of_parks = gpd.read_file("data/tycktill_output/network_analysis/service_area_of_parks.gpkg")
     ##################
 
     # join
@@ -60,6 +60,9 @@ def THEME_accessibility_to_layer2(layer2):
 
     layer2 = layer2.join(transport_type_diversity, how='left')
     layer2['transport_type_diversity'] = layer2['transport_type_diversity'].fillna(0)
+
+    # new variable: any public transport (bus or subway or both)
+    layer2['transport_any'] = layer2['transport_type_diversity'].apply(lambda x: 3 if x > 0 else 0)
 
     # transport points per park
     transport_point_counts = (

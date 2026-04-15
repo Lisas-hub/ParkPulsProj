@@ -45,8 +45,12 @@ VAR_LABELS = {
     "MedianInk_weighted": "Median income",
     "TotPop_weighted": "Population density",
     "AGG_Alder_0_15_per_ha": "Children aged 0-15y density",
+    #"transport_points_per_ha": "Public transport stops per ha",
     "distance_to_city_center_km": "Distance to city centre",
-    "transport_type_diversity": "Transport diversity",
+    #"transport_type_diversity": "Transport diversity",
+    #"transport_1": "Transport: one mode",
+    #"transport_2": "Transport: two modes",
+    "transport_3": "Public transport (one or two modes)",
     "park_area": "Park area"
 }
 
@@ -66,6 +70,13 @@ gdf["total_count"] = (
 
 if gdf.crs.is_geographic:
     gdf = gdf.to_crs(epsg=3006)
+
+# =========================
+# === TRANSPORT DUMMIES ===
+
+gdf["transport_1"] = (gdf["transport_type_diversity"] == 1).astype(int)
+gdf["transport_2"] = (gdf["transport_type_diversity"] == 2).astype(int)
+gdf["transport_3"] = (gdf["transport_type_diversity"] > 0).astype(int)
 
 # =======================
 # === VARIABLES SETUP ===
@@ -87,9 +98,12 @@ BASE_VARS = [
     "MedianInk_weighted",
     "AGG_Alder_0_15_per_ha",
     "distance_to_city_center_km",
-    # "transport_points_per_ha",      # correlates with AGG_Alder_0_15_per_ha
+    #"transport_points_per_ha",       # correlates with AGG_Alder_0_15_per_ha
     "TotPop_weighted",                # offset
-    "transport_type_diversity",
+    #"transport_type_diversity",      # replaced with the dummies below
+    #"transport_1",
+    #"transport_2",
+    "transport_3",
     "park_area"                       # offset
 ]
 
@@ -112,8 +126,11 @@ BLOCKS = [
     ]),
     ("Accessibility", [
         "distance_to_city_center_km",
-        # "transport_points_per_ha",      # correlates with AGG_Alder_0_15_per_ha
-        "transport_type_diversity"
+        "transport_points_per_ha",       # correlates with AGG_Alder_0_15_per_ha
+        #"transport_type_diversity",      # replaced with the dummies below
+        #"transport_1",
+        #"transport_2",
+        "transport_3"
     ])
 ]
 
@@ -180,9 +197,23 @@ corr_df = gdf_base[BASE_VARS].corr()
 # rename for plotting
 corr_df.rename(index=VAR_LABELS, columns=VAR_LABELS, inplace=True)
 
-plt.figure(figsize=(10, 8))
-sns.heatmap(corr_df, annot=True, cmap="coolwarm", center=0)
-plt.title("Correlation Matrix (Predictors)")
+# mask for the upper triangle
+mask = np.triu(np.ones_like(corr_df, dtype=bool), k=1)
+
+plt.figure(figsize=(12, 10))
+sns.heatmap(
+    corr_df,
+    mask=mask,            # hide upper triangle
+    annot=True,
+    fmt=".2f",
+    cmap="vlag",
+    center=0,
+    square=True,
+    linewidths=0.5,
+    annot_kws={"size": 10}
+)
+
+#plt.title("Correlation Matrix (Predictors)")
 plt.tight_layout()
 plt.savefig(f"{OUTPUT_PATH_PLOTS}/correlation_matrix.png", dpi=300)
 plt.close()
@@ -300,7 +331,14 @@ for kategori, dep in OUTCOMES.items():
     # === SCALING ===
 
     scaler = StandardScaler()
-    gdf_model[BASE_VARS] = scaler.fit_transform(gdf_model[BASE_VARS])
+    #gdf_model[BASE_VARS] = scaler.fit_transform(gdf_model[BASE_VARS])
+    ###############
+    # do NOT scale dummy variables
+    DUMMY_VARS = ["transport_1", "transport_2", "transport_3"]
+    SCALE_VARS = [v for v in BASE_VARS if v not in DUMMY_VARS]
+
+    gdf_model[SCALE_VARS] = scaler.fit_transform(gdf_model[SCALE_VARS])
+    ###############
 
     # ===============
     # === w_model ===
@@ -396,6 +434,11 @@ for kategori, dep in OUTCOMES.items():
 
             formula = dep + " ~ " + " + ".join(vars_used)
 
+            # # condition number for THIS model
+            # X_model = gdf_model[vars_used]
+            # cn_model = condition_number(X_model)
+            # print(f"{label} {block_name} model CN: {cn_model:.2f}")
+
             # === use glm and fixed alpha (acceptable) ===
             try:
                 model = smf.glm(
@@ -447,13 +490,27 @@ for kategori, dep in OUTCOMES.items():
             best = None
 
     # TOTAL CONDITION NUMBER (all blocks together)
-    cn_total = condition_number(gdf_model[current_vars])
-    print(f"\nTOTAL condition number (all blocks): {cn_total:.2f}")
+    cn_total = condition_number(gdf_model[current_vars])              # does not take intercept or spatial lag into consideration
+    print(f"\nTOTAL condition number (all blocks): {cn_total:.2f} ***OLD***")
 
     # =======================================
     # === FULL MODEL SUMMARY (all blocks) ===
 
     all_vars = [v for block in BLOCKS for v in block[1]]  # all variables in all blocks
+
+    import statsmodels.api as sm
+
+    #####################
+    # # === CONDITION NUMBER: FULL MODEL (NO SPATIAL) ===
+    # X_ns = sm.add_constant(gdf_model[all_vars])
+    # cn_ns = condition_number(X_ns)
+    # print(f"{kategori} FULL model CN (no spatial): {cn_ns:.2f}")
+    #
+    # # === CONDITION NUMBER: FULL MODEL (SPATIAL) ===
+    # X_sp = sm.add_constant(gdf_model[["spatial_lag_y"] + all_vars])
+    # cn_sp = condition_number(X_sp)
+    # print(f"{kategori} FULL model CN (spatial): {cn_sp:.2f}")
+    #####################
 
     for spatial in [False, True]:
         label = "Spatial" if spatial else "No Spatial"
@@ -524,7 +581,6 @@ for kategori, dep in OUTCOMES.items():
     if best and best["model"].aic not in full_model_aics:
         print(f"\nBEST MODEL summary (lowest AIC):\n")
         print(best["model"].summary())
-
 
     # ==============================================================
     # === Moran's I on residuals & predictions (combined offset) ===
