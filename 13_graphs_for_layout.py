@@ -291,16 +291,62 @@ def main(df):
 
     # === DATASET: by location only ===
     df = prepare_topic_df(df)
+
+    # BAR CHART: TOP 5 TOTALS (ALL CATEGORIES COMBINED)
+    top5_all_topics = get_top_n_topics(df, n=5)
+    totals_all = aggregate_totals(df, top5_all_topics)
+
+    plot_bar_totals_png(
+        totals_all,
+        title="Top 5 topics within park boundaries\n (Total count)",
+        outfile=outdir / "all_categories_top5_totals.png"
+    )
+
     categories = split_by_category(df)
 
+    # ========= CATEGORY DISTRIBUTION (PERCENTAGES) =========
+    total_n = len(df)
+
+    category_counts = {
+        "praise": len(categories["praise"]),
+        "idea": len(categories["idea"]),
+        "error_complaint": len(categories["error_complaint"]),
+    }
+
+    print("\nCATEGORY DISTRIBUTION (%)")
+    for cat, count in category_counts.items():
+        pct = (count / total_n) * 100 if total_n > 0 else 0
+        print(f"{cat}: {pct:.1f}%")
+
+
+
     for cat_name, df_cat in categories.items():
+
+        # ========= SENTIMENT DISTRIBUTION (PERCENTAGES) =========
+        sentiment_pct = (
+            df_cat["sentiment_label"]
+            .value_counts(normalize=True)
+            .reindex(["POSITIVE", "NEUTRAL", "NEGATIVE"], fill_value=0)
+            * 100
+        )
+
+        print(f"\n{cat_name.upper()} – Sentiment distribution (%)")
+        for sentiment, pct in sentiment_pct.items():
+            print(f"{sentiment}: {pct:.1f}%")
+
         # ========= BAR CHART: TOP 5 TOTALS =========
         top5_topics = get_top_n_topics(df_cat, n=5)
         totals = aggregate_totals(df_cat, top5_topics)
 
+        title_map = {
+            "praise": "Top 5 topics within park boundaries\n (Praise)",
+            "idea": "Top 5 topics within park boundaries\n (Ideas)",
+            "error_complaint": "Top 5 topics within park boundaries\n (Maintenance requests/Complaints)"
+        }
+
         plot_bar_totals_png(
             totals,
-            title=f"{cat_name.capitalize()} – Top 5 Topics (Total)",
+            title=title_map[cat_name],
             outfile=outdir / f"{cat_name}_top5_totals.png"
         )
 

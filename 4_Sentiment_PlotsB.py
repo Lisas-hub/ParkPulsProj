@@ -334,7 +334,6 @@ parks["sentiment_score_per_ha"] = parks["sentiment_score"] / (parks["park_area"]
 parks.to_file("data/tycktill_output/tycktill.gpkg", layer="sentiments_per_park", driver="GPKG", mode="w")
 
 
-
 # ==============================================
 # dominant topic raster + topic diversity raster
 #pts_with_topics = gpd.read_file(f"{output_folder}/ons_8_okt_all_rows/tycktill.gpkg", layer="pts_with_topics") # *** remove this row if doing a new subset ***
@@ -456,5 +455,3 @@ for i in range(1, 6):
 
 parks_with_top5_topics.to_file("data/tycktill_output/tycktill.gpkg", layer="parks_with_top5_topics", driver="GPKG", mode="w")
 
-# =====================
-#
