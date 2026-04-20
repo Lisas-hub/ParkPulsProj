@@ -16,7 +16,7 @@ def prepp_layer1():
     return layer1
 layer1 = prepp_layer1()
 
-layer2 = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
+layer2 = gpd.read_file("../data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
 
 # typology
 def THEME_typology_to_layer2(layer2):

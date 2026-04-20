@@ -4,7 +4,7 @@ import pandas as pd
 
 input_directory = r"C:\Users\lisajos\QGIS_Projects" # set your directory here
 
-layer2 = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
+layer2 = gpd.read_file("../data/VARIABLES_NEW.gpkg", layer="VARIABLES_base")
 
 def THEME_food_to_layer2(layer2):
 
