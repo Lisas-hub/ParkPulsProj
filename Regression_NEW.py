@@ -45,12 +45,13 @@ VAR_LABELS = {
     "MedianInk_weighted": "Median income",
     "TotPop_weighted": "Population density",
     "AGG_Alder_0_15_per_ha": "Children aged 0-15y density",
-    #"transport_points_per_ha": "Public transport stops per ha",
+    "transport_points_per_ha": "Public transport stops per ha",
     "distance_to_city_center_km": "Distance to city centre",
     #"transport_type_diversity": "Transport diversity",
     #"transport_1": "Transport: one mode",
     #"transport_2": "Transport: two modes",
-    "transport_3": "Public transport (one or two modes)",
+    #"transport_3": "Public transport (one or two modes)",
+    "distance_to_nearest_transport_km": "Distance to nearest public transport",
     "park_area": "Park area"
 }
 
@@ -98,12 +99,13 @@ BASE_VARS = [
     "MedianInk_weighted",
     "AGG_Alder_0_15_per_ha",
     "distance_to_city_center_km",
-    #"transport_points_per_ha",       # correlates with AGG_Alder_0_15_per_ha
+    "transport_points_per_ha",       # correlates with AGG_Alder_0_15_per_ha
     "TotPop_weighted",                # offset
     #"transport_type_diversity",      # replaced with the dummies below
     #"transport_1",
     #"transport_2",
-    "transport_3",
+    #"transport_3",
+    "distance_to_nearest_transport_km",
     "park_area"                       # offset
 ]
 
@@ -126,11 +128,12 @@ BLOCKS = [
     ]),
     ("Accessibility", [
         "distance_to_city_center_km",
-        "transport_points_per_ha",       # correlates with AGG_Alder_0_15_per_ha
+        #"transport_points_per_ha",       # correlates with AGG_Alder_0_15_per_ha
         #"transport_type_diversity",      # replaced with the dummies below
         #"transport_1",
         #"transport_2",
-        "transport_3"
+        #"transport_3",
+        "distance_to_nearest_transport_km"
     ])
 ]
 
@@ -491,7 +494,7 @@ for kategori, dep in OUTCOMES.items():
 
     # TOTAL CONDITION NUMBER (all blocks together)
     cn_total = condition_number(gdf_model[current_vars])              # does not take intercept or spatial lag into consideration
-    print(f"\nTOTAL condition number (all blocks): {cn_total:.2f} ***OLD***")
+    print(f"\nTOTAL condition number (all blocks): {cn_total:.2f}")
 
     # =======================================
     # === FULL MODEL SUMMARY (all blocks) ===

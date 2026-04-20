@@ -32,6 +32,37 @@ def THEME_accessibility_to_layer2(layer2):
         crs=layer2.crs
     )
 
+
+    #####################
+    # ============================
+    # distance to nearest transport point (edge-based, robust)
+    # ============================
+
+    nearest = gpd.sjoin_nearest(
+        layer2,
+        transport_points[['geometry']],
+        how='left',
+        distance_col='distance_to_nearest_transport_m'
+    )
+
+    # IMPORTANT: handle duplicate matches by taking the minimum distance per park
+    nearest_clean = (
+        nearest
+            .groupby(nearest.index)['distance_to_nearest_transport_m']
+            .min()
+    )
+
+    # assign back safely
+    layer2['distance_to_nearest_transport_m'] = nearest_clean
+
+    # optional: km
+    layer2['distance_to_nearest_transport_km'] = (
+            layer2['distance_to_nearest_transport_m'] / 1000
+    )
+    #####################
+
+
+
     # buffer the park polygons
     layer2_buffered = layer2.copy()
     layer2_buffered['geometry'] = layer2_buffered.geometry.buffer(200)
