@@ -3,7 +3,7 @@ import geopandas as gpd
 import pandas as pd
 import matplotlib.pyplot as plt
 
-variables_all = gpd.read_file("data/VARIABLES_NEW.gpkg", layer="VARIABLES_all")
+variables_all = gpd.read_file("../data/VARIABLES_NEW.gpkg", layer="VARIABLES_all")
 
 # ======================================================
 # === 'activities' from sociotop (mouseover_ column) ===

@@ -19,7 +19,7 @@ def load_layer(path: str, layer_name: str) -> gpd.GeoDataFrame:
     return gdf.to_crs(epsg=4326)
 
 sentiments_per_park = load_layer(
-    r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\tycktill.gpkg",
+    r"/data/tycktill_output/tycktill.gpkg",
     "sentiments_per_park"
 )
 

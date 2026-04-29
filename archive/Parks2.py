@@ -17,7 +17,7 @@ st.title("Welcome to the Park Puls map!")
 def load_layer(path: str, layer_name: str) -> gpd.GeoDataFrame:
     gdf = gpd.read_file(path, layer=layer_name)
     return gdf.to_crs(epsg=4326)
-layer_variables = load_layer(path=r"C:\Users\lisajos\PycharmProjects\park_proj\data\VARIABLES_for_streamlit.gpkg", layer_name="VARIABLES_for_streamlit")
+layer_variables = load_layer(path=r"/data/VARIABLES_for_streamlit.gpkg", layer_name="VARIABLES_for_streamlit")
 layer_variables = layer_variables.to_crs(epsg=4326) # apparently WGS84 is necessary for folium?? But it was fine without it before
 
 

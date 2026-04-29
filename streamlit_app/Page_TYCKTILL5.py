@@ -35,7 +35,7 @@ tycktill_filtered_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tyckt
 tycktill_filtered_with_lemmas_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\STANZA_for_word_cloud\STANZA_output.gpkg"
 tycktill_reduced_topics_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_reduce_topics\tycktill_reduced_topics.gpkg"
 
-plots_folder_path = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\plots"
+plots_folder_path = r"/data/tycktill_output/plots"
 
 raster_paths = {                      # am I using the rasters? if not, remove
     "Praise+Ideas": {
@@ -1340,7 +1340,7 @@ st.sidebar.button("Clear Cache", on_click=st.cache_data.clear)
 
 section = st.sidebar.pills(
     "Make a selection:",
-    ["Overview", "Sentiments", "Topics", "Themes"]
+    ["Overview", "Sentiments", "Topics"]
 )
 
 # ================
@@ -1804,19 +1804,5 @@ if section == "Topics":
             )
             st.altair_chart(chart, use_container_width=True)
 
-# ==============
-# === THEMES ===
-
-# if section == "Themes":
-#     theme_question = st.sidebar.radio(
-#         "Choose a question:",
-#         ["Theme question 1", "Theme question 2"]
-#     )
-#
-#     if theme_question == "Theme question 1":
-#         st.info("add top themes bar chart")
-#
-#     elif theme_question == "Theme question 2":
-#         st.info("add co-occurence matrix")
 
 

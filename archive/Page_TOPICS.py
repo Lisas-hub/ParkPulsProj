@@ -15,19 +15,19 @@ def load_layer(path: str, layer_name: str) -> gpd.GeoDataFrame:
     return gdf.to_crs(epsg=4326)
 
 layer_variables = load_layer(
-    r"C:\Users\lisajos\PycharmProjects\park_proj\data\VARIABLES_for_streamlit.gpkg",
+    r"/data/VARIABLES_for_streamlit.gpkg",
     "VARIABLES_for_streamlit"
 )
 pts_by_location = load_layer(
-    r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg",
+    r"/data/tycktill_output/BERTopic_filtered/tycktill_filtered.gpkg",
     "pts_in_parks_with_topics"
 )
 pts_by_keyword = load_layer(
-    r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg",
+    r"/data/tycktill_output/BERTopic_filtered/tycktill_filtered.gpkg",
     "park_comments_by_keyword"
 )
 pts_by_BERTopic = load_layer(
-    r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg",
+    r"/data/tycktill_output/BERTopic_filtered/tycktill_filtered.gpkg",
     "park_comments_by_BERTopic"
 )
 

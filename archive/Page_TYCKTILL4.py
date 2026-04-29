@@ -30,7 +30,7 @@ st.set_page_config(layout="wide")
 tycktill_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\tycktill.gpkg"
 tycktill_filtered_GPKG = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\BERTopic_filtered\tycktill_filtered.gpkg"
 
-plots_folder_path = r"C:\Users\lisajos\PycharmProjects\park_proj\data\tycktill_output\plots"
+plots_folder_path = r"/data/tycktill_output/plots"
 
 raster_paths = {
     "Praise+Ideas": {

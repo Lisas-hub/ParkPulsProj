@@ -58,7 +58,7 @@ folium.TileLayer(
 
 @st.cache_data(show_spinner=False)
 def load_gdf():
-    return gpd.read_file(r"C:\Users\lisajos\PycharmProjects\park_proj\data\VARIABLES.gpkg", layer="all_variables")
+    return gpd.read_file(r"/data/VARIABLES.gpkg", layer="all_variables")
 
 sociotop2024_gdf = load_gdf()
 
