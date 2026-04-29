@@ -1,7 +1,3 @@
-# Öppna appen via Win R > cmd
-# alternativt terminalen i Pycharm
-# och skriv
-# streamlit run C:\Users\lisajos\PycharmProjects\park_proj\park_proj.py
 
 import streamlit as st
 
